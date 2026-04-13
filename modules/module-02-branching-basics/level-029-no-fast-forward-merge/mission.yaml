@@ -1,0 +1,48 @@
+name: No-Fast-Forward Merge
+module: module-02-branching-basics
+level: level-029-no-fast-forward-merge
+order: 29
+difficulty: beginner
+xp: 150
+expected_time: 6m
+concepts:
+- '`git merge --no-ff`'
+- merge commit
+common_mistakes:
+- Running commands related to `git merge --no-ff`, merge commit without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A feature branch is ready to be integrated into `main`.
+objective: Merge `feature/login` into `main` using `--no-ff`.
+hints:
+- Make sure you are on `main`.
+- Merge with `git merge --no-ff feature/login`.
+- Keep the working tree clean after the merge.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
+  \   ```bash\n   git merge --no-ff feature/login\n   ```"
+debrief: '## What Just Happened
+
+
+  **No-Fast-Forward Merge**
+
+
+  Fast-forward merges keep history linear; `--no-ff` preserves an explicit integration
+  point.
+
+  '
+validators:
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
+- type: file_content_contains
+  path: feature.txt
+  text: login ready
+  description: Feature change reached main
+- type: merge_commit_exists
+  branch: HEAD
+  description: History shape matches the mission
+- type: is_clean
+  description: Working tree is clean

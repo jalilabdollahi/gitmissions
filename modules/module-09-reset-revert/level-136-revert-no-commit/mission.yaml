@@ -1,0 +1,38 @@
+name: Revert Without Committing
+module: module-09-reset-revert
+level: level-136-revert-no-commit
+order: 136
+difficulty: advanced
+xp: 320
+expected_time: 10m
+concepts:
+- '`git revert --no-commit`'
+common_mistakes:
+- Running commands related to `git revert --no-commit` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A commit introduced a bad change that should be undone safely.
+objective: Revert the latest commit so `bad.txt` disappears from the working tree.
+hints:
+- Use `git revert` to create a new inverse commit.
+- Keep the repo clean when you finish.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git revert --no-edit HEAD\n  \
+  \ ```"
+debrief: '## What Just Happened
+
+
+  **Revert Without Committing**
+
+
+  Revert is the safe undo tool for history that may already be shared.
+
+  '
+validators:
+- type: file_not_exists
+  path: bad.txt
+  description: bad.txt was reverted away
+- type: is_clean
+  description: Working tree is clean

@@ -1,0 +1,37 @@
+name: Create Branch from Old Commit
+module: module-02-branching-basics
+level: level-032-branch-from-commit
+order: 32
+difficulty: beginner
+xp: 150
+expected_time: 6m
+concepts:
+- '`git switch -c <name> <hash>`'
+common_mistakes:
+- Running commands related to `git switch -c <name> <hash>` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: You need to preserve work by creating a branch from an older point in
+  history.
+objective: Create a branch named `rescue` from `HEAD~1`.
+hints:
+- Inspect the log if you want to confirm the target commit.
+- Use `git switch -c rescue HEAD~1` or `git branch rescue HEAD~1`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch -c rescue HEAD~1\n\
+  \   ```"
+debrief: '## What Just Happened
+
+
+  **Create Branch from Old Commit**
+
+
+  Branches can point at any reachable commit, not just the current HEAD.
+
+  '
+validators:
+- type: branch_exists
+  branch: rescue
+  description: rescue exists

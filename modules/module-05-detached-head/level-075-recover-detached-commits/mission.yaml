@@ -1,0 +1,40 @@
+name: Recover Detached HEAD Commits
+module: module-05-detached-head
+level: level-075-recover-detached-commits
+order: 75
+difficulty: intermediate
+xp: 280
+expected_time: 8m
+concepts:
+- '`git branch <name>` before switching away'
+common_mistakes:
+- Running commands related to `git branch <name>` before switching away without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A useful commit exists outside any branch, and you need to rescue it.
+objective: Create a branch named `rescue-detached` pointing at the detached commit.
+hints:
+- Use `git branch rescue-detached` while at the detached commit, or find it with `git
+  reflog` first.
+- After the branch exists, you can switch back if you want.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch rescue-detached\n \
+  \  ```"
+debrief: '## What Just Happened
+
+
+  **Recover Detached HEAD Commits**
+
+
+  Detached commits become safe as soon as a branch or tag points to them.
+
+  '
+validators:
+- type: branch_exists
+  branch: rescue-detached
+  description: rescue-detached exists
+- type: reflog_contains
+  text: Detached experiment
+  description: Reflog still records the detached commit

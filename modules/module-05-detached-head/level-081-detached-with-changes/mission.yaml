@@ -1,0 +1,36 @@
+name: Detached HEAD with Staged Changes
+module: module-05-detached-head
+level: level-081-detached-with-changes
+order: 81
+difficulty: intermediate
+xp: 270
+expected_time: 8m
+concepts:
+- dirty index in detached state
+common_mistakes:
+- Running commands related to dirty index in detached state without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: You are on `main`, and this mission asks you to move into a detached
+  HEAD state.
+objective: Check out `HEAD~1` so that HEAD becomes detached.
+hints:
+- A detached HEAD happens when HEAD points directly to a commit or tag.
+- Use `git checkout HEAD~1`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
+debrief: '## What Just Happened
+
+
+  **Detached HEAD with Staged Changes**
+
+
+  Detached HEAD is safe for exploration as long as you branch before you want to keep
+  new commits.
+
+  '
+validators:
+- type: is_detached
+  description: HEAD is detached

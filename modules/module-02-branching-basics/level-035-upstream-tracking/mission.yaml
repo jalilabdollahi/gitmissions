@@ -1,0 +1,41 @@
+name: Set Upstream Tracking
+module: module-02-branching-basics
+level: level-035-upstream-tracking
+order: 35
+difficulty: beginner
+xp: 160
+expected_time: 6m
+concepts:
+- '`git branch --set-upstream-to`'
+common_mistakes:
+- Running commands related to `git branch --set-upstream-to` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: A local clone has a branch that should track the remote branch of the
+  same name.
+objective: Set `feature/ui` to track `origin/feature/ui`.
+hints:
+- Work inside `local/`.
+- Inspect remote branches with `git branch -a`.
+- Use `git branch --set-upstream-to=origin/feature/ui feature/ui`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git branch --set-upstream-to=origin/feature/ui feature/ui\n   ```"
+debrief: '## What Just Happened
+
+
+  **Set Upstream Tracking**
+
+
+  Tracking branches connect local work to a remote reference so pull and push defaults
+  behave well.
+
+  '
+validators:
+- type: script_passes
+  description: feature/ui tracks origin/feature/ui
+  script: test "$(git for-each-ref --format='%(upstream:short)' refs/heads/feature/ui)"
+    = "origin/feature/ui"

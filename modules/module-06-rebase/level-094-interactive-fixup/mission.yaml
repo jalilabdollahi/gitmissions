@@ -1,0 +1,46 @@
+name: Fixup Commits
+module: module-06-rebase
+level: level-094-interactive-fixup
+order: 94
+difficulty: intermediate
+xp: 300
+expected_time: 12m
+concepts:
+- "`fixup` / `f` \u2014 squash without keeping message"
+common_mistakes:
+- "Running commands related to `fixup` / `f` \u2014 squash without keeping message\
+  \ without checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The feature branch has several tiny commits that should become one clean
+  commit.
+objective: Squash the feature branch history so only one feature commit remains on
+  top of `main`.
+hints:
+- An interactive rebase is the usual approach.
+- Any valid Git method is okay if the final history has one feature commit.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
+  \ ```\n\n2.\n   ```bash\n   git reset --soft main\n   ```\n\n3.\n   ```bash\n  \
+  \ git commit -m \"Squashed feature work\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Fixup Commits**
+
+
+  Squashing is a history-cleanup step that trades granular checkpoints for a simpler
+  review story.
+
+  '
+validators:
+- type: commit_count_eq
+  branch: HEAD
+  count: 3
+  description: Feature branch has one rebased feature commit plus main history
+- type: commit_message_contains
+  text: Squashed feature work
+  description: Latest commit message is correct
+- type: is_clean
+  description: Working tree is clean

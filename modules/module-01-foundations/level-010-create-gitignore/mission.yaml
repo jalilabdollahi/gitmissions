@@ -1,0 +1,52 @@
+name: Create a .gitignore
+module: module-01-foundations
+level: level-010-create-gitignore
+order: 10
+difficulty: beginner
+xp: 120
+expected_time: 5m
+concepts:
+- '`.gitignore` patterns'
+- '`#`'
+- '`*`'
+- '`/`'
+common_mistakes:
+- Running commands related to `.gitignore` patterns, `#`, `*`, `/` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Build artifacts are cluttering the repo and should be ignored going forward.
+objective: 'Create a `.gitignore` that ignores `*.log` and `build/`, then commit it
+  with the message `chore: add gitignore`.'
+hints:
+- Start with the Git command related to ``.gitignore` patterns, `#`, `*`, `/``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '*.log\nbuild/\n' > .gitignore\n\
+  \   ```\n\n2.\n   ```bash\n   git add .gitignore\n   ```\n\n3.\n   ```bash\n   git\
+  \ commit -m \"chore: add gitignore\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Create a .gitignore**
+
+
+  This level focused on `.gitignore` patterns, `#`, `*`, `/`.
+
+  '
+validators:
+- type: file_content_contains
+  path: .gitignore
+  text: '*.log'
+  description: .gitignore ignores log files
+- type: file_content_contains
+  path: .gitignore
+  text: build/
+  description: .gitignore ignores build/
+- type: commit_message_contains
+  text: 'chore: add gitignore'
+  description: Latest commit message is correct
+- type: is_clean
+  description: Working tree is clean

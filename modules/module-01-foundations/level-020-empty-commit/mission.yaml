@@ -1,0 +1,43 @@
+name: Empty Commit
+module: module-01-foundations
+level: level-020-empty-commit
+order: 20
+difficulty: beginner
+xp: 120
+expected_time: 5m
+concepts:
+- '`git commit --allow-empty`'
+common_mistakes:
+- Running commands related to `git commit --allow-empty` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Operations wants a marker commit even though no files changed.
+objective: 'Create an empty commit with the message `chore: mark release checkpoint`.'
+hints:
+- Start with the Git command related to ``git commit --allow-empty``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git commit --allow-empty -m \"\
+  chore: mark release checkpoint\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Empty Commit**
+
+
+  This level focused on `git commit --allow-empty`.
+
+  '
+validators:
+- type: commit_message_contains
+  text: 'chore: mark release checkpoint'
+  description: Empty commit message is correct
+- type: commit_count_eq
+  branch: HEAD
+  count: 2
+  description: A new commit was created
+- type: is_clean
+  description: Working tree is clean

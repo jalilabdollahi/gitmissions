@@ -1,0 +1,48 @@
+name: Same-Line Conflict
+module: module-03-merge-conflicts
+level: level-037-same-line-conflict
+order: 37
+difficulty: intermediate
+xp: 200
+expected_time: 10m
+concepts:
+- two branches change the same line
+common_mistakes:
+- Running commands related to two branches change the same line without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The repository is already stopped in the middle of a merge conflict.
+objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
+  the merge.
+hints:
+- Run `git status` to confirm the conflicted file.
+- Open `app.txt` and remove the conflict markers.
+- Stage the file and commit the merge.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
+  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
+  \ git commit -m \"Resolve merge conflict\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Same-Line Conflict**
+
+
+  Conflict resolution is just editing the working tree to the final content you want,
+  then telling Git the file is resolved.
+
+  '
+validators:
+- type: no_conflict_markers
+  description: No conflict markers remain
+- type: file_content_equals
+  path: app.txt
+  text: value=main+feature
+  description: app.txt has the expected content
+- type: is_clean
+  description: Working tree is clean
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main

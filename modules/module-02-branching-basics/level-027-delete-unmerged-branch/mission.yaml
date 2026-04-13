@@ -1,0 +1,40 @@
+name: Force Delete a Branch
+module: module-02-branching-basics
+level: level-027-delete-unmerged-branch
+order: 27
+difficulty: beginner
+xp: 140
+expected_time: 6m
+concepts:
+- "`git branch -D` \u2014 and why it's dangerous"
+common_mistakes:
+- "Running commands related to `git branch -D` \u2014 and why it's dangerous without\
+  \ checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A temporary branch should be removed from the repository.
+objective: Delete `feature/wip` with force and leave the repo on `main`.
+hints:
+- List branches first.
+- Use `git branch -D feature/wip`.
+- Stay on `main`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch -D feature/wip\n  \
+  \ ```"
+debrief: '## What Just Happened
+
+
+  **Force Delete a Branch**
+
+
+  Deleting merged branches is cleanup; force deletion is a deliberate safety override.
+
+  '
+validators:
+- type: branch_not_exists
+  branch: feature/wip
+  description: feature/wip no longer exists
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main

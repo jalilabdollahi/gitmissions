@@ -1,0 +1,41 @@
+name: Force Push Safely
+module: module-04-remote-operations
+level: level-068-force-push-safely
+order: 68
+difficulty: intermediate
+xp: 280
+expected_time: 9m
+concepts:
+- '`git push --force-with-lease` vs `--force`'
+common_mistakes:
+- Running commands related to `git push --force-with-lease` vs `--force` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: This mission uses a local bare repository to simulate a remote server.
+objective: Rewrite the local commit and force-push it safely with `--force-with-lease`.
+hints:
+- Work in the `local/` directory inside the sandbox.
+- Inspect remotes with `git remote -v` and branches with `git branch -a`.
+- Use the remote command named in the mission objective.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git commit --amend -m \"Rewrite local commit\"\n   ```\n\n3.\n   ```bash\n \
+  \  git push --force-with-lease origin main\n   ```"
+debrief: '## What Just Happened
+
+
+  **Force Push Safely**
+
+
+  Local bare repos are a great way to practice remote workflows without needing any
+  network services.
+
+  '
+validators:
+- type: script_passes
+  description: Remote main has the rewritten commit message
+  script: test "$(git -C ../remote.git log -1 --pretty=%s main)" = "Rewrite local
+    commit"

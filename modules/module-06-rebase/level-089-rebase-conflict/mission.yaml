@@ -1,0 +1,46 @@
+name: Rebase Conflict
+module: module-06-rebase
+level: level-089-rebase-conflict
+order: 89
+difficulty: intermediate
+xp: 300
+expected_time: 12m
+concepts:
+- "conflict during rebase \u2014 resolve and `--continue`"
+common_mistakes:
+- "Running commands related to conflict during rebase \u2014 resolve and `--continue`\
+  \ without checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A rebase onto `main` will stop on a conflict in `app.txt`.
+objective: Resolve the conflict so `app.txt` ends as `value=rebase`, then continue
+  the rebase.
+hints:
+- Start the rebase on `feature/rebase`.
+- When it stops, edit `app.txt`, stage it, and run `git rebase --continue`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
+  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```\n\n3.\n   ```bash\n   printf\
+  \ 'value=rebase\n' > app.txt\n   ```\n\n4.\n   ```bash\n   git add app.txt\n   ```\n\
+  \n5.\n   ```bash\n   GIT_EDITOR=true git rebase --continue\n   ```"
+debrief: '## What Just Happened
+
+
+  **Rebase Conflict**
+
+
+  Rebase conflicts are resolved the same way as merge conflicts, but you continue
+  replaying commits afterward.
+
+  '
+validators:
+- type: is_on_branch
+  branch: feature/rebase
+  description: HEAD is on feature/rebase
+- type: file_content_equals
+  path: app.txt
+  text: value=rebase
+  description: app.txt contains the resolved content
+- type: is_clean
+  description: Working tree is clean

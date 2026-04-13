@@ -1,0 +1,43 @@
+name: Stage Specific Files
+module: module-01-foundations
+level: level-004-stage-specific-files
+order: 4
+difficulty: beginner
+xp: 100
+expected_time: 5m
+concepts:
+- '`git add <file>` vs `git add .`'
+common_mistakes:
+- Running commands related to `git add <file>` vs `git add .` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Three files changed, but only one belongs in the next commit.
+objective: 'Commit only `app.txt` with the message `feat: update app file`.'
+hints:
+- Start with the Git command related to ``git add <file>` vs `git add .``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git add app.txt\n   ```\n\n2.\n\
+  \   ```bash\n   git commit -m \"feat: update app file\"\n   ```\n\n3.\n   ```bash\n\
+  \   rm -f notes.txt draft.txt\n   ```"
+debrief: '## What Just Happened
+
+
+  **Stage Specific Files**
+
+
+  This level focused on `git add <file>` vs `git add .`.
+
+  '
+validators:
+- type: commit_message_contains
+  text: 'feat: update app file'
+  description: Latest commit message is correct
+- type: script_passes
+  description: Only app.txt changed in the latest commit
+  script: test "$(git diff --name-only HEAD~1 HEAD)" = "app.txt"
+- type: is_clean
+  description: Working tree is clean

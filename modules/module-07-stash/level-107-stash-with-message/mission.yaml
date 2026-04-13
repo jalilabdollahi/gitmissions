@@ -1,0 +1,40 @@
+name: Stash with a Message
+module: module-07-stash
+level: level-107-stash-with-message
+order: 107
+difficulty: intermediate
+xp: 210
+expected_time: 7m
+concepts:
+- '`git stash push -m "WIP: login form"`'
+common_mistakes:
+- 'Running commands related to `git stash push -m "WIP: login form"` without checking
+  `git status` first, which hides the actual repository state.'
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Save the current modifications with the message `WIP login`.
+hints:
+- 'Start with the Git command related to ``git stash push -m "WIP: login form"``.'
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash push -m \"WIP login\"\
+  \n   ```"
+debrief: '## What Just Happened
+
+
+  **Stash with a Message**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: stash_not_empty
+  description: A stash entry exists
+- type: script_passes
+  description: Stash message is correct
+  script: git stash list | grep -q 'WIP login'

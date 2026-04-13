@@ -1,0 +1,41 @@
+name: Pull with Rebase
+module: module-04-remote-operations
+level: level-062-pull-with-rebase
+order: 62
+difficulty: intermediate
+xp: 250
+expected_time: 9m
+concepts:
+- '`git pull --rebase` to avoid merge commits'
+common_mistakes:
+- Running commands related to `git pull --rebase` to avoid merge commits without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: This mission uses a local bare repository to simulate a remote server.
+objective: Pull from `origin/main` with rebase so history stays linear.
+hints:
+- Work in the `local/` directory inside the sandbox.
+- Inspect remotes with `git remote -v` and branches with `git branch -a`.
+- Use the remote command named in the mission objective.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git pull --rebase origin main\n   ```"
+debrief: '## What Just Happened
+
+
+  **Pull with Rebase**
+
+
+  Local bare repos are a great way to practice remote workflows without needing any
+  network services.
+
+  '
+validators:
+- type: no_merge_commit
+  branch: HEAD
+  description: History stayed linear
+- type: is_clean
+  description: Working tree is clean

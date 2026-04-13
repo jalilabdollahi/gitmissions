@@ -1,0 +1,37 @@
+name: Drop a Stash Entry
+module: module-07-stash
+level: level-111-stash-drop
+order: 111
+difficulty: intermediate
+xp: 220
+expected_time: 7m
+concepts:
+- '`git stash drop stash@{1}`'
+common_mistakes:
+- Running commands related to `git stash drop stash@{1}` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Drop `stash@{1}` so only one stash entry remains.
+hints:
+- Start with the Git command related to ``git stash drop stash@{1}``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash drop stash@{1}\n   ```"
+debrief: '## What Just Happened
+
+
+  **Drop a Stash Entry**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: script_passes
+  description: Only one stash remains
+  script: test "$(git stash list | wc -l | tr -d ' ')" = "1"

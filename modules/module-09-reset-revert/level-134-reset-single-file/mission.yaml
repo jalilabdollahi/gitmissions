@@ -1,0 +1,37 @@
+name: Reset a Single File
+module: module-09-reset-revert
+level: level-134-reset-single-file
+order: 134
+difficulty: advanced
+xp: 300
+expected_time: 10m
+concepts:
+- '`git reset HEAD <file>`'
+common_mistakes:
+- Running commands related to `git reset HEAD <file>` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Two files are staged, but one should be removed from the index only.
+objective: Unstage `debug.txt` while keeping `app.txt` staged.
+hints:
+- Use file-specific reset or restore-staged.
+- Check `git status --short` afterward.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset HEAD debug.txt\n   ```"
+debrief: '## What Just Happened
+
+
+  **Reset a Single File**
+
+
+  File-scoped reset changes the index for one path without touching the committed
+  history.
+
+  '
+validators:
+- type: script_passes
+  description: debug.txt is unstaged and app.txt is still staged
+  script: git status --porcelain | grep -q '^M  app.txt' && git status --porcelain
+    | grep -q '^ M debug.txt'

@@ -1,0 +1,36 @@
+name: Clear All Stashes
+module: module-07-stash
+level: level-112-stash-clear
+order: 112
+difficulty: intermediate
+xp: 210
+expected_time: 7m
+concepts:
+- '`git stash clear`'
+common_mistakes:
+- Running commands related to `git stash clear` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Clear all stash entries.
+hints:
+- Start with the Git command related to ``git stash clear``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash clear\n   ```"
+debrief: '## What Just Happened
+
+
+  **Clear All Stashes**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: stash_empty
+  description: Stash list is empty

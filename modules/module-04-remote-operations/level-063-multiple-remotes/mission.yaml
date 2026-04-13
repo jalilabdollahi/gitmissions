@@ -1,0 +1,38 @@
+name: Multiple Remotes
+module: module-04-remote-operations
+level: level-063-multiple-remotes
+order: 63
+difficulty: intermediate
+xp: 260
+expected_time: 9m
+concepts:
+- "`upstream` + `origin` \u2014 fork workflow"
+common_mistakes:
+- "Running commands related to `upstream` + `origin` \u2014 fork workflow without\
+  \ checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: This sandbox simulates a fork workflow with both `origin` and `upstream`.
+objective: Add a second remote named `upstream` that points to `../upstream.git`.
+hints:
+- Check existing remotes first.
+- Use `git remote add upstream ../upstream.git`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git remote add upstream ../upstream.git\n   ```"
+debrief: '## What Just Happened
+
+
+  **Multiple Remotes**
+
+
+  Multiple remotes are common when you fork a project and also track the original
+  repository.
+
+  '
+validators:
+- type: remote_exists
+  name: upstream
+  description: upstream remote exists

@@ -1,0 +1,40 @@
+name: Annotated Tag
+module: module-10-tags-releases
+level: level-147-annotated-tag
+order: 147
+difficulty: intermediate
+xp: 220
+expected_time: 7m
+concepts:
+- '`git tag -a v1.0 -m "message"`'
+common_mistakes:
+- Running commands related to `git tag -a v1.0 -m "message"` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This module practices creating, inspecting, and publishing tags.
+objective: Create an annotated tag named `v1.0` with the message `First release`.
+hints:
+- Start with the Git command related to ``git tag -a v1.0 -m "message"``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag -a v1.0 -m \"First release\"\
+  \n   ```"
+debrief: '## What Just Happened
+
+
+  **Annotated Tag**
+
+
+  Tags mark important points in history, usually releases or audit checkpoints.
+
+  '
+validators:
+- type: tag_exists
+  tag: v1.0
+  description: Tag v1.0 exists
+- type: script_passes
+  description: Tag is annotated
+  script: git for-each-ref refs/tags/v1.0 --format='%(objecttype)' | grep -q tag

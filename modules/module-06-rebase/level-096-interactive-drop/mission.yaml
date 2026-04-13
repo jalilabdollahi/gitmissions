@@ -1,0 +1,41 @@
+name: Drop a Commit
+module: module-06-rebase
+level: level-096-interactive-drop
+order: 96
+difficulty: intermediate
+xp: 300
+expected_time: 12m
+concepts:
+- '`drop` / `d` in interactive rebase'
+common_mistakes:
+- Running commands related to `drop` / `d` in interactive rebase without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: One commit on the feature branch should disappear from history.
+objective: Drop the commit whose message is `Debug print`.
+hints:
+- Interactive rebase is designed for dropping commits.
+- Another option is to rewrite the branch without that commit.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
+  \ ```\n\n2.\n   ```bash\n   git reset --hard HEAD~2\n   ```\n\n3.\n   ```bash\n\
+  \   printf 'final\n' > final.txt\n   ```\n\n4.\n   ```bash\n   git add final.txt\n\
+  \   ```\n\n5.\n   ```bash\n   git commit -m \"Final work\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Drop a Commit**
+
+
+  Dropping commits is useful when temporary or mistaken changes should not survive
+  in the final branch history.
+
+  '
+validators:
+- type: script_passes
+  description: Debug print commit is gone
+  script: '! git log --pretty=%s | grep -q ''^Debug print$'''
+- type: is_clean
+  description: Working tree is clean

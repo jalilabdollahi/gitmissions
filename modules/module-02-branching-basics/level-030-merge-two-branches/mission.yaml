@@ -1,0 +1,47 @@
+name: Merge Two Diverged Branches
+module: module-02-branching-basics
+level: level-030-merge-two-branches
+order: 30
+difficulty: beginner
+xp: 180
+expected_time: 6m
+concepts:
+- auto-merge when no conflicts
+common_mistakes:
+- Running commands related to auto-merge when no conflicts without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Two branches diverged on separate files, so the merge should complete
+  cleanly.
+objective: Merge `feature/api` into `main` and keep both files.
+hints:
+- Check out `main` first.
+- Run `git merge feature/api`.
+- There should be no conflicts because the branches touched different files.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
+  \   ```bash\n   git merge feature/api\n   ```"
+debrief: '## What Just Happened
+
+
+  **Merge Two Diverged Branches**
+
+
+  Diverged branches can merge automatically when they touch different parts of the
+  tree.
+
+  '
+validators:
+- type: merge_commit_exists
+  branch: HEAD
+  description: A merge commit exists
+- type: file_exists
+  path: main.txt
+  description: main.txt exists
+- type: file_exists
+  path: api.txt
+  description: api.txt exists
+- type: is_clean
+  description: Working tree is clean

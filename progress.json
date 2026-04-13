@@ -1,0 +1,13 @@
+{
+  "player_name": "jalil",
+  "total_xp": 100,
+  "completed_levels": [
+    "level-001-init-your-first-repo"
+  ],
+  "current_module": "module-01-foundations",
+  "current_level": "level-002-your-first-commit",
+  "module_certificates": [],
+  "time_per_level": {},
+  "level_start_time": null,
+  "hint_state": {}
+}

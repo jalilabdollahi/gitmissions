@@ -1,0 +1,42 @@
+name: Abort a Merge
+module: module-03-merge-conflicts
+level: level-039-abort-a-merge
+order: 39
+difficulty: intermediate
+xp: 200
+expected_time: 10m
+concepts:
+- '`git merge --abort`'
+common_mistakes:
+- Running commands related to `git merge --abort` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A merge conflict started, but this mission asks you to back out safely.
+objective: Abort the merge so the repository returns to a clean `main` branch.
+hints:
+- The repo is mid-merge right now.
+- Use `git merge --abort`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git merge --abort\n   ```"
+debrief: '## What Just Happened
+
+
+  **Abort a Merge**
+
+
+  Aborting a merge restores the pre-merge state when you decide the attempt should
+  not continue.
+
+  '
+validators:
+- type: is_clean
+  description: Working tree is clean
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
+- type: file_content_equals
+  path: app.txt
+  text: value=main
+  description: The main branch version is restored

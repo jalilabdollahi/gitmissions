@@ -1,0 +1,41 @@
+name: Create Branch from Stash
+module: module-07-stash
+level: level-114-stash-branch
+order: 114
+difficulty: intermediate
+xp: 250
+expected_time: 7m
+concepts:
+- '`git stash branch <name>`'
+common_mistakes:
+- Running commands related to `git stash branch <name>` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Create a branch named `stash-work` from the stash.
+hints:
+- Start with the Git command related to ``git stash branch <name>``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash branch stash-work\n\
+  \   ```"
+debrief: '## What Just Happened
+
+
+  **Create Branch from Stash**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: branch_exists
+  branch: stash-work
+  description: stash-work exists
+- type: is_on_branch
+  branch: stash-work
+  description: HEAD is on stash-work

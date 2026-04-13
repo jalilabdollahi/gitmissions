@@ -1,0 +1,37 @@
+name: Abort a Cherry-Pick
+module: module-09-reset-revert
+level: level-143-undo-a-cherry-pick
+order: 143
+difficulty: advanced
+xp: 330
+expected_time: 10m
+concepts:
+- '`git cherry-pick --abort`'
+common_mistakes:
+- Running commands related to `git cherry-pick --abort` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A cherry-pick has already stopped on a conflict.
+objective: Abort the cherry-pick and return the repo to a clean state.
+hints:
+- Use `git cherry-pick --abort`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git cherry-pick --abort\n   ```"
+debrief: '## What Just Happened
+
+
+  **Abort a Cherry-Pick**
+
+
+  Abort commands exist for the high-risk history-editing workflows so you can unwind
+  safely.
+
+  '
+validators:
+- type: is_clean
+  description: Working tree is clean
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main

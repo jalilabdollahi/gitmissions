@@ -1,0 +1,41 @@
+name: Basic Pre-Commit Hook
+module: module-11-git-hooks
+level: level-157-pre-commit-basic
+order: 157
+difficulty: advanced
+xp: 320
+expected_time: 12m
+concepts:
+- run a check before every commit
+common_mistakes:
+- Running commands related to run a check before every commit without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This module practices local and server-side Git hooks inside a sandbox.
+objective: Create an executable `pre-commit` hook that prints `hook ok`.
+hints:
+- Hooks live in `.git/hooks/`.
+- Remember to make the file executable.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '#!/usr/bin/env bash\\\
+  necho hook ok\\n' > .git/hooks/pre-commit\n   ```\n\n2.\n   ```bash\n   chmod +x\
+  \ .git/hooks/pre-commit\n   ```"
+debrief: '## What Just Happened
+
+
+  **Basic Pre-Commit Hook**
+
+
+  Hooks let you automate checks at key points in the Git workflow.
+
+  '
+validators:
+- type: hook_exists
+  name: pre-commit
+  description: pre-commit hook exists and is executable
+- type: hook_output_contains
+  name: pre-commit
+  text: hook ok
+  description: pre-commit hook prints the expected output

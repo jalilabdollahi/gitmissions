@@ -1,0 +1,46 @@
+name: Commit with Subject and Body
+module: module-01-foundations
+level: level-019-commit-with-body
+order: 19
+difficulty: beginner
+xp: 130
+expected_time: 5m
+concepts:
+- multi-line commit messages
+- blank line
+common_mistakes:
+- Running commands related to multi-line commit messages, blank line without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A documentation update is ready, but the commit needs both a subject
+  and a body.
+objective: 'Commit `CHANGELOG.md` with the subject `docs: add changelog` and a body
+  line containing `Explains the first release`.'
+hints:
+- Start with the Git command related to `multi-line commit messages, blank line`.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git add CHANGELOG.md\n   ```\n\
+  \n2.\n   ```bash\n   git commit -m \"docs: add changelog\" -m \"Explains the first\
+  \ release\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Commit with Subject and Body**
+
+
+  This level focused on multi-line commit messages, blank line.
+
+  '
+validators:
+- type: commit_message_contains
+  text: 'docs: add changelog'
+  description: Commit subject is correct
+- type: commit_message_contains
+  text: Explains the first release
+  description: Commit body contains the explanation
+- type: is_clean
+  description: Working tree is clean

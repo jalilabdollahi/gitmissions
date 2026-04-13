@@ -1,0 +1,41 @@
+name: Switch Away Cleanly
+module: module-05-detached-head
+level: level-082-switch-away-cleanly
+order: 82
+difficulty: intermediate
+xp: 260
+expected_time: 8m
+concepts:
+- stash or branch before switching
+common_mistakes:
+- Running commands related to stash or branch before switching without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: There are uncommitted changes while HEAD is detached, and you need to
+  leave cleanly.
+objective: Stash the detached changes, then switch back to `main`.
+hints:
+- Save the changes first.
+- Because the pending file is untracked, include untracked files in the stash.
+- Then switch back to `main`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash -u\n   ```\n\n2.\n \
+  \  ```bash\n   git switch main\n   ```"
+debrief: '## What Just Happened
+
+
+  **Switch Away Cleanly**
+
+
+  Stash is a handy escape hatch when you want to move away from a risky working state
+  without losing changes.
+
+  '
+validators:
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
+- type: stash_not_empty
+  description: The stash contains the saved changes

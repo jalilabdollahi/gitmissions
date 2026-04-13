@@ -1,0 +1,38 @@
+name: Clone a Repository
+module: module-04-remote-operations
+level: level-057-clone-a-repo
+order: 57
+difficulty: intermediate
+xp: 200
+expected_time: 9m
+concepts:
+- "`git clone` \u2014 what it sets up"
+common_mistakes:
+- "Running commands related to `git clone` \u2014 what it sets up without checking\
+  \ `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A bare repo already exists, and your task is to create a fresh local
+  clone from it.
+objective: Clone `remote.git` into a directory named `clone/`.
+hints:
+- Run the clone from the sandbox root, not inside another repo.
+- Use `git clone remote.git clone`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git clone remote.git clone\n \
+  \  ```"
+debrief: '## What Just Happened
+
+
+  **Clone a Repository**
+
+
+  Cloning gives you a working tree, object database, and a configured `origin` remote
+  in one step.
+
+  '
+validators:
+- type: script_passes
+  description: clone/ is a Git repository
+  script: git -C clone rev-parse --is-inside-work-tree >/dev/null

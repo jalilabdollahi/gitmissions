@@ -1,0 +1,21 @@
+#compdef gitmissions
+
+_gitmissions() {
+  local -a commands
+  commands=(
+    'check:Validate your solution'
+    'watch:Auto-validate every 3 seconds'
+    'hint:Reveal the next hint'
+    'solution:Show reference solution'
+    'guide:Show walkthrough'
+    'debrief:Show post-mission debrief'
+    'reset:Reset the current level'
+    'skip:Skip current level'
+    'status:Show progress'
+    'help:Show help'
+    'quit:Save and exit'
+  )
+  _describe 'command' commands
+}
+
+_gitmissions "$@"

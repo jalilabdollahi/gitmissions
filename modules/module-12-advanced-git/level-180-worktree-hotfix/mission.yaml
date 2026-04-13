@@ -1,0 +1,37 @@
+name: Hotfix Without Stashing
+module: module-12-advanced-git
+level: level-180-worktree-hotfix
+order: 180
+difficulty: expert
+xp: 440
+expected_time: 14m
+concepts:
+- worktree for parallel branches
+common_mistakes:
+- Running commands related to worktree for parallel branches without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: You need a second working tree attached to the same repository.
+objective: Create a worktree at `wt-feature/` for branch `feature/worktree`.
+hints:
+- Create the branch if needed while adding the worktree.
+- Use `git worktree add`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git worktree add wt-feature -b\
+  \ feature/worktree\n   ```"
+debrief: '## What Just Happened
+
+
+  **Hotfix Without Stashing**
+
+
+  Worktrees let one repository checkout multiple branches at once without cloning
+  again.
+
+  '
+validators:
+- type: worktree_count
+  count: 2
+  description: Two worktrees are registered

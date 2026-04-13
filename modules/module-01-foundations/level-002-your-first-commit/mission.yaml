@@ -1,0 +1,45 @@
+name: Your First Commit
+module: module-01-foundations
+level: level-002-your-first-commit
+order: 2
+difficulty: beginner
+xp: 100
+expected_time: 5m
+concepts:
+- '`git add`'
+- '`git commit -m`'
+common_mistakes:
+- Running commands related to `git add`, `git commit -m` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The repository exists, but the first file has not been committed yet.
+objective: Stage `hello.txt` and create the first commit with the message `Initial
+  commit`.
+hints:
+- Start with the Git command related to ``git add`, `git commit -m``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git add hello.txt\n   ```\n\n\
+  2.\n   ```bash\n   git commit -m \"Initial commit\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Your First Commit**
+
+
+  This level focused on `git add`, `git commit -m`.
+
+  '
+validators:
+- type: commit_message_contains
+  text: Initial commit
+  description: Latest commit message contains 'Initial commit'
+- type: commit_count_eq
+  branch: HEAD
+  count: 2
+  description: The first user commit was created
+- type: is_clean
+  description: Working tree is clean

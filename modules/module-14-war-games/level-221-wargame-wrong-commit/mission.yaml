@@ -1,0 +1,46 @@
+name: Cherry-Pick Chain Gone Wrong
+module: module-14-war-games
+level: level-221-wargame-wrong-commit
+order: 221
+difficulty: expert
+xp: 700
+expected_time: 18m
+concepts:
+- cherry-picked 4 commits in wrong order
+common_mistakes:
+- Running commands related to cherry-picked 4 commits in wrong order without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This mission combines multiple Git problems into one recovery scenario.
+objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
+  exists with `recovered`, and commit it as `fix: war game recovery`.'
+hints:
+- Start with `git status` and `git log --graph --all`.
+- Resolve conflicts or detached state first, then create the recovery commit.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
+  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
+  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
+  \ -m \"fix: war game recovery\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Cherry-Pick Chain Gone Wrong**
+
+
+  War-game missions are about staying calm, inspecting state carefully, and recovering
+  in a controlled order.
+
+  '
+validators:
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
+- type: file_content_equals
+  path: rescue.txt
+  text: recovered
+  description: rescue.txt contains the recovered content
+- type: is_clean
+  description: Working tree is clean

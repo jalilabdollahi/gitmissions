@@ -1,0 +1,39 @@
+name: Skip a Commit in Rebase
+module: module-06-rebase
+level: level-091-skip-commit-in-rebase
+order: 91
+difficulty: intermediate
+xp: 280
+expected_time: 12m
+concepts:
+- '`git rebase --skip`'
+common_mistakes:
+- Running commands related to `git rebase --skip` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A bad commit on the feature branch should be skipped during a rebase.
+objective: Rebase `feature/rebase` onto `main` and skip the commit whose message is
+  `Broken commit`.
+hints:
+- You want to replay only the good commit on top of `main`.
+- A targeted `git rebase --onto` can exclude the bad commit in one step.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
+  \ ```\n\n2.\n   ```bash\n   git rebase --onto main HEAD~1 HEAD\n   ```"
+debrief: '## What Just Happened
+
+
+  **Skip a Commit in Rebase**
+
+
+  Skipping a commit during rebase drops it from the rewritten history.
+
+  '
+validators:
+- type: script_passes
+  description: Broken commit is gone from history
+  script: '! git log --pretty=%s | grep -q ''^Broken commit$'''
+- type: is_clean
+  description: Working tree is clean

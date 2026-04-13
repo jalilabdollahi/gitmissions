@@ -1,0 +1,42 @@
+name: Make a Commit in Detached HEAD
+module: module-05-detached-head
+level: level-074-commit-in-detached-head
+order: 74
+difficulty: intermediate
+xp: 250
+expected_time: 8m
+concepts:
+- "commits \"floating\" \u2014 not on any branch"
+common_mistakes:
+- "Running commands related to commits \"floating\" \u2014 not on any branch without\
+  \ checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The repo is already detached, and you need to make a commit there.
+objective: While detached, add `experiment.txt` and commit it with `Detached experiment`.
+hints:
+- Stay detached.
+- Create the file, stage it, and commit normally.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf 'experiment\n' > experiment.txt\n\
+  \   ```\n\n2.\n   ```bash\n   git add experiment.txt\n   ```\n\n3.\n   ```bash\n\
+  \   git commit -m \"Detached experiment\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Make a Commit in Detached HEAD**
+
+
+  Git allows commits in detached HEAD; they just are not referenced by a branch automatically.
+
+  '
+validators:
+- type: is_detached
+  description: HEAD is still detached
+- type: file_exists
+  path: experiment.txt
+  description: experiment.txt exists
+- type: commit_message_contains
+  text: Detached experiment
+  description: Latest commit message is correct

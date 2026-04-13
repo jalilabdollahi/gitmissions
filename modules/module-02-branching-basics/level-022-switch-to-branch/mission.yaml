@@ -1,0 +1,38 @@
+name: Switch to a Branch
+module: module-02-branching-basics
+level: level-022-switch-to-branch
+order: 22
+difficulty: beginner
+xp: 120
+expected_time: 6m
+concepts:
+- '`git switch`'
+- '`git checkout`'
+common_mistakes:
+- Running commands related to `git switch`, `git checkout` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This sandbox starts from a simple `main` branch with one commit.
+objective: Switch from `main` to `feature/ui`.
+hints:
+- Start with the Git command related to ``git switch`, `git checkout``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/ui\n   ```"
+debrief: '## What Just Happened
+
+
+  **Switch to a Branch**
+
+
+  Branches are lightweight references to commits, which makes them cheap to create
+  and remove.
+
+  '
+validators:
+- type: is_on_branch
+  branch: feature/ui
+  description: HEAD is on feature/ui

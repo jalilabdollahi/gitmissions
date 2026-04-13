@@ -1,0 +1,47 @@
+name: Octopus Merge
+module: module-03-merge-conflicts
+level: level-052-octopus-merge
+order: 52
+difficulty: intermediate
+xp: 270
+expected_time: 10m
+concepts:
+- '`git merge branch1 branch2 branch3`'
+common_mistakes:
+- Running commands related to `git merge branch1 branch2 branch3` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Three short-lived branches each add a different file.
+objective: Merge `feature/a`, `feature/b`, and `feature/c` into `main` with one octopus
+  merge.
+hints:
+- Check out `main` first.
+- Use one `git merge` command with all three branches.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
+  \   ```bash\n   git merge feature/a feature/b feature/c\n   ```"
+debrief: '## What Just Happened
+
+
+  **Octopus Merge**
+
+
+  Octopus merges are useful when several independent branches can be integrated together
+  without conflicts.
+
+  '
+validators:
+- type: merge_commit_exists
+  branch: HEAD
+  description: A merge commit exists
+- type: file_exists
+  path: a.txt
+  description: a.txt exists
+- type: file_exists
+  path: b.txt
+  description: b.txt exists
+- type: file_exists
+  path: c.txt
+  description: c.txt exists

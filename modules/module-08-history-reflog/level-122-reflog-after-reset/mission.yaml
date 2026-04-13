@@ -1,0 +1,43 @@
+name: Recover After Hard Reset
+module: module-08-history-reflog
+level: level-122-reflog-after-reset
+order: 122
+difficulty: advanced
+xp: 350
+expected_time: 10m
+concepts:
+- '`git reflog` + `git reset --hard <hash>`'
+common_mistakes:
+- Running commands related to `git reflog` + `git reset --hard <hash>` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Useful history was made unreachable, and your job is to recover it.
+objective: 'Recover the lost work so `recovered.txt` exists in the current branch,
+  then commit it with `chore: recover history`.'
+hints:
+- Use `git reflog` or `git fsck --lost-found` to find the lost commit.
+- Restore the file or reset to the right commit.
+- Commit the recovered file when needed.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reflog\n   ```\n\n2.\n   ```bash\n\
+  \   git checkout <lost-commit> -- recovered.txt\n   ```\n\n3.\n   ```bash\n   git\
+  \ add recovered.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: recover\
+  \ history\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Recover After Hard Reset**
+
+
+  Reflog and object recovery tools are the difference between panic and a calm recovery.
+
+  '
+validators:
+- type: file_content_equals
+  path: recovered.txt
+  text: rescued
+  description: Recovered file is present
+- type: is_clean
+  description: Working tree is clean

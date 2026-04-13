@@ -1,0 +1,38 @@
+name: Fetch vs Pull
+module: module-04-remote-operations
+level: level-058-fetch-vs-pull
+order: 58
+difficulty: intermediate
+xp: 220
+expected_time: 9m
+concepts:
+- '`git fetch` + `git merge` vs `git pull`'
+common_mistakes:
+- Running commands related to `git fetch` + `git merge` vs `git pull` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: The remote has new work, but the local repo has not fetched it yet.
+objective: Fetch from `origin` so the local repo sees `origin/main` move forward.
+hints:
+- Work in `local/`.
+- Use `git fetch origin`.
+- After fetching, inspect `origin/main`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git fetch origin\n   ```"
+debrief: '## What Just Happened
+
+
+  **Fetch vs Pull**
+
+
+  Fetching updates remote-tracking refs without changing your current branch.
+
+  '
+validators:
+- type: script_passes
+  description: origin/main points at the newest remote commit
+  script: test "$(git log origin/main -1 --pretty=%s)" = "Remote update"

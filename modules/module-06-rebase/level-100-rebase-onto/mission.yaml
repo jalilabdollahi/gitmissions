@@ -1,0 +1,39 @@
+name: Rebase Onto Another Base
+module: module-06-rebase
+level: level-100-rebase-onto
+order: 100
+difficulty: intermediate
+xp: 360
+expected_time: 12m
+concepts:
+- '`git rebase --onto new-base old-base branch`'
+common_mistakes:
+- Running commands related to `git rebase --onto new-base old-base branch` without
+  checking `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A branch was based on the wrong parent branch and needs to be transplanted.
+objective: Move `feature/rebase` so it is based directly on `main` instead of `old-base`.
+hints:
+- This is a classic `git rebase --onto` use case.
+- The shape is `git rebase --onto new-base old-base branch`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git rebase --onto main old-base\
+  \ feature/rebase\n   ```"
+debrief: '## What Just Happened
+
+
+  **Rebase Onto Another Base**
+
+
+  Rebase onto is precise history surgery: choose the new base, the old base boundary,
+  and the branch to rewrite.
+
+  '
+validators:
+- type: script_passes
+  description: feature/rebase no longer contains old-base only commit
+  script: '! git log feature/rebase --pretty=%s | grep -q ''^Old base work$'''
+- type: is_clean
+  description: Working tree is clean

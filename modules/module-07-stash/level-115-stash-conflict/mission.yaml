@@ -1,0 +1,45 @@
+name: Stash Pop Conflict
+module: module-07-stash
+level: level-115-stash-conflict
+order: 115
+difficulty: intermediate
+xp: 260
+expected_time: 7m
+concepts:
+- "stash pop conflicts \u2014 resolve like merge"
+common_mistakes:
+- "Running commands related to stash pop conflicts \u2014 resolve like merge without\
+  \ checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Apply the stash, resolve the conflict so `app.txt` becomes `resolved stash`,
+  then commit the result and finish cleanly.
+hints:
+- "Start with the Git command related to `stash pop conflicts \u2014 resolve like\
+  \ merge`."
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash pop || true\n   ```\n\
+  \n2.\n   ```bash\n   printf 'resolved stash\n' > app.txt\n   ```\n\n3.\n   ```bash\n\
+  \   git add app.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"Resolve stash\
+  \ conflict\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Stash Pop Conflict**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: file_content_equals
+  path: app.txt
+  text: resolved stash
+  description: Conflict was resolved
+- type: is_clean
+  description: Working tree is clean

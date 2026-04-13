@@ -1,0 +1,37 @@
+name: Shallow Clone
+module: module-04-remote-operations
+level: level-069-shallow-clone
+order: 69
+difficulty: intermediate
+xp: 260
+expected_time: 9m
+concepts:
+- "`git clone --depth 1` \u2014 use cases"
+common_mistakes:
+- "Running commands related to `git clone --depth 1` \u2014 use cases without checking\
+  \ `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The mission is to produce a shallow clone from a multi-commit remote
+  history.
+objective: Create a shallow clone in `shallow/` with depth 1.
+hints:
+- Run the clone from the sandbox root.
+- Use `git clone --depth 1 remote.git shallow`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git clone --depth 1 remote.git\
+  \ shallow\n   ```"
+debrief: '## What Just Happened
+
+
+  **Shallow Clone**
+
+
+  Shallow clones reduce history transfer cost when you only need the newest snapshot.
+
+  '
+validators:
+- type: script_passes
+  description: shallow clone has a single visible commit
+  script: test "$(git -C shallow rev-list --count HEAD)" = "1"

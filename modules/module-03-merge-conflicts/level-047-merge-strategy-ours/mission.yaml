@@ -1,0 +1,45 @@
+name: 'Merge Strategy: Ours'
+module: module-03-merge-conflicts
+level: level-047-merge-strategy-ours
+order: 47
+difficulty: intermediate
+xp: 250
+expected_time: 10m
+concepts:
+- '`git merge -s ours`'
+common_mistakes:
+- Running commands related to `git merge -s ours` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Two branches disagree completely, and you want Git to prefer one side
+  during the merge.
+objective: Merge `feature/merge` into `main` using the `ours` strategy.
+hints:
+- Start from `main`.
+- Use `git merge -s ours feature/merge`.
+- Finish with a clean working tree.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
+  \   ```bash\n   git merge -s ours feature/merge\n   ```"
+debrief: '## What Just Happened
+
+
+  **Merge Strategy: Ours**
+
+
+  Merge strategies and strategy options let you encode a high-level preference instead
+  of hand-editing every conflict.
+
+  '
+validators:
+- type: file_content_equals
+  path: app.txt
+  text: main-side
+  description: main's version won
+- type: merge_commit_exists
+  branch: HEAD
+  description: A merge commit exists
+- type: is_clean
+  description: Working tree is clean

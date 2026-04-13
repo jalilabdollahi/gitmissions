@@ -1,0 +1,43 @@
+name: Reorder Commits
+module: module-06-rebase
+level: level-095-interactive-reorder
+order: 95
+difficulty: intermediate
+xp: 300
+expected_time: 12m
+concepts:
+- drag-and-drop via rebase -i
+common_mistakes:
+- Running commands related to drag-and-drop via rebase -i without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Two feature commits are in the wrong order.
+objective: Rewrite `feature/rebase` so the latest commit message becomes `Second step`.
+hints:
+- Interactive rebase is one option.
+- Any valid method is fine if the final order matches the objective.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
+  \ ```\n\n2.\n   ```bash\n   git reset --hard HEAD~2\n   ```\n\n3.\n   ```bash\n\
+  \   printf 'one\n' > one.txt\n   ```\n\n4.\n   ```bash\n   git add one.txt\n   ```\n\
+  \n5.\n   ```bash\n   git commit -m \"First step\"\n   ```\n\n6.\n   ```bash\n  \
+  \ printf 'two\n' > two.txt\n   ```\n\n7.\n   ```bash\n   git add two.txt\n   ```\n\
+  \n8.\n   ```bash\n   git commit -m \"Second step\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Reorder Commits**
+
+
+  Reordering commits is another form of history surgery that can make a change set
+  easier to understand.
+
+  '
+validators:
+- type: commit_message_contains
+  text: Second step
+  description: Latest commit is 'Second step'
+- type: is_clean
+  description: Working tree is clean

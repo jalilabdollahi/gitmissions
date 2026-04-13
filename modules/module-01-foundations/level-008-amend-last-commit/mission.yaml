@@ -1,0 +1,46 @@
+name: Fix the Last Commit
+module: module-01-foundations
+level: level-008-amend-last-commit
+order: 8
+difficulty: beginner
+xp: 120
+expected_time: 5m
+concepts:
+- '`git commit --amend`'
+common_mistakes:
+- Running commands related to `git commit --amend` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The most recent commit has the wrong message and is missing a release
+  note.
+objective: 'Amend the latest commit so the message contains `docs: release notes`
+  and `notes.md` contains `v1.0 ready`.'
+hints:
+- Start with the Git command related to ``git commit --amend``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf 'v1.0 ready\n' > notes.md\n\
+  \   ```\n\n2.\n   ```bash\n   git add notes.md\n   ```\n\n3.\n   ```bash\n   git\
+  \ commit --amend -m \"docs: release notes\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Fix the Last Commit**
+
+
+  This level focused on `git commit --amend`.
+
+  '
+validators:
+- type: commit_message_contains
+  text: 'docs: release notes'
+  description: Latest commit message was amended
+- type: file_content_contains
+  path: notes.md
+  text: v1.0 ready
+  description: notes.md contains the release note
+- type: is_clean
+  description: Working tree is clean

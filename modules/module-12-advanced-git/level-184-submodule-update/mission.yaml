@@ -1,0 +1,36 @@
+name: Update a Submodule
+module: module-12-advanced-git
+level: level-184-submodule-update
+order: 184
+difficulty: expert
+xp: 460
+expected_time: 14m
+concepts:
+- '`git submodule update --remote`'
+common_mistakes:
+- Running commands related to `git submodule update --remote` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: An external repository should be linked into this repo as a submodule.
+objective: Add `./lib.git` as a submodule at `vendor/lib`.
+hints:
+- Git needs a separate repository to point at.
+- Use `git submodule add`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git -c protocol.file.allow=always\
+  \ submodule add ./lib.git vendor/lib\n   ```"
+debrief: '## What Just Happened
+
+
+  **Update a Submodule**
+
+
+  Submodules pin one repository inside another at a specific commit.
+
+  '
+validators:
+- type: submodule_exists
+  path: vendor/lib
+  description: vendor/lib is registered as a submodule

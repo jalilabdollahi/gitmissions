@@ -1,0 +1,43 @@
+name: Preventing Conflicts
+module: module-03-merge-conflicts
+level: level-055-prevent-conflicts
+order: 55
+difficulty: intermediate
+xp: 220
+expected_time: 10m
+concepts:
+- short-lived branches
+- pull before merge
+common_mistakes:
+- Running commands related to short-lived branches, pull before merge without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A feature branch is behind `main`, and the safe next step is to bring
+  it up to date before integration.
+objective: Rebase `feature/prevent` onto `main`, then merge it back cleanly.
+hints:
+- Update the feature branch first.
+- Rebase it onto `main`.
+- Then merge from `main`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/prevent\n \
+  \  ```\n\n2.\n   ```bash\n   git rebase main\n   ```\n\n3.\n   ```bash\n   git switch\
+  \ main\n   ```\n\n4.\n   ```bash\n   git merge feature/prevent\n   ```"
+debrief: '## What Just Happened
+
+
+  **Preventing Conflicts**
+
+
+  Keeping branches short-lived and up to date reduces the chance of painful conflicts
+  later.
+
+  '
+validators:
+- type: file_exists
+  path: feature.txt
+  description: Feature work reached main
+- type: is_clean
+  description: Working tree is clean

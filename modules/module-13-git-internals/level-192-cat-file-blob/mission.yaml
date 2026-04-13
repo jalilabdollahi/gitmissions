@@ -1,0 +1,52 @@
+name: Read a Blob Object
+module: module-13-git-internals
+level: level-192-cat-file-blob
+order: 192
+difficulty: expert
+xp: 500
+expected_time: 12m
+concepts:
+- "`git cat-file -p <hash>` \u2014 file contents"
+common_mistakes:
+- "Running commands related to `git cat-file -p <hash>` \u2014 file contents without\
+  \ checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: "This repository contains a small history designed to practice ``git\
+  \ cat-file -p <hash>` \u2014 file contents`."
+objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+
+
+  `object=known`
+
+
+  Then commit the report with the message `docs: add report`.'
+hints:
+- "Start with the Git command related to ``git cat-file -p <hash>` \u2014 file contents`."
+- Write the exact expected answer into `internals.txt`.
+- Commit the report so the working tree ends clean.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
+  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
+  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Read a Blob Object**
+
+
+  Inspection commands become much easier to remember when you tie them to concrete
+  answers.
+
+  '
+validators:
+- type: file_content_equals
+  path: internals.txt
+  text: object=known
+  description: internals.txt contains the expected answer
+- type: commit_message_contains
+  text: 'docs: add report'
+  description: 'Latest commit message contains ''docs: add report'''
+- type: is_clean
+  description: Working tree is clean

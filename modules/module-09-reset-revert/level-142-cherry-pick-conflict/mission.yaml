@@ -1,0 +1,41 @@
+name: Cherry-Pick Conflict
+module: module-09-reset-revert
+level: level-142-cherry-pick-conflict
+order: 142
+difficulty: advanced
+xp: 360
+expected_time: 10m
+concepts:
+- resolve + `git cherry-pick --continue`
+common_mistakes:
+- Running commands related to resolve + `git cherry-pick --continue` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A useful commit exists on another branch and should be copied onto `main`.
+objective: Cherry-pick the feature commit so `picked.txt` appears on `main`.
+hints:
+- Find the commit on `feature/pick`.
+- Use `git cherry-pick <hash>` from `main`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
+  \   ```bash\n   git cherry-pick feature/pick\n   ```"
+debrief: '## What Just Happened
+
+
+  **Cherry-Pick Conflict**
+
+
+  Cherry-pick copies a commit''s change onto your current branch as a new commit.
+
+  '
+validators:
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
+- type: file_exists
+  path: picked.txt
+  description: picked.txt was cherry-picked
+- type: is_clean
+  description: Working tree is clean

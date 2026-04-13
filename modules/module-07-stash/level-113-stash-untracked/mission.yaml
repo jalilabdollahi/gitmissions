@@ -1,0 +1,39 @@
+name: Stash Untracked Files
+module: module-07-stash
+level: level-113-stash-untracked
+order: 113
+difficulty: intermediate
+xp: 230
+expected_time: 7m
+concepts:
+- '`git stash -u` / `--include-untracked`'
+common_mistakes:
+- Running commands related to `git stash -u` / `--include-untracked` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Stash the untracked file as well.
+hints:
+- Start with the Git command related to ``git stash -u` / `--include-untracked``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash -u\n   ```"
+debrief: '## What Just Happened
+
+
+  **Stash Untracked Files**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: stash_not_empty
+  description: A stash entry exists
+- type: file_not_exists
+  path: scratch.txt
+  description: scratch.txt was stashed away

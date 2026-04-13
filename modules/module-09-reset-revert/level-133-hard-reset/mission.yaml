@@ -1,0 +1,42 @@
+name: Hard Reset
+module: module-09-reset-revert
+level: level-133-hard-reset
+order: 133
+difficulty: advanced
+xp: 320
+expected_time: 10m
+concepts:
+- "`git reset --hard HEAD~1` \u2014 DANGER: destroys changes"
+common_mistakes:
+- "Running commands related to `git reset --hard HEAD~1` \u2014 DANGER: destroys changes\
+  \ without checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The latest commit should be discarded completely.
+objective: Hard reset to `HEAD~1` so `change.txt` goes back to `one`.
+hints:
+- This is destructive, but the sandbox is safe.
+- Use `git reset --hard HEAD~1`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --hard HEAD~1\n   ```"
+debrief: '## What Just Happened
+
+
+  **Hard Reset**
+
+
+  Hard reset moves the branch, index, and working tree together.
+
+  '
+validators:
+- type: commit_count_eq
+  branch: HEAD
+  count: 1
+  description: Branch has one commit
+- type: file_content_equals
+  path: change.txt
+  text: one
+  description: File content rolled back
+- type: is_clean
+  description: Working tree is clean

@@ -1,0 +1,39 @@
+name: Discard Unstaged Changes
+module: module-01-foundations
+level: level-009-discard-unstaged
+order: 9
+difficulty: beginner
+xp: 120
+expected_time: 5m
+concepts:
+- '`git restore <file>`'
+common_mistakes:
+- Running commands related to `git restore <file>` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: '`config.ini` was edited locally, but the change should be discarded.'
+objective: Throw away the unstaged change in `config.ini` and leave the repo clean.
+hints:
+- Start with the Git command related to ``git restore <file>``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git restore config.ini\n   ```"
+debrief: '## What Just Happened
+
+
+  **Discard Unstaged Changes**
+
+
+  This level focused on `git restore <file>`.
+
+  '
+validators:
+- type: file_content_equals
+  path: config.ini
+  text: mode=stable
+  description: config.ini matches the committed version
+- type: is_clean
+  description: Working tree is clean

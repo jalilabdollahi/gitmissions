@@ -1,0 +1,41 @@
+name: Push All Tags
+module: module-04-remote-operations
+level: level-070-push-all-tags
+order: 70
+difficulty: intermediate
+xp: 220
+expected_time: 9m
+concepts:
+- '`git push --tags`'
+common_mistakes:
+- Running commands related to `git push --tags` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: This mission uses a local bare repository to simulate a remote server.
+objective: Create tags `v1.0` and `v1.1`, then push all tags to `origin`.
+hints:
+- Work in the `local/` directory inside the sandbox.
+- Inspect remotes with `git remote -v` and branches with `git branch -a`.
+- Use the remote command named in the mission objective.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git tag v1.0\n   ```\n\n3.\n   ```bash\n   git tag v1.1\n   ```\n\n4.\n   ```bash\n\
+  \   git push --tags origin\n   ```"
+debrief: '## What Just Happened
+
+
+  **Push All Tags**
+
+
+  Local bare repos are a great way to practice remote workflows without needing any
+  network services.
+
+  '
+validators:
+- type: script_passes
+  description: Remote tags exist
+  script: git -C ../remote.git rev-parse --verify refs/tags/v1.0 >/dev/null && git
+    -C ../remote.git rev-parse --verify refs/tags/v1.1 >/dev/null

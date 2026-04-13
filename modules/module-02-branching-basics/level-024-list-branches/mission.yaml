@@ -1,0 +1,59 @@
+name: List All Branches
+module: module-02-branching-basics
+level: level-024-list-branches
+order: 24
+difficulty: beginner
+xp: 120
+expected_time: 6m
+concepts:
+- '`git branch -a`'
+- local vs remote
+common_mistakes:
+- Running commands related to `git branch -a`, local vs remote without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This repo has a few local branches to inspect.
+objective: 'Inspect the branch list and create `branches.txt` containing exactly:
+
+
+  `main
+
+  feature/ui
+
+  bugfix/login`
+
+
+  Then commit it with `docs: record branches`.'
+hints:
+- Use `git branch` or `git branch --merged` depending on the mission.
+- Write the exact answer into `branches.txt`.
+- Commit the report.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > branches.txt <<'EOF'\nmain\n\
+  feature/ui\nbugfix/login\nEOF\n   ```\n\n2.\n   ```bash\n   git add branches.txt\n\
+  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: record branches\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **List All Branches**
+
+
+  Branch inspection commands help you clean up stale work safely.
+
+  '
+validators:
+- type: file_content_equals
+  path: branches.txt
+  text: 'main
+
+    feature/ui
+
+    bugfix/login'
+  description: branches.txt contains the expected answer
+- type: commit_message_contains
+  text: 'docs: record branches'
+  description: 'Latest commit message contains ''docs: record branches'''
+- type: is_clean
+  description: Working tree is clean

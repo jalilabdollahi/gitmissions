@@ -1,0 +1,43 @@
+name: Mixed Reset
+module: module-09-reset-revert
+level: level-132-mixed-reset
+order: 132
+difficulty: advanced
+xp: 300
+expected_time: 10m
+concepts:
+- "`git reset HEAD~1` \u2014 uncommit"
+- unstage
+- keep files
+common_mistakes:
+- "Running commands related to `git reset HEAD~1` \u2014 uncommit, unstage, keep files\
+  \ without checking `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The latest commit should be removed while preserving work according to
+  the reset mode.
+objective: Run `git reset  HEAD~1` and leave the repo in the expected state.
+hints:
+- Look at `git status` before and after the reset.
+- Use `git reset  HEAD~1`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset  HEAD~1\n   ```"
+debrief: '## What Just Happened
+
+
+  **Mixed Reset**
+
+
+  Reset moves the branch pointer; the mode determines what happens to the index and
+  working tree.
+
+  '
+validators:
+- type: commit_count_eq
+  branch: HEAD
+  count: 1
+  description: Branch has one commit after reset
+- type: script_passes
+  description: Status matches the reset mode
+  script: git status --porcelain | grep -q '^ M change.txt'

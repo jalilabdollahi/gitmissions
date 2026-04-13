@@ -1,0 +1,36 @@
+name: Delete a Local Tag
+module: module-10-tags-releases
+level: level-153-delete-local-tag
+order: 153
+difficulty: intermediate
+xp: 220
+expected_time: 7m
+concepts:
+- '`git tag -d v0.9`'
+common_mistakes:
+- Running commands related to `git tag -d v0.9` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This module practices creating, inspecting, and publishing tags.
+objective: Delete the local tag `v0.9`.
+hints:
+- Start with the Git command related to ``git tag -d v0.9``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag -d v0.9\n   ```"
+debrief: '## What Just Happened
+
+
+  **Delete a Local Tag**
+
+
+  Tags mark important points in history, usually releases or audit checkpoints.
+
+  '
+validators:
+- type: tag_not_exists
+  tag: v0.9
+  description: Tag v0.9 no longer exists

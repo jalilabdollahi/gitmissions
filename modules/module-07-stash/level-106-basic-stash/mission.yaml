@@ -1,0 +1,38 @@
+name: Basic Stash
+module: module-07-stash
+level: level-106-basic-stash
+order: 106
+difficulty: intermediate
+xp: 200
+expected_time: 7m
+concepts:
+- "`git stash` \u2014 save dirty state"
+common_mistakes:
+- "Running commands related to `git stash` \u2014 save dirty state without checking\
+  \ `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This level starts with work in progress that should be managed through
+  Git stash.
+objective: Save the current modifications into the stash.
+hints:
+- "Start with the Git command related to ``git stash` \u2014 save dirty state`."
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash\n   ```"
+debrief: '## What Just Happened
+
+
+  **Basic Stash**
+
+
+  Stash is a useful side shelf for changes you are not ready to commit.
+
+  '
+validators:
+- type: stash_not_empty
+  description: A stash entry exists
+- type: is_clean
+  description: Working tree is clean

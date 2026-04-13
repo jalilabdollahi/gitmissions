@@ -1,0 +1,36 @@
+name: "Interactive Rebase \u2014 Intro"
+module: module-06-rebase
+level: level-092-interactive-rebase-intro
+order: 92
+difficulty: intermediate
+xp: 300
+expected_time: 12m
+concepts:
+- "`git rebase -i HEAD~3` \u2014 the editor"
+common_mistakes:
+- "Running commands related to `git rebase -i HEAD~3` \u2014 the editor without checking\
+  \ `git status` first, which hides the actual repository state."
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A feature branch is behind `main` and should be replayed on top of the
+  latest main history.
+objective: Rebase `feature/rebase` onto `main` and keep history linear.
+hints:
+- Switch to the feature branch first.
+- Use `git rebase main`.
+- A successful result has no merge commit.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
+  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
+debrief: "## What Just Happened\n\n**Interactive Rebase \u2014 Intro**\n\nRebase rewrites\
+  \ commits so they appear as if they were created on top of a new base.\n"
+validators:
+- type: is_on_branch
+  branch: feature/rebase
+  description: HEAD is on feature/rebase
+- type: no_merge_commit
+  branch: HEAD
+  description: History is linear
+- type: is_clean
+  description: Working tree is clean

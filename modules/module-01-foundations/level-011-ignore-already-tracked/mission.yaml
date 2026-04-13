@@ -1,0 +1,50 @@
+name: Untrack an Already-Tracked File
+module: module-01-foundations
+level: level-011-ignore-already-tracked
+order: 11
+difficulty: beginner
+xp: 130
+expected_time: 5m
+concepts:
+- '`git rm --cached`'
+common_mistakes:
+- Running commands related to `git rm --cached` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A secrets file is already tracked, but it should now be ignored without
+  deleting it locally.
+objective: 'Stop tracking `secrets.env`, add it to `.gitignore`, and commit with the
+  message `chore: ignore secrets`.'
+hints:
+- Start with the Git command related to ``git rm --cached``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf 'secrets.env\n' > .gitignore\n\
+  \   ```\n\n2.\n   ```bash\n   git rm --cached secrets.env\n   ```\n\n3.\n   ```bash\n\
+  \   git add .gitignore\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: ignore\
+  \ secrets\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Untrack an Already-Tracked File**
+
+
+  This level focused on `git rm --cached`.
+
+  '
+validators:
+- type: file_exists
+  path: secrets.env
+  description: secrets.env still exists locally
+- type: file_content_contains
+  path: .gitignore
+  text: secrets.env
+  description: .gitignore ignores secrets.env
+- type: script_passes
+  description: secrets.env is no longer tracked
+  script: '! git ls-files --error-unmatch secrets.env >/dev/null 2>&1'
+- type: is_clean
+  description: Working tree is clean

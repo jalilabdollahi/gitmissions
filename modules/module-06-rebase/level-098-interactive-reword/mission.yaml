@@ -1,0 +1,38 @@
+name: Reword a Commit Message
+module: module-06-rebase
+level: level-098-interactive-reword
+order: 98
+difficulty: intermediate
+xp: 300
+expected_time: 12m
+concepts:
+- '`reword` / `r`'
+common_mistakes:
+- Running commands related to `reword` / `r` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: The latest feature commit message should be rewritten to something cleaner.
+objective: 'Change the latest commit message to `feat: polished commit`.'
+hints:
+- '`git commit --amend -m ...` works for the latest commit.'
+- Interactive rebase is another valid option.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git commit --amend -m \"feat:\
+  \ polished commit\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Reword a Commit Message**
+
+
+  Rewording improves commit history without changing the snapshot itself.
+
+  '
+validators:
+- type: commit_message_contains
+  text: 'feat: polished commit'
+  description: Latest commit message is correct
+- type: is_clean
+  description: Working tree is clean

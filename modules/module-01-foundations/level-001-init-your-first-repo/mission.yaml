@@ -1,0 +1,53 @@
+name: Init Your First Repo
+module: module-01-foundations
+level: level-001-init-your-first-repo
+order: 1
+difficulty: beginner
+xp: 100
+expected_time: 5m
+concepts:
+- '`git init`'
+- '`.git/` directory'
+common_mistakes:
+- Running commands related to `git init`, `.git/` directory without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: project
+description: A small project folder exists, but it is not a Git repository yet.
+objective: Initialize Git in `project/`, stage every file, and create a commit with
+  the message `Initial commit`.
+hints:
+- Change into `project/` first.
+- Use `git init` to create the repository.
+- Stage everything with `git add .`.
+- Commit with `git commit -m "Initial commit"`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd project\n   ```\n\n2.\n   ```bash\n\
+  \   git init\n   ```\n\n3.\n   ```bash\n   git add .\n   ```\n\n4.\n   ```bash\n\
+  \   git commit -m \"Initial commit\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Init Your First Repo**
+
+
+  Git repositories start when `.git/` is created with `git init`.
+
+  '
+validators:
+- type: is_on_branch
+  branch: main
+  alt_branches:
+  - master
+  description: Repository is on main or master
+- type: commit_count_gte
+  branch: HEAD
+  count: 1
+  description: At least one commit exists
+- type: commit_message_contains
+  text: Initial commit
+  description: Latest commit message contains 'Initial commit'
+- type: is_clean
+  description: Working tree is clean

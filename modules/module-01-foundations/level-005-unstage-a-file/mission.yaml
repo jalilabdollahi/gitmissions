@@ -1,0 +1,48 @@
+name: Unstage a File
+module: module-01-foundations
+level: level-005-unstage-a-file
+order: 5
+difficulty: beginner
+xp: 100
+expected_time: 5m
+concepts:
+- '`git restore --staged`'
+common_mistakes:
+- Running commands related to `git restore --staged` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: Two files are staged, but only one should be committed.
+objective: 'Unstage `debug.log`, then commit only `app.txt` with the message `fix:
+  commit app only`.'
+hints:
+- Start with the Git command related to ``git restore --staged``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git restore --staged debug.log\n\
+  \   ```\n\n2.\n   ```bash\n   git commit -m \"fix: commit app only\"\n   ```\n\n\
+  3.\n   ```bash\n   rm -f debug.log\n   ```\n\n4.\n   ```bash\n   git restore --staged\
+  \ debug.log >/dev/null 2>&1 || true\n   ```"
+debrief: '## What Just Happened
+
+
+  **Unstage a File**
+
+
+  This level focused on `git restore --staged`.
+
+  '
+validators:
+- type: commit_message_contains
+  text: 'fix: commit app only'
+  description: Latest commit message is correct
+- type: script_passes
+  description: Only app.txt changed in the latest commit
+  script: test "$(git diff --name-only HEAD~1 HEAD)" = "app.txt"
+- type: file_not_exists
+  path: debug.log
+  description: debug.log is gone from the working tree
+- type: is_clean
+  description: Working tree is clean

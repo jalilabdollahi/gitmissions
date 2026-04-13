@@ -1,0 +1,39 @@
+name: Prune Stale Remote Refs
+module: module-04-remote-operations
+level: level-066-prune-stale-remotes
+order: 66
+difficulty: intermediate
+xp: 230
+expected_time: 9m
+concepts:
+- '`git remote prune origin`'
+common_mistakes:
+- Running commands related to `git remote prune origin` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: This mission uses a local bare repository to simulate a remote server.
+objective: Prune stale remote-tracking references for `origin`.
+hints:
+- Work in the `local/` directory inside the sandbox.
+- Inspect remotes with `git remote -v` and branches with `git branch -a`.
+- Use the remote command named in the mission objective.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git remote prune origin\n   ```"
+debrief: '## What Just Happened
+
+
+  **Prune Stale Remote Refs**
+
+
+  Local bare repos are a great way to practice remote workflows without needing any
+  network services.
+
+  '
+validators:
+- type: script_passes
+  description: origin/feature/old was pruned
+  script: '! git rev-parse --verify refs/remotes/origin/feature/old >/dev/null 2>&1'

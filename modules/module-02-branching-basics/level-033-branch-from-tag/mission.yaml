@@ -1,0 +1,36 @@
+name: Create Branch from Tag
+module: module-02-branching-basics
+level: level-033-branch-from-tag
+order: 33
+difficulty: beginner
+xp: 150
+expected_time: 6m
+concepts:
+- '`git switch -c <name> <tag>`'
+common_mistakes:
+- Running commands related to `git switch -c <name> <tag>` without checking `git status`
+  first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: A release tag marks the point where the new branch should begin.
+objective: Create a branch named `hotfix` from tag `v1.0`.
+hints:
+- List tags if needed.
+- Use `git switch -c hotfix v1.0`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch -c hotfix v1.0\n  \
+  \ ```"
+debrief: '## What Just Happened
+
+
+  **Create Branch from Tag**
+
+
+  Tags are fixed pointers, but you can branch from them whenever work needs to resume.
+
+  '
+validators:
+- type: branch_exists
+  branch: hotfix
+  description: hotfix exists

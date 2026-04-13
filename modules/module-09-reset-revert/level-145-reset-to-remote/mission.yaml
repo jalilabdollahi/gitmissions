@@ -1,0 +1,41 @@
+name: Reset Branch to Remote
+module: module-09-reset-revert
+level: level-145-reset-to-remote
+order: 145
+difficulty: advanced
+xp: 330
+expected_time: 10m
+concepts:
+- '`git reset --hard origin/main`'
+common_mistakes:
+- Running commands related to `git reset --hard origin/main` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: The local branch drifted away from the remote and should be reset back
+  to the remote state.
+objective: Hard reset `main` to `origin/main`.
+hints:
+- Fetch if you need to refresh origin first.
+- Use `git reset --hard origin/main`.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --hard origin/main\n\
+  \   ```"
+debrief: '## What Just Happened
+
+
+  **Reset Branch to Remote**
+
+
+  Resetting to a remote ref discards local-only commits and makes your branch match
+  the remote exactly.
+
+  '
+validators:
+- type: script_passes
+  description: Local HEAD matches origin/main
+  script: test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+- type: is_clean
+  description: Working tree is clean

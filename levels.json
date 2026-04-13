@@ -1,0 +1,1802 @@
+[
+  {
+    "module": "module-01-foundations",
+    "level": "level-001-init-your-first-repo",
+    "name": "Init Your First Repo",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 1
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-002-your-first-commit",
+    "name": "Your First Commit",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 2
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-003-check-status",
+    "name": "Read the Status",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 3
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-004-stage-specific-files",
+    "name": "Stage Specific Files",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 4
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-005-unstage-a-file",
+    "name": "Unstage a File",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 5
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-006-read-the-log",
+    "name": "Read the Log",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 6
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-007-see-the-diff",
+    "name": "See the Diff",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 7
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-008-amend-last-commit",
+    "name": "Fix the Last Commit",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 8
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-009-discard-unstaged",
+    "name": "Discard Unstaged Changes",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 9
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-010-create-gitignore",
+    "name": "Create a .gitignore",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 10
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-011-ignore-already-tracked",
+    "name": "Untrack an Already-Tracked File",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 11
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-012-view-a-past-commit",
+    "name": "View a Past Commit",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 12
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-013-compare-two-commits",
+    "name": "Compare Two Commits",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 13
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-014-log-pretty-formats",
+    "name": "Pretty Log Formats",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 14
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-015-log-filter-by-author",
+    "name": "Filter Log by Author",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 15
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-016-log-filter-by-date",
+    "name": "Filter Log by Date",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 16
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-017-log-search-by-message",
+    "name": "Search Commits by Message",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 17
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-018-global-git-config",
+    "name": "Configure Git Identity",
+    "xp": 100,
+    "difficulty": "beginner",
+    "order": 18
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-019-commit-with-body",
+    "name": "Commit with Subject and Body",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 19
+  },
+  {
+    "module": "module-01-foundations",
+    "level": "level-020-empty-commit",
+    "name": "Empty Commit",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 20
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-021-create-a-branch",
+    "name": "Create a Branch",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 21
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-022-switch-to-branch",
+    "name": "Switch to a Branch",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 22
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-023-create-and-switch",
+    "name": "Create and Switch",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 23
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-024-list-branches",
+    "name": "List All Branches",
+    "xp": 120,
+    "difficulty": "beginner",
+    "order": 24
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-025-rename-a-branch",
+    "name": "Rename a Branch",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 25
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-026-delete-merged-branch",
+    "name": "Delete a Merged Branch",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 26
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-027-delete-unmerged-branch",
+    "name": "Force Delete a Branch",
+    "xp": 140,
+    "difficulty": "beginner",
+    "order": 27
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-028-fast-forward-merge",
+    "name": "Fast-Forward Merge",
+    "xp": 150,
+    "difficulty": "beginner",
+    "order": 28
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-029-no-fast-forward-merge",
+    "name": "No-Fast-Forward Merge",
+    "xp": 150,
+    "difficulty": "beginner",
+    "order": 29
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-030-merge-two-branches",
+    "name": "Merge Two Diverged Branches",
+    "xp": 180,
+    "difficulty": "beginner",
+    "order": 30
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-031-view-merged-branches",
+    "name": "View Merged Branches",
+    "xp": 130,
+    "difficulty": "beginner",
+    "order": 31
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-032-branch-from-commit",
+    "name": "Create Branch from Old Commit",
+    "xp": 150,
+    "difficulty": "beginner",
+    "order": 32
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-033-branch-from-tag",
+    "name": "Create Branch from Tag",
+    "xp": 150,
+    "difficulty": "beginner",
+    "order": 33
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-034-copy-file-from-branch",
+    "name": "Copy File from Another Branch",
+    "xp": 160,
+    "difficulty": "beginner",
+    "order": 34
+  },
+  {
+    "module": "module-02-branching-basics",
+    "level": "level-035-upstream-tracking",
+    "name": "Set Upstream Tracking",
+    "xp": 160,
+    "difficulty": "beginner",
+    "order": 35
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-036-first-conflict",
+    "name": "Your First Conflict",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 36
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-037-same-line-conflict",
+    "name": "Same-Line Conflict",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 37
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-038-conflict-in-multiple-files",
+    "name": "Conflict in Multiple Files",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 38
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-039-abort-a-merge",
+    "name": "Abort a Merge",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 39
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-040-keep-ours",
+    "name": "Keep Our Version",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 40
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-041-keep-theirs",
+    "name": "Keep Their Version",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 41
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-042-combine-both-changes",
+    "name": "Combine Both Changes",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 42
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-043-conflict-in-deleted-file",
+    "name": "Conflict \u2014 Deleted vs Modified",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 43
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-044-conflict-added-same-file",
+    "name": "Conflict \u2014 Both Added Same File",
+    "xp": 240,
+    "difficulty": "intermediate",
+    "order": 44
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-045-rename-conflict",
+    "name": "Rename Conflict",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 45
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-046-whitespace-conflicts",
+    "name": "Whitespace-Only Conflict",
+    "xp": 240,
+    "difficulty": "intermediate",
+    "order": 46
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-047-merge-strategy-ours",
+    "name": "Merge Strategy: Ours",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 47
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-048-merge-strategy-recursive",
+    "name": "Merge Strategy: Recursive Subtree",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 48
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-049-three-way-merge",
+    "name": "Understanding Three-Way Merge",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 49
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-050-left-in-conflict-state",
+    "name": "Repo Left in Conflict State",
+    "xp": 270,
+    "difficulty": "intermediate",
+    "order": 50
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-051-conflict-markers-in-code",
+    "name": "Conflict Markers Committed",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 51
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-052-octopus-merge",
+    "name": "Octopus Merge",
+    "xp": 270,
+    "difficulty": "intermediate",
+    "order": 52
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-053-merge-commit-message",
+    "name": "Craft a Good Merge Commit",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 53
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-054-rerere",
+    "name": "Remember Merge Resolution",
+    "xp": 280,
+    "difficulty": "intermediate",
+    "order": 54
+  },
+  {
+    "module": "module-03-merge-conflicts",
+    "level": "level-055-prevent-conflicts",
+    "name": "Preventing Conflicts",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 55
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-056-add-a-remote",
+    "name": "Add a Remote",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 56
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-057-clone-a-repo",
+    "name": "Clone a Repository",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 57
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-058-fetch-vs-pull",
+    "name": "Fetch vs Pull",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 58
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-059-push-to-remote",
+    "name": "Push to Remote",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 59
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-060-push-rejected-diverged",
+    "name": "Push Rejected: Diverged History",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 60
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-061-remote-tracking-branches",
+    "name": "Remote Tracking Branches",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 61
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-062-pull-with-rebase",
+    "name": "Pull with Rebase",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 62
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-063-multiple-remotes",
+    "name": "Multiple Remotes",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 63
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-064-push-new-branch",
+    "name": "Push a New Branch",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 64
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-065-delete-remote-branch",
+    "name": "Delete a Remote Branch",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 65
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-066-prune-stale-remotes",
+    "name": "Prune Stale Remote Refs",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 66
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-067-track-remote-branch",
+    "name": "Track an Existing Remote Branch",
+    "xp": 240,
+    "difficulty": "intermediate",
+    "order": 67
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-068-force-push-safely",
+    "name": "Force Push Safely",
+    "xp": 280,
+    "difficulty": "intermediate",
+    "order": 68
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-069-shallow-clone",
+    "name": "Shallow Clone",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 69
+  },
+  {
+    "module": "module-04-remote-operations",
+    "level": "level-070-push-all-tags",
+    "name": "Push All Tags",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 70
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-071-what-is-detached-head",
+    "name": "What Is Detached HEAD?",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 71
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-072-enter-detached-head",
+    "name": "Enter Detached HEAD",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 72
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-073-look-around-safely",
+    "name": "Look Around in Detached HEAD",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 73
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-074-commit-in-detached-head",
+    "name": "Make a Commit in Detached HEAD",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 74
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-075-recover-detached-commits",
+    "name": "Recover Detached HEAD Commits",
+    "xp": 280,
+    "difficulty": "intermediate",
+    "order": 75
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-076-lost-detached-commit",
+    "name": "Recover a Lost Detached Commit",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 76
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-077-create-branch-to-save",
+    "name": "Create Branch to Save Work",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 77
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-078-checkout-tag-detached",
+    "name": "Checkout a Tag (Detached)",
+    "xp": 240,
+    "difficulty": "intermediate",
+    "order": 78
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-079-detached-after-rebase",
+    "name": "Detached HEAD After Failed Op",
+    "xp": 270,
+    "difficulty": "intermediate",
+    "order": 79
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-080-relative-refs",
+    "name": "Relative Refs: HEAD~1, HEAD^2",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 80
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-081-detached-with-changes",
+    "name": "Detached HEAD with Staged Changes",
+    "xp": 270,
+    "difficulty": "intermediate",
+    "order": 81
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-082-switch-away-cleanly",
+    "name": "Switch Away Cleanly",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 82
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-083-bisect-uses-detached",
+    "name": "Bisect Leaves You Detached",
+    "xp": 270,
+    "difficulty": "intermediate",
+    "order": 83
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-084-compare-detached-to-branch",
+    "name": "Compare Detached to Branch",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 84
+  },
+  {
+    "module": "module-05-detached-head",
+    "level": "level-085-recover-repo-state",
+    "name": "Full Recovery Scenario",
+    "xp": 320,
+    "difficulty": "intermediate",
+    "order": 85
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-086-what-is-rebase",
+    "name": "What Is Rebase?",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 86
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-087-basic-rebase",
+    "name": "Basic Rebase",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 87
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-088-rebase-vs-merge",
+    "name": "Rebase vs Merge Decision",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 88
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-089-rebase-conflict",
+    "name": "Rebase Conflict",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 89
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-090-abort-rebase",
+    "name": "Abort a Rebase",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 90
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-091-skip-commit-in-rebase",
+    "name": "Skip a Commit in Rebase",
+    "xp": 280,
+    "difficulty": "intermediate",
+    "order": 91
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-092-interactive-rebase-intro",
+    "name": "Interactive Rebase \u2014 Intro",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 92
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-093-interactive-squash",
+    "name": "Squash Commits",
+    "xp": 320,
+    "difficulty": "intermediate",
+    "order": 93
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-094-interactive-fixup",
+    "name": "Fixup Commits",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 94
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-095-interactive-reorder",
+    "name": "Reorder Commits",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 95
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-096-interactive-drop",
+    "name": "Drop a Commit",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 96
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-097-interactive-edit",
+    "name": "Edit a Commit Mid-Rebase",
+    "xp": 320,
+    "difficulty": "intermediate",
+    "order": 97
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-098-interactive-reword",
+    "name": "Reword a Commit Message",
+    "xp": 300,
+    "difficulty": "intermediate",
+    "order": 98
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-099-squash-all-to-one",
+    "name": "Squash Feature to One Commit",
+    "xp": 320,
+    "difficulty": "intermediate",
+    "order": 99
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-100-rebase-onto",
+    "name": "Rebase Onto Another Base",
+    "xp": 360,
+    "difficulty": "intermediate",
+    "order": 100
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-101-rebase-broken-history",
+    "name": "Fix Broken Rebase",
+    "xp": 360,
+    "difficulty": "intermediate",
+    "order": 101
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-102-golden-rule-of-rebase",
+    "name": "Golden Rule of Rebase",
+    "xp": 320,
+    "difficulty": "intermediate",
+    "order": 102
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-103-exec-in-rebase",
+    "name": "Run Tests During Rebase",
+    "xp": 340,
+    "difficulty": "intermediate",
+    "order": 103
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-104-autosquash",
+    "name": "Autosquash with fixup!",
+    "xp": 350,
+    "difficulty": "intermediate",
+    "order": 104
+  },
+  {
+    "module": "module-06-rebase",
+    "level": "level-105-rebase-multiple-conflicts",
+    "name": "Multi-Conflict Rebase",
+    "xp": 380,
+    "difficulty": "intermediate",
+    "order": 105
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-106-basic-stash",
+    "name": "Basic Stash",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 106
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-107-stash-with-message",
+    "name": "Stash with a Message",
+    "xp": 210,
+    "difficulty": "intermediate",
+    "order": 107
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-108-stash-pop",
+    "name": "Pop the Stash",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 108
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-109-stash-apply",
+    "name": "Apply Without Removing",
+    "xp": 210,
+    "difficulty": "intermediate",
+    "order": 109
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-110-multiple-stashes",
+    "name": "Multiple Stashes",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 110
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-111-stash-drop",
+    "name": "Drop a Stash Entry",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 111
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-112-stash-clear",
+    "name": "Clear All Stashes",
+    "xp": 210,
+    "difficulty": "intermediate",
+    "order": 112
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-113-stash-untracked",
+    "name": "Stash Untracked Files",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 113
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-114-stash-branch",
+    "name": "Create Branch from Stash",
+    "xp": 250,
+    "difficulty": "intermediate",
+    "order": 114
+  },
+  {
+    "module": "module-07-stash",
+    "level": "level-115-stash-conflict",
+    "name": "Stash Pop Conflict",
+    "xp": 260,
+    "difficulty": "intermediate",
+    "order": 115
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-116-log-graph",
+    "name": "Visual Branch Graph",
+    "xp": 280,
+    "difficulty": "advanced",
+    "order": 116
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-117-log-all-branches",
+    "name": "Log All Branches",
+    "xp": 280,
+    "difficulty": "advanced",
+    "order": 117
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-118-log-file-history",
+    "name": "File Change History",
+    "xp": 290,
+    "difficulty": "advanced",
+    "order": 118
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-119-blame",
+    "name": "Find Who Changed a Line",
+    "xp": 280,
+    "difficulty": "advanced",
+    "order": 119
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-120-log-pickaxe",
+    "name": "Search Code Changes",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 120
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-121-what-is-reflog",
+    "name": "What Is Reflog?",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 121
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-122-reflog-after-reset",
+    "name": "Recover After Hard Reset",
+    "xp": 350,
+    "difficulty": "advanced",
+    "order": 122
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-123-reflog-lost-branch",
+    "name": "Recover a Deleted Branch",
+    "xp": 360,
+    "difficulty": "advanced",
+    "order": 123
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-124-reflog-after-rebase",
+    "name": "Recover Before-Rebase State",
+    "xp": 380,
+    "difficulty": "advanced",
+    "order": 124
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-125-reflog-time-syntax",
+    "name": "Reflog Time Syntax",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 125
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-126-dangling-commits",
+    "name": "Find Dangling Commits",
+    "xp": 350,
+    "difficulty": "advanced",
+    "order": 126
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-127-expire-reflog",
+    "name": "Reflog Expiry",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 127
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-128-log-merges-only",
+    "name": "Show Only Merge Commits",
+    "xp": 280,
+    "difficulty": "advanced",
+    "order": 128
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-129-log-no-merges",
+    "name": "Exclude Merge Commits",
+    "xp": 280,
+    "difficulty": "advanced",
+    "order": 129
+  },
+  {
+    "module": "module-08-history-reflog",
+    "level": "level-130-shortlog",
+    "name": "Commit Authorship Summary",
+    "xp": 280,
+    "difficulty": "advanced",
+    "order": 130
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-131-soft-reset",
+    "name": "Soft Reset",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 131
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-132-mixed-reset",
+    "name": "Mixed Reset",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 132
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-133-hard-reset",
+    "name": "Hard Reset",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 133
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-134-reset-single-file",
+    "name": "Reset a Single File",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 134
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-135-revert-a-commit",
+    "name": "Revert a Commit",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 135
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-136-revert-no-commit",
+    "name": "Revert Without Committing",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 136
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-137-revert-a-merge",
+    "name": "Revert a Merge Commit",
+    "xp": 360,
+    "difficulty": "advanced",
+    "order": 137
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-138-reset-vs-revert",
+    "name": "Reset vs Revert Decision",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 138
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-139-restore-file",
+    "name": "Restore File to Version",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 139
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-140-cherry-pick",
+    "name": "Cherry-Pick a Commit",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 140
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-141-cherry-pick-range",
+    "name": "Cherry-Pick a Range",
+    "xp": 350,
+    "difficulty": "advanced",
+    "order": 141
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-142-cherry-pick-conflict",
+    "name": "Cherry-Pick Conflict",
+    "xp": 360,
+    "difficulty": "advanced",
+    "order": 142
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-143-undo-a-cherry-pick",
+    "name": "Abort a Cherry-Pick",
+    "xp": 330,
+    "difficulty": "advanced",
+    "order": 143
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-144-uncommit-and-redo",
+    "name": "Uncommit, Edit, Recommit",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 144
+  },
+  {
+    "module": "module-09-reset-revert",
+    "level": "level-145-reset-to-remote",
+    "name": "Reset Branch to Remote",
+    "xp": 330,
+    "difficulty": "advanced",
+    "order": 145
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-146-lightweight-tag",
+    "name": "Lightweight Tag",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 146
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-147-annotated-tag",
+    "name": "Annotated Tag",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 147
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-148-tag-past-commit",
+    "name": "Tag a Past Commit",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 148
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-149-list-tags",
+    "name": "List Tags",
+    "xp": 200,
+    "difficulty": "intermediate",
+    "order": 149
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-150-show-tag",
+    "name": "Show Tag Details",
+    "xp": 210,
+    "difficulty": "intermediate",
+    "order": 150
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-151-push-a-tag",
+    "name": "Push a Tag",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 151
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-152-push-all-tags",
+    "name": "Push All Tags",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 152
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-153-delete-local-tag",
+    "name": "Delete a Local Tag",
+    "xp": 220,
+    "difficulty": "intermediate",
+    "order": 153
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-154-delete-remote-tag",
+    "name": "Delete a Remote Tag",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 154
+  },
+  {
+    "module": "module-10-tags-releases",
+    "level": "level-155-checkout-tag",
+    "name": "Checkout a Tag",
+    "xp": 230,
+    "difficulty": "intermediate",
+    "order": 155
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-156-hooks-intro",
+    "name": "What Are Git Hooks?",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 156
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-157-pre-commit-basic",
+    "name": "Basic Pre-Commit Hook",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 157
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-158-pre-commit-lint",
+    "name": "Lint-Checking Hook",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 158
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-159-pre-commit-no-debug",
+    "name": "Block debug Statements",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 159
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-160-pre-commit-file-size",
+    "name": "Reject Large Files",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 160
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-161-commit-msg-basic",
+    "name": "Commit Message Hook",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 161
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-162-commit-msg-conventional",
+    "name": "Enforce Conventional Commits",
+    "xp": 360,
+    "difficulty": "advanced",
+    "order": 162
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-163-commit-msg-ticket",
+    "name": "Require Ticket Number",
+    "xp": 360,
+    "difficulty": "advanced",
+    "order": 163
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-164-pre-push-basic",
+    "name": "Pre-Push Hook",
+    "xp": 360,
+    "difficulty": "advanced",
+    "order": 164
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-165-pre-push-block-main",
+    "name": "Block Direct Push to Main",
+    "xp": 380,
+    "difficulty": "advanced",
+    "order": 165
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-166-post-commit-notify",
+    "name": "Post-Commit Notification",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 166
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-167-prepare-commit-msg",
+    "name": "Prepare Commit Message",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 167
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-168-hook-not-executable",
+    "name": "Fix Non-Executable Hook",
+    "xp": 300,
+    "difficulty": "advanced",
+    "order": 168
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-169-hook-wrong-exit-code",
+    "name": "Fix Hook Exit Code Bug",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 169
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-170-hook-env-path",
+    "name": "Fix Hook PATH Issue",
+    "xp": 340,
+    "difficulty": "advanced",
+    "order": 170
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-171-bypass-a-hook",
+    "name": "Bypass a Hook",
+    "xp": 320,
+    "difficulty": "advanced",
+    "order": 171
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-172-shared-hooks-setup",
+    "name": "Share Hooks via Repo",
+    "xp": 380,
+    "difficulty": "advanced",
+    "order": 172
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-173-pre-receive-hook",
+    "name": "Server-Side: pre-receive",
+    "xp": 400,
+    "difficulty": "advanced",
+    "order": 173
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-174-update-hook",
+    "name": "Server-Side: update",
+    "xp": 400,
+    "difficulty": "advanced",
+    "order": 174
+  },
+  {
+    "module": "module-11-git-hooks",
+    "level": "level-175-debug-a-broken-hook",
+    "name": "Debug a Completely Broken Hook",
+    "xp": 380,
+    "difficulty": "advanced",
+    "order": 175
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-176-git-bisect-intro",
+    "name": "Git Bisect: Find the Bug",
+    "xp": 400,
+    "difficulty": "expert",
+    "order": 176
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-177-git-bisect-auto",
+    "name": "Automated Bisect",
+    "xp": 420,
+    "difficulty": "expert",
+    "order": 177
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-178-git-bisect-reset",
+    "name": "Reset After Bisect",
+    "xp": 380,
+    "difficulty": "expert",
+    "order": 178
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-179-worktree-intro",
+    "name": "Git Worktrees",
+    "xp": 420,
+    "difficulty": "expert",
+    "order": 179
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-180-worktree-hotfix",
+    "name": "Hotfix Without Stashing",
+    "xp": 440,
+    "difficulty": "expert",
+    "order": 180
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-181-worktree-remove",
+    "name": "Remove a Worktree",
+    "xp": 400,
+    "difficulty": "expert",
+    "order": 181
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-182-submodule-add",
+    "name": "Add a Submodule",
+    "xp": 440,
+    "difficulty": "expert",
+    "order": 182
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-183-submodule-clone",
+    "name": "Clone with Submodules",
+    "xp": 440,
+    "difficulty": "expert",
+    "order": 183
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-184-submodule-update",
+    "name": "Update a Submodule",
+    "xp": 460,
+    "difficulty": "expert",
+    "order": 184
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-185-submodule-remove",
+    "name": "Remove a Submodule",
+    "xp": 460,
+    "difficulty": "expert",
+    "order": 185
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-186-git-bundle",
+    "name": "Bundle a Repo",
+    "xp": 440,
+    "difficulty": "expert",
+    "order": 186
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-187-git-archive",
+    "name": "Archive a Snapshot",
+    "xp": 400,
+    "difficulty": "expert",
+    "order": 187
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-188-sparse-checkout",
+    "name": "Sparse Checkout",
+    "xp": 460,
+    "difficulty": "expert",
+    "order": 188
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-189-git-notes",
+    "name": "Git Notes",
+    "xp": 420,
+    "difficulty": "expert",
+    "order": 189
+  },
+  {
+    "module": "module-12-advanced-git",
+    "level": "level-190-partial-staging",
+    "name": "Stage Partial Changes",
+    "xp": 440,
+    "difficulty": "expert",
+    "order": 190
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-191-objects-intro",
+    "name": "Git's Object Model",
+    "xp": 500,
+    "difficulty": "expert",
+    "order": 191
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-192-cat-file-blob",
+    "name": "Read a Blob Object",
+    "xp": 500,
+    "difficulty": "expert",
+    "order": 192
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-193-cat-file-tree",
+    "name": "Read a Tree Object",
+    "xp": 500,
+    "difficulty": "expert",
+    "order": 193
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-194-cat-file-commit",
+    "name": "Read a Commit Object",
+    "xp": 520,
+    "difficulty": "expert",
+    "order": 194
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-195-hash-object",
+    "name": "Hash an Object Manually",
+    "xp": 520,
+    "difficulty": "expert",
+    "order": 195
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-196-update-index",
+    "name": "Low-Level Staging",
+    "xp": 540,
+    "difficulty": "expert",
+    "order": 196
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-197-write-tree",
+    "name": "Write a Tree Object",
+    "xp": 540,
+    "difficulty": "expert",
+    "order": 197
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-198-commit-tree",
+    "name": "Create a Commit Object",
+    "xp": 560,
+    "difficulty": "expert",
+    "order": 198
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-199-refs-and-heads",
+    "name": "Refs and HEAD",
+    "xp": 500,
+    "difficulty": "expert",
+    "order": 199
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-200-packed-refs",
+    "name": "Packed Refs",
+    "xp": 520,
+    "difficulty": "expert",
+    "order": 200
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-201-pack-objects",
+    "name": "Pack Files",
+    "xp": 540,
+    "difficulty": "expert",
+    "order": 201
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-202-gc",
+    "name": "Garbage Collection",
+    "xp": 520,
+    "difficulty": "expert",
+    "order": 202
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-203-fsck",
+    "name": "Repo Integrity Check",
+    "xp": 560,
+    "difficulty": "expert",
+    "order": 203
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-204-rerere-internals",
+    "name": "Rerere Under the Hood",
+    "xp": 550,
+    "difficulty": "expert",
+    "order": 204
+  },
+  {
+    "module": "module-13-git-internals",
+    "level": "level-205-plumbing-vs-porcelain",
+    "name": "Plumbing vs Porcelain",
+    "xp": 500,
+    "difficulty": "expert",
+    "order": 205
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-206-wargame-nightmare-merge",
+    "name": "Nightmare Merge",
+    "xp": 600,
+    "difficulty": "expert",
+    "order": 206
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-207-wargame-corrupted-rebase",
+    "name": "Corrupted Rebase",
+    "xp": 620,
+    "difficulty": "expert",
+    "order": 207
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-208-wargame-gone-main",
+    "name": "Main Branch Gone",
+    "xp": 650,
+    "difficulty": "expert",
+    "order": 208
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-209-wargame-force-pushed",
+    "name": "Force Push Disaster",
+    "xp": 650,
+    "difficulty": "expert",
+    "order": 209
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-210-wargame-wrong-base",
+    "name": "Rebased onto Wrong Branch",
+    "xp": 620,
+    "difficulty": "expert",
+    "order": 210
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-211-wargame-squash-lost",
+    "name": "Squash Lost a Commit",
+    "xp": 640,
+    "difficulty": "expert",
+    "order": 211
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-212-wargame-hooks-on-fire",
+    "name": "All Hooks Broken",
+    "xp": 660,
+    "difficulty": "expert",
+    "order": 212
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-213-wargame-detached-disaster",
+    "name": "Full Detached HEAD Disaster",
+    "xp": 680,
+    "difficulty": "expert",
+    "order": 213
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-214-wargame-submodule-hell",
+    "name": "Submodule Hell",
+    "xp": 700,
+    "difficulty": "expert",
+    "order": 214
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-215-wargame-bisect-flaky",
+    "name": "Bisect with Flaky Tests",
+    "xp": 680,
+    "difficulty": "expert",
+    "order": 215
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-216-wargame-history-rewrite",
+    "name": "History Rewrite Recovery",
+    "xp": 700,
+    "difficulty": "expert",
+    "order": 216
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-217-wargame-push-race",
+    "name": "Push Race Condition",
+    "xp": 680,
+    "difficulty": "expert",
+    "order": 217
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-218-wargame-stash-lost",
+    "name": "Lost Stash Entries",
+    "xp": 680,
+    "difficulty": "expert",
+    "order": 218
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-219-wargame-hook-data-leak",
+    "name": "Hook Prevented Data Leak",
+    "xp": 700,
+    "difficulty": "expert",
+    "order": 219
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-220-wargame-tag-pollution",
+    "name": "Tag Pollution",
+    "xp": 650,
+    "difficulty": "expert",
+    "order": 220
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-221-wargame-wrong-commit",
+    "name": "Cherry-Pick Chain Gone Wrong",
+    "xp": 700,
+    "difficulty": "expert",
+    "order": 221
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-222-wargame-gc-lost",
+    "name": "GC Ate the Commits",
+    "xp": 720,
+    "difficulty": "expert",
+    "order": 222
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-223-wargame-detached-rebase",
+    "name": "Detached HEAD + Rebase",
+    "xp": 720,
+    "difficulty": "expert",
+    "order": 223
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-224-wargame-three-merge",
+    "name": "Three-Branch Merge Disaster",
+    "xp": 740,
+    "difficulty": "expert",
+    "order": 224
+  },
+  {
+    "module": "module-14-war-games",
+    "level": "level-225-wargame-final-incident",
+    "name": "The Final Incident",
+    "xp": 800,
+    "difficulty": "expert",
+    "order": 225
+  }
+]

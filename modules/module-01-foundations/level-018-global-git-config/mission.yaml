@@ -1,0 +1,42 @@
+name: Configure Git Identity
+module: module-01-foundations
+level: level-018-global-git-config
+order: 18
+difficulty: beginner
+xp: 100
+expected_time: 5m
+concepts:
+- '`git config --global user.name/email`'
+common_mistakes:
+- Running commands related to `git config --global user.name/email` without checking
+  `git status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This sandbox repo has no identity configured yet.
+objective: Configure `user.name` as `Git Missions` and `user.email` as `missions@example.com`
+  for this repository.
+hints:
+- Start with the Git command related to ``git config --global user.name/email``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git config user.name \"Git Missions\"\
+  \n   ```\n\n2.\n   ```bash\n   git config user.email \"missions@example.com\"\n\
+  \   ```"
+debrief: '## What Just Happened
+
+
+  **Configure Git Identity**
+
+
+  This level focused on `git config --global user.name/email`.
+
+  '
+validators:
+- type: script_passes
+  description: Repository user.name is configured
+  script: test "$(git config user.name)" = "Git Missions"
+- type: script_passes
+  description: Repository user.email is configured
+  script: test "$(git config user.email)" = "missions@example.com"

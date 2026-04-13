@@ -1,0 +1,39 @@
+name: Add a Remote
+module: module-04-remote-operations
+level: level-056-add-a-remote
+order: 56
+difficulty: intermediate
+xp: 200
+expected_time: 9m
+concepts:
+- '`git remote add origin <url>`'
+common_mistakes:
+- Running commands related to `git remote add origin <url>` without checking `git
+  status` first, which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+repo_path: local
+description: This mission uses a local bare repository to simulate a remote server.
+objective: Add a remote named `origin` that points to `../remote.git`.
+hints:
+- Work in the `local/` directory inside the sandbox.
+- Inspect remotes with `git remote -v` and branches with `git branch -a`.
+- Use the remote command named in the mission objective.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
+  \   git remote add origin ../remote.git\n   ```"
+debrief: '## What Just Happened
+
+
+  **Add a Remote**
+
+
+  Local bare repos are a great way to practice remote workflows without needing any
+  network services.
+
+  '
+validators:
+- type: remote_exists
+  name: origin
+  description: origin remote exists

@@ -1,0 +1,52 @@
+name: Show Only Merge Commits
+module: module-08-history-reflog
+level: level-128-log-merges-only
+order: 128
+difficulty: advanced
+xp: 280
+expected_time: 10m
+concepts:
+- '`git log --merges`'
+common_mistakes:
+- Running commands related to `git log --merges` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This repository contains a small history designed to practice ``git log
+  --merges``.
+objective: 'Inspect the repository history and create `merges.txt` containing exactly:
+
+
+  `merges=1`
+
+
+  Then commit the report with the message `docs: add report`.'
+hints:
+- Start with the Git command related to ``git log --merges``.
+- Write the exact expected answer into `merges.txt`.
+- Commit the report so the working tree ends clean.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > merges.txt <<'EOF'\nmerges=1\n\
+  EOF\n   ```\n\n2.\n   ```bash\n   git add merges.txt\n   ```\n\n3.\n   ```bash\n\
+  \   git commit -m \"docs: add report\"\n   ```"
+debrief: '## What Just Happened
+
+
+  **Show Only Merge Commits**
+
+
+  Inspection commands become much easier to remember when you tie them to concrete
+  answers.
+
+  '
+validators:
+- type: file_content_equals
+  path: merges.txt
+  text: merges=1
+  description: merges.txt contains the expected answer
+- type: commit_message_contains
+  text: 'docs: add report'
+  description: 'Latest commit message contains ''docs: add report'''
+- type: is_clean
+  description: Working tree is clean

@@ -1,0 +1,40 @@
+name: Push All Tags
+module: module-10-tags-releases
+level: level-152-push-all-tags
+order: 152
+difficulty: intermediate
+xp: 220
+expected_time: 7m
+concepts:
+- '`git push --tags`'
+common_mistakes:
+- Running commands related to `git push --tags` without checking `git status` first,
+  which hides the actual repository state.
+- Stopping after changing files but forgetting the final Git step such as `git add`,
+  `git commit`, `git push`, or `git rebase --continue`.
+- Using a bigger hammer than needed, like resetting the whole repository when a single
+  file, branch, or ref was the real target.
+description: This module practices creating, inspecting, and publishing tags.
+repo_path: local
+objective: Create tags `v1.0` and `v1.1`, then push all tags.
+hints:
+- Start with the Git command related to ``git push --tags``.
+- Use `git status` often so you can see the state change.
+- Leave the repository in the exact end state described by the mission.
+guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag v1.0\n   ```\n\n2.\n \
+  \  ```bash\n   git tag v1.1\n   ```\n\n3.\n   ```bash\n   git push origin --tags\n\
+  \   ```"
+debrief: '## What Just Happened
+
+
+  **Push All Tags**
+
+
+  Tags mark important points in history, usually releases or audit checkpoints.
+
+  '
+validators:
+- type: script_passes
+  description: Remote tags exist
+  script: git -C ../remote.git rev-parse --verify refs/tags/v1.0 >/dev/null && git
+    -C ../remote.git rev-parse --verify refs/tags/v1.1 >/dev/null
