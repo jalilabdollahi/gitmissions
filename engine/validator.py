@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+SANDBOX_GITCONFIG = Path(__file__).resolve().parent / "sandbox.gitconfig"
+
 # Seconds any single validator subprocess may run before it is treated as a failure.
 VALIDATOR_TIMEOUT = 30
 
@@ -15,19 +17,19 @@ _CONFLICT_MARKER = re.compile(r"^(<{7}( .*)?|={7}|>{7}( .*)?|\|{7}( .*)?)$", re.
 def git_env(extra: dict | None = None) -> dict:
     """Environment for engine-run git commands (setup, validation, build).
 
-    The player's global/system git config is ignored so that options such as
-    core.hooksPath, init.defaultBranch, pull.rebase or commit.gpgsign cannot
-    change how a level is set up or judged. Player shell commands do NOT use
-    this environment.
+    The player's global/system git config is replaced by engine/sandbox.gitconfig
+    so options such as core.hooksPath, init.defaultBranch, pull.rebase or
+    commit.gpgsign cannot change how a level is set up or judged. Identity comes
+    from that file (not env vars), so repo-local user.name/email still win.
+    Player shell commands do NOT use this environment.
     """
     env = dict(os.environ)
     env["GIT_CONFIG_NOSYSTEM"] = "1"
-    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_GLOBAL"] = str(SANDBOX_GITCONFIG)
     env["GIT_TERMINAL_PROMPT"] = "0"
-    env.setdefault("GIT_AUTHOR_NAME", "Player")
-    env.setdefault("GIT_AUTHOR_EMAIL", "player@gitmissions.local")
-    env.setdefault("GIT_COMMITTER_NAME", "Player")
-    env.setdefault("GIT_COMMITTER_EMAIL", "player@gitmissions.local")
+    for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE",
+                 "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE", "GIT_DIR", "GIT_WORK_TREE"):
+        env.pop(name, None)
     env["GIT_EDITOR"] = "true"
     env["GIT_SEQUENCE_EDITOR"] = "true"
     env["GIT_MERGE_AUTOEDIT"] = "no"

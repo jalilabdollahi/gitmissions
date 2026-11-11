@@ -1,0 +1,13 @@
+# Global git config used by the engine for level setup, solutions and validators.
+# Repo-local config (git config user.name ...) still overrides these values.
+[user]
+	name = Player
+	email = player@gitmissions.local
+[init]
+	defaultBranch = main
+[commit]
+	gpgsign = false
+[tag]
+	gpgsign = false
+[advice]
+	detachedHead = false

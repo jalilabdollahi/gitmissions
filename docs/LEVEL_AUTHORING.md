@@ -85,8 +85,9 @@ git config user.email "player@gitmissions.local"
 git config commit.gpgsign false
 ```
 
-- Setup runs with the player's global git config **disabled**. Set any config the level relies on
-  locally in the repo.
+- Setup, solution and validators run with `engine/sandbox.gitconfig` as the global config (identity
+  `Player <player@gitmissions.local>`, `init.defaultBranch=main`, no signing) instead of the player's.
+  Repo-local config overrides it. Set any other config the level relies on locally in the repo.
 - The **player** runs commands with their own global config. So do not rely on global defaults.
   Set `pull.rebase`, `core.hooksPath .git/hooks` (hook levels), `merge.conflictStyle`, etc. locally when the
   level depends on them, or have the objective say which flag to use.
@@ -157,6 +158,10 @@ Rules for good validators:
   still an ancestor *and* that a revert commit exists. If the lesson is "keep both changes", check both.
 - Give every validator a clear `description`; it is the player's checklist.
 - Each validator command has a 30s timeout.
+- YAML: write `script:` values as block scalars (`script: |`). A plain value that starts with `!`, or
+  contains `: ` or ` #`, is parsed wrongly.
+- Never put the answer in repo config, file names or anywhere `git config -l`/`ls` would reveal it.
+  Recompute it from history in the validator instead.
 
 ## How the player plays
 
