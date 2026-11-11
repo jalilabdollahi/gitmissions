@@ -4,45 +4,96 @@ level: level-038-conflict-in-multiple-files
 order: 38
 difficulty: intermediate
 xp: 220
-expected_time: 10m
+expected_time: 12m
 concepts:
-- resolving several files at once
-common_mistakes:
-- Running commands related to resolving several files at once without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - several conflicted files in one merge
+  - git status unmerged paths
+  - add each file after resolving
+description: |
+  A pottery co-op tracks its members, kiln bookings and supplies in three CSV files. After the holidays two people
+  worked in parallel: Ivy added a new member (Raj), his kiln slot and a supply on `main`; Mo did the same for Pia
+  on the branch `weekend-sessions`. Since both appended to the end of each file, Git reports a conflict in all
+  three CSV files. A fourth file, `rules.txt`, was changed only on the branch and merges cleanly.
+objective: |
+  Merge `weekend-sessions` into `main` and resolve all three CSV conflicts by keeping **every** new row from
+  both sides (Raj, Pia, both bookings and all three new supplies), with each file's header row still appearing
+  exactly once and no marker lines left. `rules.txt` must contain the branch's new rule. Complete the merge commit.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` lists every file under 'Unmerged paths: both modified'. You have to resolve each one."
+  - "Since both sides appended different rows, the right answer is to keep both: just remove the three marker lines in each file."
+  - "Resolve and `git add` each of `members.csv`, `kiln-bookings.csv`, `supplies.csv`; `git status` should show no unmerged paths; then `git commit`."
+guide: |
+  ## 1. Start and list the conflicts
+  ```bash
+  git merge weekend-sessions
+  git status
+  ```
+  Three files are "both modified"; `rules.txt` is already staged by the automatic merge.
 
+  ## 2. Resolve file by file
+  Open each CSV. They all look like:
+  ```
+  Ivy,2023-02
+  Mo,2023-09
+  <<<<<<< HEAD
+  Raj,2025-02
+  =======
+  Pia,2025-02
+  >>>>>>> weekend-sessions
+  ```
+  Both rows are valid, so delete only the marker lines.
+  ```bash
+  grep -n -e '^<<<<<<<' -e '^=======' -e '^>>>>>>>' *.csv
+  ```
+  finds anything you missed.
 
-  **Conflict in Multiple Files**
+  ## 3. Stage every resolved file and commit
+  ```bash
+  git add members.csv kiln-bookings.csv supplies.csv
+  git commit -m "Merge weekend-sessions: keep all rows"
+  ```
+debrief: |
+  ## What happened
+  Git's merge works per file and per hunk. Appending to the end of the same file by two people is a classic
+  conflict: both inserted text at the same spot, and Git cannot know in which order, or whether, to keep both.
+  You resolved three independent conflicts and one commit recorded the combined result.
 
+  ## Why it matters
+  Real merges often involve many files. Having a routine (`git status`, fix, `git add`, repeat, commit) keeps you from
+  committing half-resolved files. Line-oriented formats like CSV or changelogs produce such conflicts constantly.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Related
+  - `git diff --name-only --diff-filter=U` lists unresolved files.
+  - `git merge --abort` starts over if you get lost.
+  - `.gitattributes` with `merge=union` keeps both sides automatically for append-only files.
 
-  '
+  ## Pitfalls
+  - A forgotten marker in a CSV breaks the data without any warning.
+  - Duplicate header rows are easy to produce when copy-pasting.
+common_mistakes:
+  - Taking "ours" for each file with `git checkout --ours`, which drops Pia's records.
+  - Resolving two of the three files and committing; Git refuses until all are added.
+  - Keeping the markers inside the data, silently corrupting the CSV.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor weekend-sessions HEAD
+    description: HEAD merges weekend-sessions
+  - type: script_passes
+    script: grep -qx 'Raj,2025-02' members.csv && grep -qx 'Pia,2025-02' members.csv && test "$(grep -c '^name,joined$' members.csv)" = "1"
+    description: members.csv has both new members and one header
+  - type: script_passes
+    script: grep -qx 'Wed-pm,Raj' kiln-bookings.csv && grep -qx 'Sat-am,Pia' kiln-bookings.csv && test "$(grep -c '^slot,member$' kiln-bookings.csv)" = "1"
+    description: kiln-bookings.csv has both bookings and one header
+  - type: script_passes
+    script: grep -qx 'kiln wash,3' supplies.csv && grep -qx 'underglaze blue,6' supplies.csv && grep -qx 'glaze white,4' supplies.csv
+    description: supplies.csv has both new supplies and the old ones
+  - type: file_content_contains
+    path: rules.txt
+    text: no solo kiln loading
+    description: rules.txt has the new rule from the branch
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

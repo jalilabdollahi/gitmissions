@@ -6,43 +6,81 @@ difficulty: intermediate
 xp: 200
 expected_time: 10m
 concepts:
-- two branches change the same line
-common_mistakes:
-- Running commands related to two branches change the same line without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - both sides edit one line
+  - neither side is right
+  - checking the source of truth
+description: |
+  Ada and Bruno are organising a class reunion and each raised the guest limit in `config.py` on their own branch:
+  Ada to 60 on `main`, Bruno to 50 on `waiting-list`. Both changes touch the very same line, so merging the
+  waiting list produces a conflict. The trouble is that neither number may be right: the venue has a certificate
+  with a legal limit, and it is documented in the repository.
+objective: |
+  Merge `waiting-list` into `main`. Resolve the conflict in `config.py` so that `MAX_GUESTS` equals the maximum
+  occupancy certified for the venue (look it up in the repository's own documentation), keep the other two lines of
+  the file unchanged, leave no markers, and complete the merge commit.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "After `git merge waiting-list` the conflict is in `config.py`, but the facts are somewhere else in the repo. `git ls-files` shows what is there."
+  - "The venue document `docs/venue.md` contains the certified maximum occupancy. Neither 50 nor 60 is automatically right."
+  - "Edit `config.py` to `MAX_GUESTS = <the certified number>`, remove all markers, then `git add config.py` and `git commit`."
+guide: |
+  ## 1. Merge
+  ```bash
+  git merge waiting-list
+  ```
+  Conflict in `config.py`: your side says 60, theirs says 50.
 
+  ## 2. Find the real answer
+  Conflict resolution is a decision about content, and sometimes the answer is neither side.
+  ```bash
+  cat docs/venue.md
+  ```
+  The fire marshal's certificate sets the limit.
 
-  **Same-Line Conflict**
+  ## 3. Write the resolved file
+  The result should contain `EVENT`, `MAX_GUESTS = <limit>` and `SEND_REMINDERS` with no markers.
 
+  ## 4. Finish
+  ```bash
+  git add config.py
+  git commit -m "Merge waiting-list: cap guests at the fire marshal limit"
+  ```
+debrief: |
+  ## What happened
+  Git can only present the two competing values. Whether one of them, both, or something else is correct depends on
+  facts outside the merge machinery, such as a requirement document, a ticket or a colleague. Here the value
+  that satisfies the constraint was in neither branch.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Why it matters
+  Blindly choosing "ours" or "theirs" ships bugs. In real projects always ask: what is the intent of each change and
+  what constraint do they both have to satisfy?
 
-  '
+  ## Related
+  - `git log -p --merge` shows the commits from both sides that touch conflicted files.
+  - `git diff --ours` / `--theirs` / `--base` compare the working file to each stage.
+  - `git checkout --conflict=diff3 <file>` re-creates markers with the common ancestor shown.
+
+  ## Pitfalls
+  - Resolving by taking the larger or the newer value without checking.
+  - Forgetting to run tests after resolving, since a merge can be syntactically clean and semantically wrong.
+common_mistakes:
+  - Keeping `MAX_GUESTS = 60` because it is on the current branch.
+  - Taking Bruno's 50, which is also above the legal capacity.
+  - Leaving the other lines of `config.py` damaged while deleting markers.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor waiting-list HEAD
+    description: HEAD is a merge commit that includes waiting-list
+  - type: script_passes
+    script: |
+      limit=$(grep -o 'occupancy [0-9]*' docs/venue.md | grep -o '[0-9]*')
+      test "$(grep -c '^MAX_GUESTS = ' config.py)" = "1" && grep -qx "MAX_GUESTS = $limit" config.py
+    description: MAX_GUESTS equals the certified maximum occupancy from docs/venue.md
+  - type: script_passes
+    script: grep -qx 'EVENT = "Class of 2005 reunion"' config.py && grep -qx 'SEND_REMINDERS = True' config.py
+    description: The other lines of config.py are intact
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

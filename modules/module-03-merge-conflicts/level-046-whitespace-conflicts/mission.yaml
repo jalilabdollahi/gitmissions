@@ -6,43 +6,81 @@ difficulty: intermediate
 xp: 240
 expected_time: 10m
 concepts:
-- '`git merge -Xignore-space-change`'
-common_mistakes:
-- Running commands related to `git merge -Xignore-space-change` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - whitespace noise in merges
+  - git merge -Xignore-space-change
+  - trying a merge and aborting
+description: |
+  Rafa maintains a family photo-backup shell script. On `main` he made a one-word functional change: `rsync` now
+  mirrors with `--delete`. Lotte, on the branch `reindent`, changed the indentation of the whole block from two to four
+  spaces and added a logging line at the end. A plain merge conflicts, because the line with `rsync` was touched
+  on both sides, but one of the two changes is only whitespace. The team wants to keep the existing two-space
+  indentation and get the functional changes from both branches without hand-editing.
+objective: |
+  Merge `reindent` into `main` using Git's whitespace-ignoring merge option so that no conflict occurs.
+  The merged `backup.sh` must contain the `--delete` flag, Lotte's logging line, and must keep the
+  two-space indentation of `main`. Finish with a merge commit and a clean working tree.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "Try `git merge reindent` first and look at the conflict. Then `git merge --abort` to return to the clean state before trying again."
+  - "`git merge -X<option>` passes an option to the merge strategy. One of them tells Git to treat lines that differ only in whitespace as equal."
+  - "`git merge -Xignore-space-change reindent -m \"Merge reindent\"`"
+guide: |
+  ## 1. Try the plain merge
+  ```bash
+  git merge reindent
+  git diff
+  ```
+  The conflict shows the `rsync` line twice, with different indentation and different flags. Abort it:
+  ```bash
+  git merge --abort
+  ```
 
+  ## 2. Ignore whitespace
+  ```bash
+  git merge -Xignore-space-change reindent -m "Merge reindent, ignoring whitespace"
+  ```
+  Lines that differ only in the amount of whitespace count as unchanged, so Lotte's reindentation no longer
+  collides with Rafa's `--delete`. Her new log line merges in as well.
 
-  **Whitespace-Only Conflict**
+  ## 3. Check
+  ```bash
+  cat backup.sh
+  git log --oneline --graph
+  ```
+debrief: |
+  ## What happened
+  A merge strategy option (`-X`) changed how Git compares lines. With `ignore-space-change`, the reindented lines
+  of the branch are equal to the base lines, so only the real edits remain: Rafa's flag and Lotte's new line.
+  Git keeps the whitespace of the current branch for the lines it merges.
 
+  ## Why it matters
+  Mass reformatting is a major source of fake conflicts. The long-term cure is a formatter in CI, and
+  `.editorconfig`; the short-term cure is this option.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Related
+  - `-Xignore-all-space` ignores all whitespace; `-Xignore-space-at-eol` only trailing.
+  - `git diff -w` and `git blame -w` also ignore whitespace.
+  - Put the reformat in its own commit, so that it can be skipped in blames and merges.
 
-  '
+  ## Pitfalls
+  - For whitespace-significant files (Makefile, YAML, Python), ignoring whitespace can hide real semantic changes.
+  - The option does not help when the same lines have been changed in content on both sides.
+common_mistakes:
+  - Resolving by hand and accidentally switching the whole file to four spaces.
+  - Using `-Xtheirs`, which silently takes Lotte's version of the `rsync` line and loses `--delete`.
+  - Forgetting to abort the first failed plain merge before retrying.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor reindent HEAD
+    description: HEAD merges reindent
+  - type: script_passes
+    script: grep -q 'rsync -a --delete "$PHOTOS" "$DEST"' backup.sh && grep -q 'backup ok' backup.sh
+    description: The --delete flag and the logging line are both present
+  - type: script_passes
+    script: "grep -q '^  rsync -a ' backup.sh && ! grep -q '^    rsync' backup.sh"
+    description: The two-space indentation is kept
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

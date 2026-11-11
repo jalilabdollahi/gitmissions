@@ -6,42 +6,78 @@ difficulty: intermediate
 xp: 270
 expected_time: 10m
 concepts:
-- '`git merge branch1 branch2 branch3`'
-common_mistakes:
-- Running commands related to `git merge branch1 branch2 branch3` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Three short-lived branches each add a different file.
-objective: Merge `feature/a`, `feature/b`, and `feature/c` into `main` with one octopus
-  merge.
+  - git merge with several branches
+  - octopus strategy
+  - commit with more than two parents
+description: |
+  The organisers of Hillside Dev Day have three independent branches ready for release: `docs` (speaker guide),
+  `tests` (a smoke test) and `ci` (a pipeline). They touch completely different files, so there is no conflict.
+  Rather than three separate merge commits, the release manager wants one single merge commit that joins all
+  three. A fourth branch, `experiment/confetti`, has not been approved and must not be included.
+objective: |
+  From `main`, merge `docs`, `tests` and `ci` in **one** merge command so that `HEAD` is a single merge commit
+  with four parents (the previous `main` plus the three branches), with the message `Merge docs, tests and ci into main`.
+  The files of all three branches must be present, `experiment/confetti` must not be merged, and the tree must be clean.
 hints:
-- Check out `main` first.
-- Use one `git merge` command with all three branches.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git merge feature/a feature/b feature/c\n   ```"
-debrief: '## What Just Happened
+  - "`git merge` accepts more than one branch name. When given several, Git uses its octopus strategy."
+  - "List the branches after `git merge`, and add `-m` for the message. Octopus merges refuse to proceed if there is any conflict."
+  - "`git merge docs tests ci -m \"Merge docs, tests and ci into main\"`, then `git log --graph --oneline`."
+guide: |
+  ## 1. Check that they are independent
+  ```bash
+  git log --oneline --graph --all
+  git diff --stat main...docs main...tests main...ci
+  ```
+  Each branch adds its own folder.
 
+  ## 2. One merge, three branches
+  ```bash
+  git merge docs tests ci -m "Merge docs, tests and ci into main"
+  ```
+  Git prints "Trying merge strategy octopus".
 
-  **Octopus Merge**
+  ## 3. Inspect
+  ```bash
+  git log --graph --oneline
+  git rev-list --parents -n 1 HEAD
+  ```
+  The last command lists five hashes: the merge commit and its four parents.
+debrief: |
+  ## What happened
+  An octopus merge combines any number of branches into one commit with many parents. Git applies the
+  branches together and only works when they merge cleanly; at the first conflict it gives up and asks you to merge them one at a time.
 
+  ## Why it matters
+  It documents "these things were integrated together" and keeps the graph tidy for independent topic branches.
+  Linux maintainers use it routinely, but it is rarely the tool for anything that conflicts.
 
-  Octopus merges are useful when several independent branches can be integrated together
-  without conflicts.
+  ## Related
+  - `git show --format=%P HEAD` lists the parents.
+  - `git merge --no-ff a b c` forces a merge commit even if fast-forward would be possible for one branch.
+  - Reverting one of the parts later needs `git revert -m <n>` with the right parent number.
 
-  '
+  ## Pitfalls
+  - If one of the branches conflicts, nothing is merged and you must fall back to sequential merges.
+  - Octopus merges can be confusing in tools that draw the graph.
+common_mistakes:
+  - Merging the three branches one after another, which creates three merge commits and a different graph.
+  - Including `experiment/confetti` by merging everything with a glob.
+  - Using `git merge --squash`, which does not record the branches as parents.
 validators:
-- type: merge_commit_exists
-  branch: HEAD
-  description: A merge commit exists
-- type: file_exists
-  path: a.txt
-  description: a.txt exists
-- type: file_exists
-  path: b.txt
-  description: b.txt exists
-- type: file_exists
-  path: c.txt
-  description: c.txt exists
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "5"
+    description: HEAD is a merge commit with four parents
+  - type: script_passes
+    script: for b in docs tests ci; do git merge-base --is-ancestor "$b" HEAD || exit 1; done
+    description: docs, tests and ci are all merged
+  - type: script_passes
+    script: '! git merge-base --is-ancestor experiment/confetti HEAD'
+    description: experiment/confetti is not merged
+  - type: commit_message_equals
+    text: Merge docs, tests and ci into main
+    description: The merge message is "Merge docs, tests and ci into main"
+  - type: script_passes
+    script: test -s docs/speaker-guide.md && test -x tests/check-title.sh && test -s ci/pipeline.yml
+    description: The files of all three branches are present
+  - type: is_clean
+    description: Working tree is clean

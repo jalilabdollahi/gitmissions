@@ -4,45 +4,97 @@ level: level-042-combine-both-changes
 order: 42
 difficulty: intermediate
 xp: 250
-expected_time: 10m
+expected_time: 12m
 concepts:
-- manually merge both sides
-common_mistakes:
-- Running commands related to manually merge both sides without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - manual merge of both sides
+  - a conflict where both edits are needed
+  - verifying the result by running it
+description: |
+  Quinn shares one `env.sh` between all of her machines. On `main` she added the Go toolchain to the `PATH` line and
+  a `gt` alias; on the branch `rust-setup` she added the Rust toolchain to the very same `PATH` line and a `ct`
+  alias. Both changes are wanted, but Git sees two edits of one line plus two additions at the same place, and
+  reports a conflict. The correct result is a new `PATH` line that contains both toolchain folders and both aliases.
+objective: |
+  Merge `rust-setup` into `main` and resolve `env.sh` so that, when the file is sourced, `PATH` contains
+  `$HOME/go/bin`, `$HOME/.cargo/bin` and `$HOME/bin` (any order), followed by the old `$PATH`, and both aliases `gt` and `ct` plus the original `EDITOR` and `ll` lines exist. The file must be valid
+  shell without markers. Finish with a merge commit.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "Open `env.sh`: the `PATH` line and the alias line each appear twice between the markers, once per side. Neither side alone is right."
+  - "Write one `export PATH=...` line that lists every directory, keeping `$PATH` at the end, and keep each alias once. Test with `bash -c 'HOME=/h . ./env.sh; echo $PATH'`."
+  - "Remove the markers and the duplicate PATH line, `git add env.sh`, `git commit`."
+guide: |
+  ## 1. Merge and open the file
+  ```bash
+  git merge rust-setup
+  cat env.sh
+  ```
+  ```
+  <<<<<<< HEAD
+  export PATH="$HOME/go/bin:$HOME/bin:$PATH"
+  =======
+  export PATH="$HOME/.cargo/bin:$HOME/bin:$PATH"
+  >>>>>>> rust-setup
+  ```
 
+  ## 2. Write the combined line
+  ```
+  export PATH="$HOME/go/bin:$HOME/.cargo/bin:$HOME/bin:$PATH"
+  ```
+  The two alias lines at the bottom are in a second conflict region: keep both of them.
 
-  **Combine Both Changes**
+  ## 3. Test before committing
+  ```bash
+  bash -c 'HOME=/h . ./env.sh; echo "$PATH"'
+  ```
+  You should see `/h/go/bin:/h/.cargo/bin:/h/bin:...`.
 
+  ## 4. Finish
+  ```bash
+  git add env.sh
+  git commit -m "Merge rust-setup: both toolchains and aliases"
+  ```
+debrief: |
+  ## What happened
+  Two people changed one logical thing (the PATH) in two compatible ways. Git compares lines, not intent,
+  so it cannot synthesise the union. You wrote the new line by hand and tested it.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Why it matters
+  A conflict is often an additive change, as with imports, dependency lists and configuration arrays. Always check
+  that the combined result actually works, because a textual merge of two correct files can still be wrong.
 
-  '
+  ## Related
+  - `git config merge.conflictStyle diff3` shows the base version between the sides, which makes intent clearer.
+  - `git diff` during the merge displays the combined state.
+  - `git mergetool` launches a three-pane editor.
+
+  ## Pitfalls
+  - Keeping both complete `export PATH` lines: the second silently overrides the first.
+  - Dropping `$PATH` from the end and breaking every command in the shell.
+common_mistakes:
+  - Leaving the two `export PATH` lines, so only one toolchain ends up on the PATH.
+  - Choosing one side with `--ours`/`--theirs`, discarding one toolchain and its alias.
+  - Forgetting that the alias additions are also part of the conflict.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor rust-setup HEAD
+    description: HEAD merges rust-setup
+  - type: script_passes
+    script: |
+      p=$(env -i HOME=/h PATH=/usr/bin:/bin /bin/bash -c '. ./env.sh; echo "$PATH"')
+      case "$p" in /h/go/bin:*|*:/h/go/bin:*) ;; *) exit 1;; esac
+      case "$p" in /h/.cargo/bin:*|*:/h/.cargo/bin:*) ;; *) exit 1;; esac
+      case "$p" in /h/bin:*|*:/h/bin:*) ;; *) exit 1;; esac
+      case "$p" in *:/usr/bin:/bin) ;; *) exit 1;; esac
+    description: Sourcing env.sh puts go, cargo and bin on the PATH and keeps the old PATH
+  - type: script_passes
+    script: test "$(grep -c '^export PATH=' env.sh)" = "1"
+    description: There is exactly one PATH assignment
+  - type: script_passes
+    script: grep -q "^alias gt=" env.sh && grep -q "^alias ct=" env.sh && grep -q "^alias ll=" env.sh && grep -qx 'export EDITOR=vim' env.sh
+    description: Both new aliases and the original lines are present
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

@@ -1,4 +1,4 @@
-name: 'Merge Strategy: Ours'
+name: "Merge Strategy: Ours"
 module: module-03-merge-conflicts
 level: level-047-merge-strategy-ours
 order: 47
@@ -6,40 +6,74 @@ difficulty: intermediate
 xp: 250
 expected_time: 10m
 concepts:
-- '`git merge -s ours`'
-common_mistakes:
-- Running commands related to `git merge -s ours` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Two branches disagree completely, and you want Git to prefer one side
-  during the merge.
-objective: Merge `feature/merge` into `main` using the `ours` strategy.
+  - git merge -s ours
+  - recording a merge without taking content
+  - strategy vs strategy option
+description: |
+  A small poetry zine moved from an old blogging platform to Git. A bot imported the old drafts into the branch
+  `legacy-import`; its version of `poems/salt.md` is an outdated draft, and the old draft files are not wanted. Meanwhile
+  Ines kept editing the real zine on `main`. The editors want the history to say "legacy-import has been dealt with",
+  so that it never shows up as an unmerged branch again, but not a single line of its content may enter `main`.
+objective: |
+  Merge `legacy-import` into `main` with the `ours` merge strategy. The result must be a merge commit with
+  `legacy-import` as its second parent whose tree is identical to the previous tip of `main`: no `old-*` draft
+  files, and `poems/salt.md` exactly as Ines left it. Do not leave any change uncommitted.
 hints:
-- Start from `main`.
-- Use `git merge -s ours feature/merge`.
-- Finish with a clean working tree.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git merge -s ours feature/merge\n   ```"
-debrief: '## What Just Happened
+  - "A normal merge would add the old draft files and conflict in `poems/salt.md`. Look at the `-s` (strategy) option of `git merge`."
+  - "`-s ours` records a merge but keeps your side's tree completely. It is a strategy, not the `-X ours` option, which only prefers our side in conflicts."
+  - "`git merge -s ours legacy-import -m \"Merge legacy-import: recorded, content superseded\"`"
+guide: |
+  ## 1. See what would come in
+  ```bash
+  git diff main...legacy-import --stat
+  ```
+  Two old draft files and an older `salt.md`.
 
+  ## 2. Record the merge without the content
+  ```bash
+  git merge -s ours legacy-import -m "Merge legacy-import: recorded, content superseded"
+  ```
+  Git creates a merge commit with two parents, but takes the tree of `main` as the result.
 
-  **Merge Strategy: Ours**
+  ## 3. Check
+  ```bash
+  git diff HEAD^1 HEAD      # empty
+  git branch --no-merged    # legacy-import is no longer listed
+  ```
+debrief: |
+  ## What happened
+  The `ours` **strategy** (`-s ours`) ignores the other branch's changes completely but still adds it as a parent.
+  Git now considers everything in `legacy-import` as merged, so later merges will not try to bring it back.
+  The `-X ours` **option** is very different: it merges normally and only resolves conflicting hunks in our favour.
 
+  ## Why it matters
+  Sometimes a branch must be retired without its content: obsolete forks, wrongly based branches or imports
+  that were redone by hand. A normal deletion would leave history without that information.
 
-  Merge strategies and strategy options let you encode a high-level preference instead
-  of hand-editing every conflict.
+  ## Related
+  - `git branch --no-merged main` is how tooling decides if a branch can be deleted.
+  - `git merge -X ours` and `-X theirs` (next mission) resolve only conflicting hunks.
+  - `git revert -m 1 <merge>` would later undo a normal merge; it does nothing useful for `-s ours`.
 
-  '
+  ## Pitfalls
+  - Later changes on `legacy-import` can still be merged normally, but its old changes are lost for good.
+  - Mixing up `-s ours` and `-X ours` is a classic mistake.
+common_mistakes:
+  - Using `-X ours`, which still brings in the two `old-*` draft files.
+  - Deleting `legacy-import` without merging, which leaves no trace in history.
+  - Merging normally and then deleting files, which creates a different tree and noisy history.
 validators:
-- type: file_content_equals
-  path: app.txt
-  text: main-side
-  description: main's version won
-- type: merge_commit_exists
-  branch: HEAD
-  description: A merge commit exists
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && test "$(git rev-parse HEAD^2)" = "$(git rev-parse legacy-import)"
+    description: HEAD is a merge commit whose second parent is legacy-import
+  - type: script_passes
+    script: git diff --quiet HEAD^1 HEAD
+    description: The merge brought in no content (tree equals the previous main)
+  - type: script_passes
+    script: 'test "$(git log -1 --format=%s HEAD^1)" = "Second issue: expand Salt, add Tide" && ! test -e poems/old-salt-draft.md && grep -q ''gives back the rest'' poems/salt.md'
+    description: main still has Ines's work and none of the old drafts
+  - type: script_passes
+    script: test -z "$(git branch --no-merged main)"
+    description: No branch is left unmerged
+  - type: is_clean
+    description: Working tree is clean

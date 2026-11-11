@@ -6,43 +6,82 @@ difficulty: intermediate
 xp: 250
 expected_time: 10m
 concepts:
-- "markers were accidentally committed \u2014 fix"
-common_mistakes:
-- "Running commands related to markers were accidentally committed \u2014 fix without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - markers committed by accident
+  - git grep for markers
+  - fixing forward, not rewriting history
+description: |
+  A newsletter signup service is crashing on start-up with a Python syntax error in `settings.py`. Someone
+  "resolved" a merge of `feature/cache` by staging the file while the conflict markers were still inside it,
+  and the merge commit was made. A later commit by a colleague then added a `LOG_LEVEL` line on top of the broken file.
+  The branch has been shared with the team, so history must not be rewritten. The operations notes in the repository
+  say which cache duration is the correct one.
+objective: |
+  Fix `settings.py` with a **new commit** on top of `main`: no conflict markers anywhere, `CACHE_TTL` set to the value
+  required by the operations notes in `docs/ops.md`, the `ALLOWED_HOSTS`, `DEBUG` and `LOG_LEVEL` lines kept, and the file
+  must be valid Python. The old commits must stay in the history (no rewriting).
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git grep -n '<<<<<<<'` finds the markers. Look at the whole conflict region and at `git log --oneline` to see how it happened."
+  - "Which value is right is not decided by `HEAD` or the branch: read `docs/ops.md`."
+  - "Edit `settings.py`, check it with `python3 -c 'import ast; ast.parse(open(\"settings.py\").read())'`, then `git commit -am \"Fix leftover conflict markers in settings.py\"`."
+guide: |
+  ## 1. Find the markers
+  ```bash
+  git grep -n -e '^<<<<<<<' -e '^=======$' -e '^>>>>>>>'
+  git log --oneline --graph
+  ```
+  The merge commit `Merge feature/cache` carries the markers, and a later commit sits on top.
 
+  ## 2. Decide the content
+  ```bash
+  cat docs/ops.md
+  ```
+  The CDN contract fixes the TTL at 300 seconds; one side of the old conflict (60) is wrong, the other happens to be right.
 
-  **Conflict Markers Committed**
+  ## 3. Fix forward
+  Edit `settings.py`: keep one `CACHE_TTL` line with the right value and keep `LOG_LEVEL`.
+  ```bash
+  python3 -c 'import ast; ast.parse(open("settings.py").read())'
+  git commit -am "Fix leftover conflict markers in settings.py"
+  ```
+  Because others already have the broken commits, you correct them with a new commit rather than rewriting history.
+debrief: |
+  ## What happened
+  Git does not stop you from committing marker lines: after `git add` the file counts as resolved whatever it
+  contains. The broken state then became part of the shared history. Fixing it forward keeps everyone's clones
+  compatible.
 
+  ## Why it matters
+  Markers in committed code break builds, and the error appears far from the cause. Prevent it with `git diff --check`
+  before committing, a pre-commit hook that greps for markers, and CI that compiles the code.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Related
+  - `git diff --check` warns about leftover conflict markers and whitespace errors.
+  - `git show <merge>` (or `git diff-tree --cc`) shows how a merge was resolved.
+  - Rewriting shared history (`rebase`, `push --force`) is a last resort.
 
-  '
+  ## Pitfalls
+  - Deleting only the `<<<<<<<` line but not `=======` and `>>>>>>>`.
+  - Picking a TTL value by guessing instead of checking the documented requirement.
+common_mistakes:
+  - Keeping both `CACHE_TTL` lines, with the wrong one last.
+  - Using `git reset --hard` or `git rebase` to remove the commits instead of adding a fix commit.
+  - Fixing the markers but dropping the `LOG_LEVEL` line added by the colleague.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: no_conflict_markers
+    description: No conflict markers in any tracked file
+  - type: script_passes
+    script: |
+      ttl=$(grep -o 'TTL at [0-9]*' docs/ops.md | grep -o '[0-9]*')
+      test "$(grep -c '^CACHE_TTL' settings.py)" = "1" && grep -qx "CACHE_TTL = $ttl" settings.py
+    description: CACHE_TTL has the value required by docs/ops.md
+  - type: script_passes
+    script: grep -qx 'DEBUG = False' settings.py && grep -q 'ALLOWED_HOSTS = \["brief.example"\]' settings.py && grep -qx 'LOG_LEVEL = "INFO"' settings.py
+    description: The other settings are intact
+  - type: script_passes
+    script: python3 -c 'import ast; ast.parse(open("settings.py").read())'
+    description: settings.py is valid Python
+  - type: script_passes
+    script: test "$(git rev-list --count HEAD)" = "6" && test "$(git log -1 --format=%s HEAD~1)" = "Set log level to INFO" && git merge-base --is-ancestor "$(git log --grep='^Merge feature/cache' --format=%H -1)" HEAD
+    description: The fix is a new commit on top of the old history
+  - type: is_clean
+    description: Working tree is clean

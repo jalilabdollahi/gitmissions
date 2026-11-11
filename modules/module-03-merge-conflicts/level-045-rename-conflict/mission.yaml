@@ -4,46 +4,90 @@ level: level-045-rename-conflict
 order: 45
 difficulty: intermediate
 xp: 260
-expected_time: 10m
+expected_time: 12m
 concepts:
-- one side renames
-- other modifies
-common_mistakes:
-- Running commands related to one side renames, other modifies without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - rename/rename conflict
+  - git rm of the unwanted name
+  - rename detection
+description: |
+  A taco truck keeps its menu in Git. Carlos renamed `menu.txt` to `menu-lunch.txt` on `main` and raised the beef taco
+  price. Dana, on `dinner-service`, renamed the same file to `menu-dinner.txt` and added a fish taco. Git recognises
+  both renames and reports `rename/rename`: one file was renamed to two different names. The truck has decided
+  to serve only dinner from now on, so the single menu file must be called `menu-dinner.txt` and it must contain
+  both people's edits.
+objective: |
+  Merge `dinner-service` into `main` so that only `menu-dinner.txt` exists (no `menu.txt`, no `menu-lunch.txt`,
+  neither in the working tree nor in the index), containing the new beef taco price `4.75` from Carlos and the fish
+  taco line from Dana. Complete the merge commit.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows the file under three names. Inspect both `menu-lunch.txt` and `menu-dinner.txt`: Git already merged the content edits into each of them."
+  - "Choose the final name, delete the other names with `git rm`, and `git add` the file you keep."
+  - "`git rm menu-lunch.txt`, `git add menu-dinner.txt`, make sure `menu.txt` is gone too (`git rm --ignore-unmatch menu.txt`), then `git commit`."
+guide: |
+  ## 1. Merge
+  ```bash
+  git merge dinner-service
+  git status
+  ```
+  Git lists `menu-lunch.txt`, `menu-dinner.txt` and the old `menu.txt` in different unmerged states.
 
+  ## 2. Compare
+  ```bash
+  cat menu-dinner.txt
+  cat menu-lunch.txt
+  ```
+  Both contain the combined edits, since the content did not conflict; only the **name** did.
 
-  **Rename Conflict**
+  ## 3. Pick the name
+  ```bash
+  git rm menu-lunch.txt
+  git add menu-dinner.txt
+  git status --short
+  ```
+  The old name `menu.txt` may still appear as deleted on both sides; make sure it is not left over.
 
+  ## 4. Commit
+  ```bash
+  git commit -m "Merge dinner-service: single menu-dinner.txt"
+  ```
+debrief: |
+  ## What happened
+  Git tracks content, not renames. During a merge it detects renames by similarity, and when one source
+  file was renamed to two different targets it cannot choose a name. It merged the content into both targets and
+  left the naming decision to you.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Why it matters
+  Reorganising files in parallel is one of the most confusing conflict types. The check is always: which path
+  should exist at the end, and did every edit of the content survive in it?
 
-  '
+  ## Related
+  - `git merge -X find-renames=<n>` tunes similarity detection.
+  - `git log --follow -- menu-dinner.txt` follows a file across renames.
+  - If only one side renames and the other edits, Git applies the edit to the renamed file automatically.
+
+  ## Pitfalls
+  - Keeping both files leaves two diverging copies of the same data.
+  - Renaming by copy-and-delete in an editor defeats rename detection and creates worse conflicts.
+common_mistakes:
+  - Keeping `menu-lunch.txt` because it is on the current branch, contrary to the decision to serve only dinner.
+  - Leaving both menu files in the repository.
+  - Choosing a file name but then reverting one of the two content edits by taking a whole side.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor dinner-service HEAD
+    description: HEAD merges dinner-service
+  - type: script_passes
+    script: test "$(git ls-files | grep -c '^menu')" = "1" && git ls-files --error-unmatch menu-dinner.txt >/dev/null && ! test -e menu-lunch.txt && ! test -e menu.txt
+    description: menu-dinner.txt is the only menu file
+  - type: script_passes
+    script: grep -qx 'Beef taco 4.75' menu-dinner.txt && grep -qx 'Fish taco 5.50' menu-dinner.txt
+    description: menu-dinner.txt has Carlos's price and Dana's new item
+  - type: script_passes
+    script: grep -qx 'Churros 3.50' menu-dinner.txt && grep -qx 'Horchata 2.50' menu-dinner.txt
+    description: The rest of the menu is intact
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean
