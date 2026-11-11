@@ -4,33 +4,78 @@ level: level-153-delete-local-tag
 order: 153
 difficulty: intermediate
 xp: 220
-expected_time: 7m
+expected_time: 6m
 concepts:
-- '`git tag -d v0.9`'
-common_mistakes:
-- Running commands related to `git tag -d v0.9` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
-objective: Delete the local tag `v0.9`.
+  - git tag -d
+  - fixing a mistyped tag
+description: |
+  Right after cutting the 2.0 release of the ETL scheduler you notice the tag was typed `v2.0.o` (a letter "o" instead
+  of a zero). The packaging script that looks for `v2.0.0` finds nothing, and the typo tag must go. The tag has
+  not been pushed anywhere yet, so you can fix it locally. Careful: there is a correct `v1.9.0` tag, and
+  the typo tag marks the commit "Move the nightly job...", not the last commit on the branch.
+objective: |
+  Make `v2.0.0` point to exactly the commit that the typo tag `v2.0.o` points to, then delete `v2.0.o`.
+  `v1.9.0` must remain untouched.
 hints:
-- Start with the Git command related to ``git tag -d v0.9``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag -d v0.9\n   ```"
-debrief: '## What Just Happened
+  - "A tag cannot be renamed. You create the correctly named one on the same commit and remove the wrong one."
+  - "`git tag -d <name>` deletes a local tag. The commit that the typo tag points to can be written as `v2.0.o^{commit}`."
+  - "`git tag -a v2.0.0 v2.0.o^{commit} -m \"Release 2.0.0\"` and then `git tag -d v2.0.o`."
+guide: |
+  ## Renaming a tag the safe way
 
+  First see where the typo tag points (it is *not* HEAD):
 
-  **Delete a Local Tag**
+  ```bash
+  git log --oneline --decorate
+  ```
 
+  Create the right tag on that same commit, using the old tag as the target:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git tag -a v2.0.0 'v2.0.o^{commit}' -m "Release 2.0.0"
+  ```
 
-  '
+  The `^{commit}` suffix peels the annotated tag to the commit it points to, so that you tag the commit and not the old tag
+  object. Delete the wrong tag:
+
+  ```bash
+  git tag -d v2.0.o
+  ```
+
+  Check the result with `git tag` and `git log --oneline --decorate`.
+debrief: |
+  ## What you learned
+
+  `git tag -d <name>` removes a tag from your **local** repository only; the tagged commit and history are unaffected. There is no
+  rename command for tags, so a fix is "create new, delete old". Doing it *before* pushing is easy. After a tag
+  has been published, deleting it locally is not enough, which is the subject of the next level.
+
+  ## Real-world use
+
+  Typos in tag names, tags put on the wrong commit and aborted releases are all fixed like this. Because the old
+  tag object can be unreachable afterwards, it will be garbage collected eventually.
+
+  ## Pitfalls
+
+  - Always delete by exact name; there is no glob support in `git tag -d` (use a shell loop for patterns).
+  - `git tag -f v2.0.0 <commit>` moves an existing tag, which should never be done with published tags.
+  - Creating the new tag *without* a target puts it on HEAD, the commit after the real release.
+common_mistakes:
+  - "Running `git tag -a v2.0.0` without a target, which tags HEAD (the weekly compaction commit) instead of the release commit."
+  - "Deleting the typo tag first and then having to look up which commit it pointed to in the reflog."
+  - "Deleting `v1.9.0` by accident through a too-wide pattern."
 validators:
-- type: tag_not_exists
-  tag: v0.9
-  description: Tag v0.9 no longer exists
+  - type: tag_not_exists
+    tag: v2.0.o
+    description: the typo tag v2.0.o is deleted
+  - type: script_passes
+    description: v2.0.0 exists and points to the commit that the typo tag used to mark
+    script: |
+      test "$(git rev-parse 'v2.0.0^{commit}')" = "$(cat .git/gm-target)"
+      test "$(git rev-parse 'v2.0.0^{commit}')" != "$(git rev-parse HEAD)"
+  - type: script_passes
+    description: v1.9.0 is intact
+    script: |
+      test "$(git cat-file -t v1.9.0)" = tag
+      test "$(git tag | wc -l | tr -d ' ')" = 2
+

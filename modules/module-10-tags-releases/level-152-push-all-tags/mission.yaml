@@ -4,37 +4,84 @@ level: level-152-push-all-tags
 order: 152
 difficulty: intermediate
 xp: 220
-expected_time: 7m
+expected_time: 6m
 concepts:
-- '`git push --tags`'
-common_mistakes:
-- Running commands related to `git push --tags` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
+  - git push --tags
+  - git ls-remote --tags
 repo_path: local
-objective: Create tags `v1.0` and `v1.1`, then push all tags.
+description: |
+  The report-builder suite is released as several components, each with its own tag: `rb-1.1.0`, `chart-0.4.0` and
+  `pdf-0.2.0` were created locally this week. Only `rb-1.0.0` and the `main` branch are on `origin`. Release notes
+  are due, and the documentation site generator lists releases by reading the tags **on the remote**, so right now it shows
+  only the very first release.
+objective: |
+  Make every local tag available on `origin`, so that `rb-1.0.0`, `rb-1.1.0`, `chart-0.4.0` and `pdf-0.2.0` all exist there and each points to the
+  same commit as locally. Do not change or delete any tag.
 hints:
-- Start with the Git command related to ``git push --tags``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag v1.0\n   ```\n\n2.\n \
-  \  ```bash\n   git tag v1.1\n   ```\n\n3.\n   ```bash\n   git push origin --tags\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "Compare `git tag` with `git ls-remote --tags origin`. Three tags are missing on the server."
+  - "You could push them one by one, but there is a flag that pushes all tags at once."
+  - "`git push origin --tags`, then check again with `git ls-remote --tags origin`."
+guide: |
+  ## Everything at once
 
+  Spot the difference:
 
-  **Push All Tags**
+  ```bash
+  git tag
+  git ls-remote --tags origin
+  ```
 
+  The remote has one tag. To publish all local tags in one command:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git push origin --tags
+  ```
 
-  '
+  The output lists three `[new tag]` lines and skips `rb-1.0.0`, which the remote already has. Confirm:
+
+  ```bash
+  git ls-remote --tags origin
+  ```
+
+  Notice that annotated tags appear twice in the listing: once for the tag object and once, with a `^{}` suffix, for the commit it points to.
+debrief: |
+  ## What you learned
+
+  `git push --tags` sends all refs under `refs/tags/` that the remote lacks, lightweight and annotated alike.
+  Existing identical tags are skipped. A tag that exists on both sides with a different target is rejected, which
+  protects published releases from being moved.
+
+  ## Real-world use
+
+  A bulk publish after a release train, or after adding the remote to an old repository. A more selective
+  alternative is `git push --follow-tags`, which sends only *annotated* tags that point into the history you are pushing:
+  good default for teams that tag with `-a` and keep lightweight tags private.
+
+  ## Pitfalls
+
+  - `--tags` includes scratch tags you may have forgotten about, so review `git tag` first.
+  - You cannot combine `--tags` with a branch refspec in one push; run two commands or use `--follow-tags`.
+  - You can set `push.followTags=true` to make that behaviour the default.
+common_mistakes:
+  - "Pushing only the latest tag, so two of the three missing tags stay unpublished."
+  - "Running `git push` and expecting tags, which are never included."
+  - "Deleting and recreating tags locally, which would give them new hashes and fail on the remote."
 validators:
-- type: script_passes
-  description: Remote tags exist
-  script: git -C ../remote.git rev-parse --verify refs/tags/v1.0 >/dev/null && git
-    -C ../remote.git rev-parse --verify refs/tags/v1.1 >/dev/null
+  - type: script_passes
+    description: every local tag exists on origin
+    script: |
+      for t in $(git tag); do
+        test -n "$(git ls-remote --tags origin "refs/tags/$t")"
+      done
+      test "$(git tag | wc -l | tr -d ' ')" = 4
+  - type: script_passes
+    description: each remote tag points to the same object as the local one
+    script: |
+      for t in $(git tag); do
+        test "$(git ls-remote --tags origin "refs/tags/$t" | cut -f1)" = "$(git rev-parse "refs/tags/$t")"
+      done
+  - type: script_passes
+    description: the lightweight tag chart-0.4.0 was published too
+    script: |
+      test "$(git ls-remote --tags origin refs/tags/chart-0.4.0 | cut -f1)" = "$(git rev-parse HEAD~1)"
+

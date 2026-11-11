@@ -4,33 +4,81 @@ level: level-148-tag-past-commit
 order: 148
 difficulty: intermediate
 xp: 220
-expected_time: 7m
+expected_time: 8m
 concepts:
-- '`git tag v0.9 <hash>`'
-common_mistakes:
-- Running commands related to `git tag v0.9 <hash>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
-objective: Tag `HEAD~1` as `v0.9`.
+  - tagging an older commit
+  - git tag <name> <commit>
+  - git log -S
+description: |
+  The customs-tariff lookup service shipped as "2.1.0" two weeks ago, but nobody created the tag in git. The deploy
+  pipeline now needs `v2.1.0` and it must mark the commit that **really was** the 2.1.0 release: the one where the
+  `VERSION` file was changed to `2.1.0`. Several commits followed (reordering, changelog, a new chapter), and the
+  commit message of the release itself is "Wrap up sprint 14", with no version in it. Tagging HEAD would be wrong.
+objective: |
+  Create the annotated tag `v2.1.0` (any non-empty message) on the commit that changed `VERSION` to `2.1.0`. HEAD and everything after must not be tagged.
 hints:
-- Start with the Git command related to ``git tag v0.9 <hash>``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag v0.9 HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "You can tag any commit, not only HEAD. First you have to find the right one. The commit message will not help, but the file's history will."
+  - "`git log -- VERSION` lists commits that touched the file, and `-p` or `-S2.1.0` shows which one introduced that string."
+  - "`git log --oneline -S2.1.0 -- VERSION` to get the hash, then `git tag -a v2.1.0 <hash> -m \"Release 2.1.0\"`."
+guide: |
+  ## Tagging the past
 
+  Find the commit that bumped the version file:
 
-  **Tag a Past Commit**
+  ```bash
+  git log --oneline -- VERSION
+  git log --oneline -S'2.1.0' -- VERSION
+  ```
 
+  The second command prints one commit, "Wrap up sprint 14". Note that "Write changelog for 2.1.0" is a
+  decoy: it mentions the version but did not change `VERSION`. Confirm with:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git show <hash> -- VERSION
+  ```
 
-  '
+  Tag it by giving the commit as the last argument:
+
+  ```bash
+  git tag -a v2.1.0 <hash> -m "Release 2.1.0"
+  git log --oneline --decorate
+  ```
+
+  The tag label must be on "Wrap up sprint 14", three commits behind HEAD.
+debrief: |
+  ## What you learned
+
+  `git tag [-a] <name> <commit>` places a tag anywhere in history, even long after the fact. The commit is
+  identified by its content, so the tag stays correct however the branch moves afterwards. Combining it with
+  `git log -S` or `git log -- <file>` is the way to find the right commit when messages are unhelpful.
+
+  ## Real-world use
+
+  Retroactive tagging of releases when a team starts adopting tags, or when a release was cut manually. The
+  tag date will be today's, but the tagged commit carries the real one; use `GIT_COMMITTER_DATE` to backdate the tag object if needed.
+
+  ## Pitfalls
+
+  - Tagging the changelog commit would put the *changelog*, but not necessarily the same code, into the release.
+  - Tags on rewritten (rebased) commits point to the old versions of those commits.
+  - Verify with `git show v2.1.0:VERSION`.
+common_mistakes:
+  - "Tagging HEAD, which includes a changelog and another chapter that were not in the release."
+  - "Tagging the commit titled 'Write changelog for 2.1.0' because its message mentions the version."
+  - "Writing the tag with the hash at the front (`git tag <hash> v2.1.0`), which swaps name and target."
 validators:
-- type: tag_exists
-  tag: v0.9
-  description: Tag v0.9 exists
+  - type: tag_is_annotated
+    tag: v2.1.0
+    description: v2.1.0 exists and is annotated
+  - type: script_passes
+    description: the tag points to the commit that changed VERSION to 2.1.0
+    script: |
+      want=$(git log --reverse --format=%H -S'2.1.0' -- VERSION | head -1)
+      test "$(git rev-parse 'v2.1.0^{commit}')" = "$want"
+      test "$(git show v2.1.0:VERSION)" = 2.1.0
+  - type: script_passes
+    description: HEAD is not tagged and only one tag exists
+    script: |
+      test "$(git tag | wc -l | tr -d ' ')" = 1
+      test "$(git rev-parse 'v2.1.0^{commit}')" != "$(git rev-parse HEAD)"
+

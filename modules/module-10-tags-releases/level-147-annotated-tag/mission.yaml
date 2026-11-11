@@ -4,37 +4,76 @@ level: level-147-annotated-tag
 order: 147
 difficulty: intermediate
 xp: 220
-expected_time: 7m
+expected_time: 5m
 concepts:
-- '`git tag -a v1.0 -m "message"`'
-common_mistakes:
-- Running commands related to `git tag -a v1.0 -m "message"` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
-objective: Create an annotated tag named `v1.0` with the message `First release`.
+  - git tag -a
+  - annotated tags
+description: |
+  After weeks of work the price-feed SDK is ready for its first stable release. The release policy says that
+  every public version must be marked with an **annotated** tag: it records who released it, when, and why, and it
+  is what the package publishing job reads. The commit to release is the current HEAD, "Document the stable API".
+objective: |
+  Create the annotated tag `v1.0.0` on HEAD with the message `Release 1.0.0: first stable price feed SDK`.
 hints:
-- Start with the Git command related to ``git tag -a v1.0 -m "message"``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag -a v1.0 -m \"First release\"\
-  \n   ```"
-debrief: '## What Just Happened
+  - "A tag with a message is called annotated; it is a real object in the repository, not just a name."
+  - "The option `-a` creates an annotated tag, and `-m` supplies the message just like in `git commit`."
+  - "`git tag -a v1.0.0 -m \"Release 1.0.0: first stable price feed SDK\"`"
+guide: |
+  ## Tag with a message
 
+  Confirm which commit you are releasing:
 
-  **Annotated Tag**
+  ```bash
+  git log --oneline -1
+  ```
 
+  Create the annotated tag:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git tag -a v1.0.0 -m "Release 1.0.0: first stable price feed SDK"
+  ```
 
-  '
+  Look at what git stored:
+
+  ```bash
+  git show v1.0.0
+  git cat-file -t v1.0.0
+  ```
+
+  The output starts with the tag object (tagger, date, message) followed by the commit it points to. `cat-file -t` says
+  `tag`, whereas a lightweight tag would print `commit`.
+debrief: |
+  ## What you learned
+
+  An annotated tag is its own object with a tagger, a date, a message and optionally a GPG signature (`-s`). It
+  points to a commit. This metadata is what `git describe`, release tooling and audits use. Without `-m`, `git tag -a`
+  opens your editor for the message.
+
+  ## Real-world use
+
+  Release engineering: tags `v1.0.0` trigger CI pipelines that build and publish packages, and the message
+  becomes part of the release notes.
+
+  ## Pitfalls
+
+  - A typo in the message cannot be edited easily; delete and recreate the tag (before pushing it!).
+  - Annotated tags have a tagger identity from your git config, so set `user.name` and `user.email`.
+  - Both kinds of tags look the same in `git tag`; use `git cat-file -t` or `git show` to tell them apart.
+common_mistakes:
+  - "Creating a lightweight tag with `git tag v1.0.0`; it has no message and fails the annotated requirement."
+  - "Writing the message differently from the one requested."
+  - "Putting the version in the message but naming the tag `1.0.0` without the `v` prefix."
 validators:
-- type: tag_exists
-  tag: v1.0
-  description: Tag v1.0 exists
-- type: script_passes
-  description: Tag is annotated
-  script: git for-each-ref refs/tags/v1.0 --format='%(objecttype)' | grep -q tag
+  - type: tag_is_annotated
+    tag: v1.0.0
+    description: v1.0.0 is an annotated tag
+  - type: script_passes
+    description: the tag message is as requested and the tag points at HEAD
+    script: |
+      test "$(git tag -l v1.0.0 --format='%(contents:subject)')" = "Release 1.0.0: first stable price feed SDK"
+      test "$(git rev-parse 'v1.0.0^{commit}')" = "$(git rev-parse HEAD)"
+  - type: script_passes
+    description: the tag records a tagger
+    script: |
+      test -n "$(git for-each-ref --format='%(taggername)' refs/tags/v1.0.0)"
+
