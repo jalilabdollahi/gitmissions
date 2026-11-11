@@ -4,50 +4,68 @@ level: level-016-log-filter-by-date
 order: 16
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git log --since= --until=`'
-common_mistakes:
-- Running commands related to `git log --since= --until=` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log
-  --since= --until=``.
-objective: 'Inspect the repository history and create `date-report.txt` containing
-  exactly:
-
-
-  `matches=2`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --since / --until
+  - date ranges
+description: |
+  The Green Thumbs gardening club publishes a newsletter, tracked in Git. The treasurer needs the list of
+  everything that was published in March 2025 for the annual report. There are entries on the very last evening
+  of February and just after midnight on 1 April, which must not be counted. Reading dates off the log by eye
+  is error-prone, so let Git filter by date.
+objective: |
+  Write the full hashes of all commits made in March 2025 (from 1 March 00:00 up to, but not including, 1 April 00:00)
+  into `march-commits.txt`, one per line, newest first. Do not change the history.
 hints:
-- Start with the Git command related to ``git log --since= --until=``.
-- Write the exact expected answer into `date-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > date-report.txt <<'EOF'\n\
-  matches=2\nEOF\n   ```\n\n2.\n   ```bash\n   git add date-report.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --format='%h %ad %s'` shows the date next to each commit so you can see where the edges are."
+  - "`--since` and `--until` (also `--after`/`--before`) restrict the range by commit date. `--format=%H` prints full hashes."
+  - 'Write the time as well as the date: `git log --since="2025-03-01 00:00" --until="2025-04-01 00:00" --format=%H > march-commits.txt`'
 
+guide: |
+  ## 1. See the dates
+  ```bash
+  git log --format='%h %ad %s' --date=short
+  ```
+  Notice the two commits close to the month boundary.
 
-  **Filter Log by Date**
+  ## 2. Let Git filter
+  ```bash
+  git log --since="2025-03-01 00:00" --until="2025-04-01 00:00" --format=%H
+  ```
+  Give the time too (`00:00`). A bare date such as `2025-04-01` is completed with the *current* time of day,
+  which would let the 00:30 commit of 1 April slip into the range depending on when you run the command.
 
+  ## 3. Save
+  ```bash
+  git log --since="2025-03-01 00:00" --until="2025-04-01 00:00" --format=%H > march-commits.txt
+  ```
+debrief: |
+  ## What happened
+  `--since` and `--until` compare against the **committer date** of each commit. Git understands many
+  date styles: `2025-03-01`, `2.weeks.ago`, `yesterday`, `"last friday"`.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Why it matters
+  Monthly reports, "what changed since the last release" and incident reviews are all time-window questions.
 
-  '
+  ## Related
+  - `--author-date-order` and `--date-order` change how commits are sorted.
+  - `git log --since=2.weeks --oneline` for relative windows.
+  - Combine with `--author` and `--grep`; the filters add up.
+
+  ## Pitfalls
+  - `--until=2025-03-31` would exclude commits made later that day. Use the first moment after the range instead.
+  - Dates are interpreted in your local timezone, and commit dates carry their own timezone.
+common_mistakes:
+  - Using `--until=2025-03-31`, which drops the 31 March commit made at noon.
+  - Counting by eye and including the late-February or the early-April commit.
+  - Writing short hashes or subjects instead of full hashes.
 validators:
-- type: file_content_equals
-  path: date-report.txt
-  text: matches=2
-  description: date-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test -s march-commits.txt && test "$(cat march-commits.txt)" = "$(git log --since="2025-03-01 00:00" --until="2025-04-01 00:00" --format=%H)"
+    description: march-commits.txt has the full hashes of the March commits, newest first
+  - type: script_passes
+    script: test "$(wc -l < march-commits.txt | tr -d ' ')" = "4"
+    description: Exactly the four March commits are listed
+  - type: commit_count_eq
+    count: 8
+    description: History is unchanged

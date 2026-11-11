@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -e
+git commit -m "Round brew times to whole seconds" \
+  -m "Multiplying minutes by 60.0 produced floating point noise such as
+149.99999999999997 seconds, which the countdown displayed as 149.
 
-git add CHANGELOG.md
-git commit -m "docs: add changelog" -m "Explains the first release"
+Round the result so the timer always starts from a whole number.
+
+Fixes #42"

@@ -6,38 +6,71 @@ difficulty: beginner
 xp: 120
 expected_time: 5m
 concepts:
-- '`git commit --allow-empty`'
-common_mistakes:
-- Running commands related to `git commit --allow-empty` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Operations wants a marker commit even though no files changed.
-objective: 'Create an empty commit with the message `chore: mark release checkpoint`.'
+  - git commit --allow-empty
+  - commits without changes
+description: |
+  The Lakeside Cafe website is rebuilt by a pipeline that runs on every new commit to `main`
+  (see `ci/pipeline.txt`). The hosting provider had an outage during the last deploy, so the live site still
+  shows the old text. Nothing in the code needs to change; Hugo just needs to make the pipeline run again.
+  There is an unfinished draft post lying around that must not be published yet.
+objective: |
+  Create a new commit on `main` with the message `Trigger redeploy` that contains **no file changes**
+  (its tree must be identical to the previous commit's tree). The unfinished `draft-post.md` must stay untracked.
 hints:
-- Start with the Git command related to ``git commit --allow-empty``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git commit --allow-empty -m \"\
-  chore: mark release checkpoint\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows nothing to commit among tracked files, and a normal `git commit` refuses to run when nothing is staged."
+  - "`git commit` has a flag that allows a commit without changes."
+  - "`git commit --allow-empty -m \"Trigger redeploy\"`"
+guide: |
+  ## 1. Try the normal way
+  ```bash
+  git commit -m "Trigger redeploy"
+  ```
+  Git answers "nothing to commit". That is a safety net against pointless commits.
 
+  ## 2. Say that you mean it
+  ```bash
+  git commit --allow-empty -m "Trigger redeploy"
+  ```
+  The commit contains the same snapshot as its parent but is a new event in history with its own hash and
+  timestamp, which is all a pipeline needs.
 
-  **Empty Commit**
+  ## 3. Verify
+  ```bash
+  git show --stat
+  git status --short
+  ```
+  No files listed in the commit, and the draft is still untracked (`??`).
+debrief: |
+  ## What happened
+  A commit is a snapshot plus metadata. `--allow-empty` creates one whose snapshot equals its parent's.
+  Because CI systems, deployment hooks and webhooks react to new commits, it effectively acts as a trigger.
 
+  ## Why it matters
+  Empty commits are used to re-run CI after a flaky failure, to mark a milestone ("Start of release 2.0"),
+  or to create a first commit for a branch before any content exists.
 
-  This level focused on `git commit --allow-empty`.
+  ## Related
+  - `git commit --allow-empty-message` allows an empty message (rarely a good idea).
+  - Many CI systems also support manual "re-run" buttons, which avoid polluting history.
+  - `git tag` is the better tool for marking milestones.
 
-  '
+  ## Pitfalls
+  - Overusing empty commits clutters the log.
+  - Do not stage the draft just to make the commit "non-empty".
+common_mistakes:
+  - Adding the draft file (`git add .`) so the commit is no longer empty and publishes unfinished work.
+  - Appending a blank line to a file to avoid the error, which changes the tree.
+  - Forgetting `-m`, which opens an editor.
 validators:
-- type: commit_message_contains
-  text: 'chore: mark release checkpoint'
-  description: Empty commit message is correct
-- type: commit_count_eq
-  branch: HEAD
-  count: 2
-  description: A new commit was created
-- type: is_clean
-  description: Working tree is clean
+  - type: commit_count_eq
+    count: 3
+    description: One new commit was created
+  - type: commit_message_equals
+    text: Trigger redeploy
+    description: Latest commit message is "Trigger redeploy"
+  - type: script_passes
+    script: test "$(git rev-parse HEAD^{tree})" = "$(git rev-parse HEAD~1^{tree})"
+    description: The commit changes no files
+  - type: script_passes
+    script: test "$(git ls-files --others --exclude-standard)" = "draft-post.md"
+    description: draft-post.md is still untracked

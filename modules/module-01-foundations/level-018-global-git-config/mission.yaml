@@ -6,37 +6,83 @@ difficulty: beginner
 xp: 100
 expected_time: 5m
 concepts:
-- '`git config --global user.name/email`'
-common_mistakes:
-- Running commands related to `git config --global user.name/email` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This sandbox repo has no identity configured yet.
-objective: Configure `user.name` as `Git Missions` and `user.email` as `missions@example.com`
-  for this repository.
+  - git config user.name / user.email
+  - config scopes (local, global)
+  - author of a commit
+description: |
+  Sam is setting up a new laptop. The family's emergency-contact sheet lives in a Git repository, and the
+  vet's phone number has changed; the edit is already staged. But Git on this machine has a placeholder
+  identity ("Player"), so a commit made now would show the wrong author for the whole family to see.
+  In real life you would set the identity once with `--global`; this sandbox cannot touch your real global
+  configuration, so you will set it for this repository only.
+objective: |
+  Configure the repository's identity as `Sam Rivera` with the email `sam@riverafamily.example`
+  (stored in the repository's own config), then commit the staged change with the message
+  `Update vet phone number`. The new commit must be authored and committed by Sam Rivera
+  `<sam@riverafamily.example>`.
 hints:
-- Start with the Git command related to ``git config --global user.name/email``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git config user.name \"Git Missions\"\
-  \n   ```\n\n2.\n   ```bash\n   git config user.email \"missions@example.com\"\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "`git config --list --show-origin` shows every setting and which file it comes from; look for user.name."
+  - "`git config user.name \"...\"` and `git config user.email \"...\"` write to the repository's config (without `--global`)."
+  - Set both values first, then run `git commit -m "Update vet phone number"`. Check with `git log -1 --format='%an <%ae>'`.
+guide: |
+  ## 1. See the current identity
+  ```bash
+  git config user.name
+  git config --show-origin user.email
+  ```
+  The origin column tells you which file the value comes from (`.git/config`, `~/.gitconfig`, ...).
 
+  ## 2. Set the identity
+  ```bash
+  git config user.name "Sam Rivera"
+  git config user.email "sam@riverafamily.example"
+  ```
+  Without a flag this writes to `.git/config`, so it applies to this repository only. On your own machine you
+  would add `--global` to write `~/.gitconfig` instead.
 
-  **Configure Git Identity**
+  ## 3. Commit with the new identity
+  ```bash
+  git commit -m "Update vet phone number"
+  git log -1 --format='%an <%ae>'
+  ```
+debrief: |
+  ## What happened
+  Git reads configuration from three layers: system, global (`~/.gitconfig`) and local (`.git/config`).
+  Local overrides global, which overrides system. Each commit permanently records the name and email that were
+  active when it was created.
 
+  ## Why it matters
+  The identity is baked into the commit and cannot be changed without rewriting history. Setting it before your
+  first commit avoids "wrong email" attributions, and a local override lets you use a work address in one repo
+  and a personal one in another.
 
-  This level focused on `git config --global user.name/email`.
+  ## Related
+  - `git config --global user.name "Your Name"` once per machine.
+  - `git commit --amend --reset-author` fixes the author of the last commit.
+  - `git config --unset user.email` removes a setting.
 
-  '
+  ## Pitfalls
+  - Both name and email must be set; setting only one leaves a mixed identity.
+  - Changing the config does not alter commits that already exist.
+common_mistakes:
+  - Setting only user.name and forgetting user.email.
+  - Committing first and fixing the config afterwards, which leaves a commit with the wrong author.
+  - Typing the identity into the commit message instead of the config.
 validators:
-- type: script_passes
-  description: Repository user.name is configured
-  script: test "$(git config user.name)" = "Git Missions"
-- type: script_passes
-  description: Repository user.email is configured
-  script: test "$(git config user.email)" = "missions@example.com"
+  - type: config_equals
+    key: user.name
+    value: Sam Rivera
+    description: user.name is Sam Rivera
+  - type: config_equals
+    key: user.email
+    value: sam@riverafamily.example
+    description: user.email is sam@riverafamily.example
+  - type: commit_message_equals
+    text: Update vet phone number
+    description: Latest commit message is "Update vet phone number"
+  - type: script_passes
+    script: test "$(git log -1 --format='%an <%ae> | %cn <%ce>')" = "Sam Rivera <sam@riverafamily.example> | Sam Rivera <sam@riverafamily.example>"
+    description: The new commit is authored and committed by Sam Rivera
+  - type: commit_count_eq
+    count: 2
+    description: The repository has two commits

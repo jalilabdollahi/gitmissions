@@ -4,43 +4,79 @@ level: level-008-amend-last-commit
 order: 8
 difficulty: beginner
 xp: 120
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git commit --amend`'
-common_mistakes:
-- Running commands related to `git commit --amend` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The most recent commit has the wrong message and is missing a release
-  note.
-objective: 'Amend the latest commit so the message contains `docs: release notes`
-  and `notes.md` contains `v1.0 ready`.'
+  - git commit --amend
+  - rewriting the last commit
+description: |
+  Kofi maintains a tiny command-line greeting tool. He just committed a new feature, but looking at the log he sees
+  two embarrassing problems: the message has a typo ("--shuot"), and he forgot to include the test file
+  `test_greet.py`, which is still sitting untracked in the folder. The commit has not been shared with anyone.
+objective: |
+  Fix the most recent commit instead of adding a new one. After you are done there must still be exactly
+  three commits; the latest has the message `Add --shout flag to greet` and contains both `greet.py` and
+  `test_greet.py`. The working tree must be clean.
 hints:
-- Start with the Git command related to ``git commit --amend``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf 'v1.0 ready\n' > notes.md\n\
-  \   ```\n\n2.\n   ```bash\n   git add notes.md\n   ```\n\n3.\n   ```bash\n   git\
-  \ commit --amend -m \"docs: release notes\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline` and `git status` show you both problems. The solution should not add a fourth commit."
+  - Stage the forgotten file, then change the last commit with the `--amend` flag of `git commit`.
+  - "`git add test_greet.py && git commit --amend -m \"Add --shout flag to greet\"`"
+guide: |
+  ## 1. Find out what is wrong
+  ```bash
+  git log --oneline
+  git status
+  ```
+  The subject has a typo and `test_greet.py` is untracked.
 
+  ## 2. Stage the missing file
+  ```bash
+  git add test_greet.py
+  ```
 
-  **Fix the Last Commit**
+  ## 3. Amend
+  ```bash
+  git commit --amend -m "Add --shout flag to greet"
+  ```
+  Git builds a new commit from the old commit plus whatever is staged, with the new message, and
+  moves `main` to it. The old commit is replaced, not added to.
 
+  ## 4. Verify
+  ```bash
+  git log --oneline
+  git show --stat
+  ```
+  Still three commits, and the last one lists two files.
+debrief: |
+  ## What happened
+  `--amend` does not edit a commit in place (commits are immutable). It creates a **new** commit with
+  the same parent, using the old content plus the staged changes, and moves the branch pointer to it.
+  The old commit becomes unreachable (but is still in the reflog for a while).
 
-  This level focused on `git commit --amend`.
+  ## Why it matters
+  It is the fastest way to fix a forgotten file or a typo before anyone else has your commit. A clean history
+  of intentional commits is easier to review and bisect.
 
-  '
+  ## Related
+  - `git commit --amend --no-edit` keeps the message and only adds staged changes.
+  - `git reflog` can recover the pre-amend commit if you change your mind.
+  - After pushing, amending requires a force push; avoid it on shared branches.
+
+  ## Pitfalls
+  - Amending a commit that others already pulled creates divergent history.
+  - A commit that is amended gets a new hash.
+common_mistakes:
+  - Making a second commit called "fix typo" instead of amending, which leaves four commits.
+  - Amending without staging `test_greet.py` first, so only the message is fixed.
+  - Amending the wrong commit after adding another commit on top.
 validators:
-- type: commit_message_contains
-  text: 'docs: release notes'
-  description: Latest commit message was amended
-- type: file_content_contains
-  path: notes.md
-  text: v1.0 ready
-  description: notes.md contains the release note
-- type: is_clean
-  description: Working tree is clean
+  - type: commit_count_eq
+    count: 3
+    description: Still exactly three commits
+  - type: commit_message_equals
+    text: Add --shout flag to greet
+    description: Last commit message is "Add --shout flag to greet"
+  - type: script_passes
+    script: test "$(git show --name-only --format= HEAD | sort | tr '\n' ' ')" = "greet.py test_greet.py "
+    description: The last commit contains greet.py and test_greet.py
+  - type: is_clean
+    description: Working tree is clean

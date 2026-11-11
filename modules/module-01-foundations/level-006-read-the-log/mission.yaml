@@ -4,51 +4,77 @@ level: level-006-read-the-log
 order: 6
 difficulty: beginner
 xp: 100
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git log`'
-- '`git log --oneline`'
-common_mistakes:
-- Running commands related to `git log`, `git log --oneline` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log`,
-  `git log --oneline``.
-objective: 'Inspect the repository history and create `log-report.txt` containing
-  exactly:
-
-
-  `latest=Add release notes`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log
+  - git log --oneline
+  - reading history order
+description: |
+  Three classmates wrote a biology report together in one Git repository, and now the teacher is asking
+  questions about how the work progressed. You were away that week, so you must reconstruct the story
+  from the history alone: who did what, in which order, and which commit started it all.
+objective: |
+  Create two small text files from what `git log` shows.
+  `third-latest.txt` must contain the subject (first line of the message) of the third most recent commit,
+  and nothing else. `first-commit.txt` must contain the abbreviated hash (7 characters, as `--oneline`
+  shows it) of the very first commit in the repository, and nothing else. Do not change any history.
 hints:
-- Start with the Git command related to ``git log`, `git log --oneline``.
-- Write the exact expected answer into `log-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > log-report.txt <<'EOF'\n\
-  latest=Add release notes\nEOF\n   ```\n\n2.\n   ```bash\n   git add log-report.txt\n\
-  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log` lists commits newest first. Count down from the top, so the most recent commit is number one."
+  - "`git log --oneline` prints `<short-hash> <subject>`; the oldest commit is the last line."
+  - Write one value with `git log --format=%s -1 HEAD~2 > third-latest.txt`, and look for the commit without a parent for the other.
+guide: |
+  ## 1. Read the history
+  ```bash
+  git log --oneline
+  ```
+  Each line is a short hash and a subject. The newest commit is at the top.
 
+  ## 2. Pick the third from the top
+  The top is `HEAD`, the one below it is `HEAD~1`, then `HEAD~2`. You can read its subject from the list or
+  ask Git directly:
+  ```bash
+  git log --format=%s -1 HEAD~2
+  ```
 
-  **Read the Log**
+  ## 3. Find the first commit
+  It is the last line of `git log --oneline`. Git can also find it for you:
+  ```bash
+  git log --max-parents=0 --format=%h
+  ```
 
+  ## 4. Save the answers
+  Redirect each output into its file with `>`.
+debrief: |
+  ## What happened
+  Each commit points to its parent, so `git log` starts at `HEAD` and walks backwards. The order is
+  by ancestry (newest first), not by author or file.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Why it matters
+  Reading history is how you answer "who changed this and when" before touching anything. `--oneline` makes
+  long histories scannable, and the `HEAD~N` notation lets you name a commit relative to the tip.
 
-  '
+  ## Related
+  - `git log -n 3` limits the count; `git log --reverse` shows oldest first.
+  - `git log --stat` adds the files changed per commit.
+  - `HEAD^` and `HEAD~1` mean the same thing for a normal commit.
+
+  ## Pitfalls
+  - The first commit is at the bottom, not the top. Many people mix up "first" and "latest".
+  - `git log` opens a pager; press `q` to leave it.
+common_mistakes:
+  - Counting from the oldest commit instead of the newest.
+  - Copying the whole `--oneline` line, hash included, into third-latest.txt.
+  - Using the full 40-character hash when 7 characters were requested.
 validators:
-- type: file_content_equals
-  path: log-report.txt
-  text: latest=Add release notes
-  description: log-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: file_exists
+    path: third-latest.txt
+    description: third-latest.txt exists
+  - type: script_passes
+    script: test "$(cat third-latest.txt)" = "$(git log --format=%s -1 HEAD~2)"
+    description: third-latest.txt contains the subject of the third most recent commit
+  - type: script_passes
+    script: test "$(cat first-commit.txt)" = "$(git log --max-parents=0 --format=%h)"
+    description: first-commit.txt contains the 7-character hash of the root commit
+  - type: commit_count_eq
+    count: 7
+    description: History has not been altered

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > compare-report.txt <<'EOF'
-difference=version line changed
-EOF
-git add compare-report.txt
-git commit -m "docs: add report"
+a=$(git log --format=%h --grep='Plan wedding')
+b=$(git log --format=%h --grep='Add Emil')
+git diff --name-only "$a" "$b" > changed-files.txt

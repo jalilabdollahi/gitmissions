@@ -4,50 +4,69 @@ level: level-017-log-search-by-message
 order: 17
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git log --grep=`'
-common_mistakes:
-- Running commands related to `git log --grep=` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log
-  --grep=``.
-objective: 'Inspect the repository history and create `grep-report.txt` containing
-  exactly:
-
-
-  `matches=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --grep
+  - case-insensitive search (-i)
+description: |
+  Dmitri maintains a shift-rota script for a volunteer fire brigade. The board asks a precise question:
+  "which commits dealt with overtime?" The history is nine commits long and the word shows up in different
+  spellings (capital letters, inside other sentences), and one commit about extra hours does not use the word
+  at all, so scanning with your eyes is unreliable.
+objective: |
+  Write the full hashes of every commit whose **message** mentions "overtime", regardless of upper or lower case,
+  into `overtime-commits.txt`, one per line, newest first. Commits that do not contain the word in their message
+  must not be listed. Do not change the history.
 hints:
-- Start with the Git command related to ``git log --grep=``.
-- Write the exact expected answer into `grep-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > grep-report.txt <<'EOF'\n\
-  matches=1\nEOF\n   ```\n\n2.\n   ```bash\n   git add grep-report.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline` gives the overview. Compare it with what a search finds."
+  - "`git log --grep=<text>` searches commit messages. By default it is case sensitive; `-i` changes that."
+  - "`git log -i --grep=overtime --format=%H > overtime-commits.txt`"
+guide: |
+  ## 1. Search messages
+  ```bash
+  git log --oneline --grep=overtime
+  ```
+  This finds only lower-case matches, i.e. misses "Overtime..." and "OVERTIME".
 
+  ## 2. Make it case-insensitive
+  ```bash
+  git log -i --oneline --grep=overtime
+  ```
+  Now three commits match. The "Extra hours calculation" commit changed the same topic but its message never
+  says "overtime", so a message search correctly leaves it out.
 
-  **Search Commits by Message**
+  ## 3. Save the full hashes
+  ```bash
+  git log -i --grep=overtime --format=%H > overtime-commits.txt
+  ```
+debrief: |
+  ## What happened
+  `--grep` filters commits by their message text. `-i` (`--regexp-ignore-case`) makes the match
+  case-insensitive.
 
+  ## Why it matters
+  Good commit messages make history searchable. When you know a keyword but not the date or author, `--grep`
+  finds the commit in seconds. For the code itself, use the pickaxe `-S`/`-G` (searches the diffs).
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Related
+  - Multiple `--grep` options match any of them; `--all-match` requires all.
+  - `--invert-grep` lists commits that do **not** match.
+  - `git log -S"word"` finds commits that add or remove the string in the code.
 
-  '
+  ## Pitfalls
+  - `--grep` searches the message, not the file contents or the author.
+  - Forgetting `-i` is the classic cause of "it is not in the log".
+common_mistakes:
+  - Searching without `-i` and missing two of the three commits.
+  - Using `-S overtime`, which searches the code changes instead of the messages.
+  - Including the "Extra hours calculation" commit because it is about the same topic.
 validators:
-- type: file_content_equals
-  path: grep-report.txt
-  text: matches=1
-  description: grep-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test -s overtime-commits.txt && test "$(cat overtime-commits.txt)" = "$(git log -i --grep=overtime --format=%H)"
+    description: overtime-commits.txt has exactly the commits whose message mentions overtime, newest first
+  - type: script_passes
+    script: test "$(wc -l < overtime-commits.txt | tr -d ' ')" = "3"
+    description: Three commits are listed
+  - type: commit_count_eq
+    count: 9
+    description: History is unchanged

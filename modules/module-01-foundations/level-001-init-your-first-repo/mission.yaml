@@ -4,50 +4,80 @@ level: level-001-init-your-first-repo
 order: 1
 difficulty: beginner
 xp: 100
-expected_time: 5m
+expected_time: 4m
 concepts:
-- '`git init`'
-- '`.git/` directory'
-common_mistakes:
-- Running commands related to `git init`, `.git/` directory without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
+  - git init
+  - the .git directory
+  - default branch name
 repo_path: project
-description: A small project folder exists, but it is not a Git repository yet.
-objective: Initialize Git in `project/`, stage every file, and create a commit with
-  the message `Initial commit`.
+description: |
+  Lena Park is an illustrator who has been editing her portfolio website by copying the folder to
+  "project-backup-final-v2" every time she changes something. A friend finally convinced her to use Git.
+  The site already exists in the `project/` folder (a couple of HTML pages, a stylesheet and an image
+  folder), but nothing is under version control yet. You are in that folder.
+objective: |
+  Turn the `project` folder into a Git repository whose first branch is called `main`
+  (use `git init -b main` so your own Git settings cannot change the name).
+  Do not commit anything yet; just make Git aware of the folder. Afterwards `git status` should
+  list her website files as untracked.
 hints:
-- Change into `project/` first.
-- Use `git init` to create the repository.
-- Stage everything with `git add .`.
-- Commit with `git commit -m "Initial commit"`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd project\n   ```\n\n2.\n   ```bash\n\
-  \   git init\n   ```\n\n3.\n   ```bash\n   git add .\n   ```\n\n4.\n   ```bash\n\
-  \   git commit -m \"Initial commit\"\n   ```"
-debrief: '## What Just Happened
+  - Run `ls -a` first. A repository is recognisable by one hidden folder; right now that folder is missing.
+  - The command that creates it is `git init`. It accepts `-b <name>` (or `--initial-branch=<name>`) to choose the first branch name.
+  - "Run `git init -b main`, then `git status` to confirm that index.html, about.html, css/ and img/ show up as untracked."
+guide: |
+  ## 1. Look before you init
+  ```bash
+  ls -a
+  ```
+  You will see `index.html`, `about.html`, `css/` and `img/`, but no `.git`.
+  That hidden directory is what makes a folder a repository.
 
+  ## 2. Create the repository
+  ```bash
+  git init -b main
+  ```
+  Git creates `.git/` with an empty object database and points `HEAD` at a branch called `main`.
+  Without `-b` the name comes from your `init.defaultBranch` setting, which may be `master`.
 
-  **Init Your First Repo**
+  ## 3. Check the result
+  ```bash
+  git status
+  ```
+  It says `On branch main`, `No commits yet`, and lists every file as untracked.
+  Git sees the files but will not record them until you add and commit them.
+debrief: |
+  ## What happened
+  `git init` created a `.git` directory inside `project/`. All history, branches and configuration
+  of the repository live there; your website files are just the working tree on top of it.
+  Nothing was committed, so Git knows the files exist but has no snapshots of them.
 
+  ## Why it matters
+  Every Git workflow starts here (or with `git clone`, which does an init for you). Because the
+  whole repository is one directory, you can copy, move or delete it as a unit. Deleting `.git`
+  removes the history but leaves your files untouched.
 
-  Git repositories start when `.git/` is created with `git init`.
+  ## Related
+  - `git init <dir>` creates the folder and initialises it in one step.
+  - `git branch -m main` renames the first branch afterwards.
+  - `git config --global init.defaultBranch main` makes `main` your default for every new repo.
 
-  '
+  ## Pitfalls
+  - Running `git init` inside a folder that is already inside another repository creates a nested repo.
+  - Running it in your home directory makes Git try to track everything you own.
+common_mistakes:
+  - Running `git init` one level too high (in the parent of project/), so the repository does not contain the website at its root.
+  - Forgetting `-b main` and ending up on `master` because of an older default.
+  - Thinking that `git init` also saves the files; no commit exists until you create one.
 validators:
-- type: is_on_branch
-  branch: main
-  alt_branches:
-  - master
-  description: Repository is on main or master
-- type: commit_count_gte
-  branch: HEAD
-  count: 1
-  description: At least one commit exists
-- type: commit_message_contains
-  text: Initial commit
-  description: Latest commit message contains 'Initial commit'
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test -d .git && git rev-parse --is-inside-work-tree >/dev/null
+    description: project/ is now a Git repository
+  - type: is_on_branch
+    branch: main
+    description: The first branch is called main
+  - type: script_passes
+    script: '! git rev-parse --verify -q HEAD >/dev/null'
+    description: No commit has been made yet
+  - type: script_passes
+    script: test "$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')" = "4"
+    description: The four website files are still untracked

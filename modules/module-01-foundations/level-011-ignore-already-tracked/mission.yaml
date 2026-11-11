@@ -4,47 +4,81 @@ level: level-011-ignore-already-tracked
 order: 11
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git rm --cached`'
-common_mistakes:
-- Running commands related to `git rm --cached` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A secrets file is already tracked, but it should now be ignored without
-  deleting it locally.
-objective: 'Stop tracking `secrets.env`, add it to `.gitignore`, and commit with the
-  message `chore: ignore secrets`.'
+  - git rm --cached
+  - ignore rules vs tracked files
+description: |
+  Tomas wrote a small scheduler for his maths tutoring business. In the very first commit he accidentally
+  included `.env` (an SMTP password) and `local.db` (his student database). Later he added a `.gitignore` listing
+  both, but they still show up as modified in `git status`, and the database is being versioned on every change.
+  Both files must stay on his disk because the app needs them.
+objective: |
+  Stop tracking `.env` and `local.db` without deleting them from the working directory.
+  Commit the change with the message `Stop tracking local files`. Afterwards both files must still exist
+  with their current content, be ignored by Git, and `git status` must be clean.
 hints:
-- Start with the Git command related to ``git rm --cached``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf 'secrets.env\n' > .gitignore\n\
-  \   ```\n\n2.\n   ```bash\n   git rm --cached secrets.env\n   ```\n\n3.\n   ```bash\n\
-  \   git add .gitignore\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: ignore\
-  \ secrets\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows `local.db` as modified even though `.gitignore` lists it. Think about why an ignore rule has no effect here."
+  - Ignore rules only apply to untracked files. To remove a file from the index but keep it on disk, use a flag of `git rm`.
+  - "`git rm --cached .env local.db` and then `git commit -m \"Stop tracking local files\"`."
+guide: |
+  ## 1. Understand the symptom
+  ```bash
+  git status --short
+  git ls-files
+  ```
+  `local.db` and `.env` are in the index, so `.gitignore` is irrelevant for them.
 
+  ## 2. Remove them from the index only
+  ```bash
+  git rm --cached .env local.db
+  ```
+  `--cached` means "only in the index". Without it the files would also be deleted from disk.
 
-  **Untrack an Already-Tracked File**
+  ## 3. Commit the removal
+  ```bash
+  git commit -m "Stop tracking local files"
+  ```
+  Now the ignore rules apply and `git status` is clean.
+debrief: |
+  ## What happened
+  Git tracks a file once it is in the index. `.gitignore` is consulted only for untracked paths.
+  `git rm --cached` deleted the index entries and the commit recorded "these files are gone from the project";
+  the copies on disk became untracked and, thanks to the existing rules, ignored.
 
+  ## Why it matters
+  Adding a rule is not enough when a mistake is already committed. Note that the old commit still contains the
+  password, so a leaked secret must also be rotated.
 
-  This level focused on `git rm --cached`.
+  ## Related
+  - `git rm -r --cached <dir>` for folders.
+  - `git ls-files -i -c --exclude-standard` lists tracked files that match ignore rules.
+  - Removing a secret from history needs a rewrite tool such as `git filter-repo`.
 
-  '
+  ## Pitfalls
+  - Plain `git rm` deletes the file from the disk too.
+  - Teammates pulling this commit will see the files deleted in their working tree.
+common_mistakes:
+  - Running `git rm .env local.db` without `--cached`, which deletes the data the app needs.
+  - Editing `.gitignore` again and expecting tracked files to disappear.
+  - Believing that the password is gone from the repository after this commit; it remains in history.
 validators:
-- type: file_exists
-  path: secrets.env
-  description: secrets.env still exists locally
-- type: file_content_contains
-  path: .gitignore
-  text: secrets.env
-  description: .gitignore ignores secrets.env
-- type: script_passes
-  description: secrets.env is no longer tracked
-  script: '! git ls-files --error-unmatch secrets.env >/dev/null 2>&1'
-- type: is_clean
-  description: Working tree is clean
+  - type: file_not_tracked
+    path: .env
+    description: .env is no longer tracked
+  - type: file_not_tracked
+    path: local.db
+    description: local.db is no longer tracked
+  - type: file_content_contains
+    path: local.db
+    text: 14 new students
+    description: local.db still has its latest content on disk
+  - type: file_content_contains
+    path: .env
+    text: SMTP_PASSWORD=hunter2-tutor
+    description: .env still exists on disk
+  - type: commit_message_equals
+    text: Stop tracking local files
+    description: Latest commit message is "Stop tracking local files"
+  - type: is_clean
+    description: git status is clean

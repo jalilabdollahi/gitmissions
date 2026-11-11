@@ -4,40 +4,77 @@ level: level-004-stage-specific-files
 order: 4
 difficulty: beginner
 xp: 100
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git add <file>` vs `git add .`'
-common_mistakes:
-- Running commands related to `git add <file>` vs `git add .` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Three files changed, but only one belongs in the next commit.
-objective: 'Commit only `app.txt` with the message `feat: update app file`.'
+  - git add <path>
+  - add vs add .
+  - focused commits
+description: |
+  Mara is writing a novel and keeps the manuscript in Git. Tonight she polished the prose in chapters 1 and 2,
+  but she also scribbled ideas in `scratch.md` and started a private list of plot holes in `notes-private.txt`.
+  Her editor will receive a copy of the repository, so the commit must contain only the polished chapters.
+objective: |
+  Make one new commit with the message `Polish chapters 1 and 2` that contains exactly `chapters/ch01.md`
+  and `chapters/ch02.md`. `scratch.md` must keep its edits as an uncommitted change, and
+  `notes-private.txt` must stay untracked.
 hints:
-- Start with the Git command related to ``git add <file>` vs `git add .``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git add app.txt\n   ```\n\n2.\n\
-  \   ```bash\n   git commit -m \"feat: update app file\"\n   ```\n\n3.\n   ```bash\n\
-  \   rm -f notes.txt draft.txt\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows four things that changed. Only two of them belong in this commit."
+  - Instead of `git add .`, give `git add` the explicit paths of the files you want.
+  - "`git add chapters/ch01.md chapters/ch02.md` then `git commit -m \"Polish chapters 1 and 2\"`"
+guide: |
+  ## 1. Review what changed
+  ```bash
+  git status
+  ```
+  Two chapters, a scratch file (modified) and a private notes file (untracked).
 
+  ## 2. Stage only the chapters
+  ```bash
+  git add chapters/ch01.md chapters/ch02.md
+  git status --short
+  ```
+  The first column should show `M` for the two chapters, while `scratch.md` still shows a modification in the
+  second column and the notes file shows `??`.
 
-  **Stage Specific Files**
+  ## 3. Commit
+  ```bash
+  git commit -m "Polish chapters 1 and 2"
+  ```
+  Only staged content is committed. The other files keep their state.
+debrief: |
+  ## What happened
+  You used the index as a filter. `git add <path>` copied only the named files into the staging area,
+  so `git commit` snapshotted just those, leaving the scratch work and the private notes out.
 
+  ## Why it matters
+  `git add .` is convenient but dangerous: it grabs everything, including notes, experiments or secrets.
+  Small, focused commits are easier to review and to undo.
 
-  This level focused on `git add <file>` vs `git add .`.
+  ## Related
+  - `git add -u` stages modifications and deletions of tracked files but ignores new files.
+  - `git add -p` lets you pick individual hunks inside a file.
+  - `git add chapters/` stages a whole folder.
 
-  '
+  ## Pitfalls
+  - Once a file is committed, even by accident, it lives in history. Check `git status` before you commit.
+  - Shell globs such as `git add *.md` can pick up files you did not intend; name files explicitly when in doubt.
+common_mistakes:
+  - Using `git add .` and committing the scratch and notes files too.
+  - Staging `scratch.md` "to be safe" and then unstaging it by deleting its changes.
+  - Using `git commit -a`, which would include the scratch change (it skips only untracked files).
 validators:
-- type: commit_message_contains
-  text: 'feat: update app file'
-  description: Latest commit message is correct
-- type: script_passes
-  description: Only app.txt changed in the latest commit
-  script: test "$(git diff --name-only HEAD~1 HEAD)" = "app.txt"
-- type: is_clean
-  description: Working tree is clean
+  - type: commit_message_equals
+    text: Polish chapters 1 and 2
+    description: Latest commit message is "Polish chapters 1 and 2"
+  - type: commit_count_eq
+    count: 2
+    description: Exactly one new commit was made
+  - type: script_passes
+    script: test "$(git show --name-only --format= HEAD | sort | tr '\n' ' ')" = "chapters/ch01.md chapters/ch02.md "
+    description: The new commit touches only ch01.md and ch02.md
+  - type: script_passes
+    script: git diff --quiet HEAD -- chapters && git diff --quiet HEAD~1 HEAD -- scratch.md && grep -q 'What if Edda is the keeper' scratch.md && ! git diff --quiet HEAD -- scratch.md
+    description: scratch.md still has its uncommitted edits
+  - type: script_passes
+    script: test "$(git ls-files --others --exclude-standard)" = "notes-private.txt"
+    description: notes-private.txt is still untracked

@@ -4,51 +4,73 @@ level: level-014-log-pretty-formats
 order: 14
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`--pretty=format:`'
-- '`%H %s %an`'
-common_mistakes:
-- Running commands related to `--pretty=format:`, `%H %s %an` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``--pretty=format:`,
-  `%H %s %an``.
-objective: 'Inspect the repository history and create `pretty-log.txt` containing
-  exactly:
-
-
-  `Alice: Add release notes`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --pretty=format:
+  - placeholders %h %an %s
+description: |
+  The Night Shift Radio podcast keeps its show notes in Git, and the producer wants an automatic credits page:
+  one line per commit, in a fixed layout that a script can parse. The default `git log` output with its
+  multi-line blocks is useless for that, but Git can print exactly the fields you ask for.
+objective: |
+  Generate `changelog.txt` containing one line per commit, newest first, in the exact layout
+  `<short hash> | <author name> | <subject>` (for example `a1b2c3d | Sven | Start show notes`; the separators are
+  a space, a pipe and a space). Use Git's own formatting for it rather than typing the lines by hand.
 hints:
-- Start with the Git command related to ``--pretty=format:`, `%H %s %an``.
-- Write the exact expected answer into `pretty-log.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > pretty-log.txt <<'EOF'\n\
-  Alice: Add release notes\nEOF\n   ```\n\n2.\n   ```bash\n   git add pretty-log.txt\n\
-  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --pretty=format:\"...\"` takes a template. Placeholders start with `%`."
+  - "`%h` is the abbreviated hash, `%an` the author name and `%s` the subject."
+  - "`git log --pretty=format:'%h | %an | %s' > changelog.txt`"
+guide: |
+  ## 1. Start from a template
+  ```bash
+  git log --pretty=format:'%h | %an | %s'
+  ```
+  Everything outside the `%` placeholders is printed literally, so spaces and pipes appear as you typed them.
 
+  ## 2. Placeholders you will use most
+  | code | meaning |
+  |---|---|
+  | `%H` / `%h` | full / short hash |
+  | `%an` / `%ae` | author name / email |
+  | `%ad` / `%ar` | author date / relative date |
+  | `%s` / `%b` | subject / body |
 
-  **Pretty Log Formats**
+  ## 3. Save it
+  ```bash
+  git log --pretty=format:'%h | %an | %s' > changelog.txt
+  ```
+debrief: |
+  ## What happened
+  `--pretty=format:` lets you define the output of `git log` yourself. Because it is generated from
+  the repository, the result is always correct and reproducible, unlike text typed by hand.
 
+  ## Why it matters
+  Changelogs, release notes, CI dashboards and shell scripts all rely on machine-readable log output.
+  The default view is for humans, formats are for programs.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Related
+  - `--oneline` is shorthand for `--pretty=oneline --abbrev-commit`.
+  - `--date=short` changes the date style used by `%ad`.
+  - `tformat:` adds a trailing newline after the last entry, `format:` does not.
+  - `git shortlog -sn` counts commits per author.
 
-  '
+  ## Pitfalls
+  - Use single quotes so the shell does not interpret `|` or `%`.
+  - Each placeholder is case sensitive: `%an` is the author, `%cn` the committer.
+common_mistakes:
+  - Using double quotes with `!` or `$` characters in the template, which the shell may expand.
+  - Writing `%h` as `%H`, producing 40-character hashes.
+  - Using `--oneline` and then trying to reshape the output with search and replace.
 validators:
-- type: file_content_equals
-  path: pretty-log.txt
-  text: 'Alice: Add release notes'
-  description: pretty-log.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: file_exists
+    path: changelog.txt
+    description: changelog.txt exists
+  - type: script_passes
+    script: test "$(cat changelog.txt)" = "$(git log --pretty=format:'%h | %an | %s')"
+    description: Every line follows "<hash> | <author> | <subject>" for all commits, newest first
+  - type: script_passes
+    script: test "$(wc -l < changelog.txt | tr -d ' ')" -ge 5
+    description: All six commits are listed
+  - type: commit_count_eq
+    count: 6
+    description: History is unchanged

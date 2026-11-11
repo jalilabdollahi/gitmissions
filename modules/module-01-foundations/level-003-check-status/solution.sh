@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > status-report.txt <<'EOF'
-staged=1
-unstaged=1
-untracked=1
-EOF
-git add status-report.txt
-git commit -m "docs: add report"
+git status
+git diff --cached --name-only > staged.txt
+git ls-files --others --exclude-standard | grep -v -e '^staged.txt$' -e '^untracked.txt$' > untracked.txt
