@@ -94,7 +94,7 @@ validators:
   description: delta.bundle is smaller than full.bundle and really carries the new main
   script: 'test "$(wc -c < ../transfer/delta.bundle)" -lt "$(wc -c < ../transfer/full.bundle)"
 
-    t=$(mktemp -d); git init -q "$t"
+    t=$(mktemp -d); git init -q --bare "$t"
 
     git -C "$t" fetch -q "$PWD/../transfer/full.bundle" ''refs/tags/v1.0:refs/tags/v1.0''
 
