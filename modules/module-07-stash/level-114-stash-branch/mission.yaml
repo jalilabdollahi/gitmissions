@@ -4,38 +4,85 @@ level: level-114-stash-branch
 order: 114
 difficulty: intermediate
 xp: 250
-expected_time: 7m
+expected_time: 10m
 concepts:
-- '`git stash branch <name>`'
-common_mistakes:
-- Running commands related to `git stash branch <name>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Create a branch named `stash-work` from the stash.
+  - git stash branch
+  - stash on an outdated base
+  - avoiding pop conflicts
+repo_path: geofence
+description: |
+  You stashed an edit to `zones.py` (adding delivery zone "B") in the Geofence courier project. Since then `main`
+  moved on: someone renamed zone "A" to "Z" in the same line. A `git stash pop` on `main` would now conflict.
+  Instead of resolving that conflict, turn the stash back into the work-in-progress it was: a branch that starts at the
+  commit where the stash was created. You want the changes uncommitted on that branch, ready to continue.
+objective: |
+  - create a branch named `feature/geo-fence` from the stash with `git stash branch`, so that it starts at the commit the stash was made on (`Add zone list`) and is checked out
+  - the stash edit must be applied in the working tree (uncommitted) and the stash entry must be gone
+  - `main` must keep its newest commit (the zone rename)
 hints:
-- Start with the Git command related to ``git stash branch <name>``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash branch stash-work\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "A stash remembers the commit it was created on. `git stash branch` recreates that situation: new branch at that commit, apply, drop."
+  - "`git stash branch <new-branch> [<stash>]` does all three steps. It will not conflict, because the base matches."
+  - "`git stash branch feature/geo-fence`"
+guide: |
+  ## 1. See why pop is problematic
+  ```bash
+  git log --oneline
+  git stash show -p
+  ```
+  The stash changes `ZONES = ["A"]` to `["A", "B"]`, while main now says `["Z"]`.
 
+  ## 2. Branch from the stash
+  ```bash
+  git stash branch feature/geo-fence
+  ```
+  Git checks out the commit the stash was based on (`Add zone list`) as a new branch, applies the stash there
+  and drops it.
 
-  **Create Branch from Stash**
+  ## 3. Check
+  ```bash
+  git status -sb
+  git log --oneline -2
+  git stash list
+  ```
+  Your zone "B" edit is waiting, uncommitted, on a branch that began at the right commit.
+debrief: |
+  ## What happened
+  The stash entry stores the commit it was created from. `git stash branch` checked out that commit under a
+  new branch name, ran `stash apply` (which cannot conflict, as nothing changed on this base), and dropped
+  the entry on success.
 
+  ## When to use it
+  Long-lived stashes become awkward because the code underneath changes. Promoting them to a branch
+  turns the pending change into normal Git history, which can later be rebased or merged and conflicts
+  resolved there with all the usual tools.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Comparison
+  `git stash pop` applies onto whatever HEAD is, so conflicts are possible. `git stash branch` always
+  starts from the original base.
 
-  '
+  ## Related
+  - `git rebase main` afterwards moves the branch (after committing) onto the new `main`.
+  - `git stash branch name stash@{2}` takes a specific entry.
+common_mistakes:
+  - "Popping on main and spending time resolving a conflict that branching avoids."
+  - "Creating `feature/geo-fence` with `git switch -c` from main first, which starts from the wrong commit."
+  - "Committing the work and expecting the stash entry to stay."
 validators:
-- type: branch_exists
-  branch: stash-work
-  description: stash-work exists
-- type: is_on_branch
-  branch: stash-work
-  description: HEAD is on stash-work
+  - type: is_on_branch
+    branch: feature/geo-fence
+    description: HEAD is on feature/geo-fence
+  - type: commit_message_equals
+    text: Add zone list
+    description: The branch starts at the commit the stash was made on
+  - type: stash_empty
+    description: The stash entry was consumed
+  - type: script_passes
+    script: |
+      grep -qF '"B"' zones.py && ! git diff --quiet
+    description: The zone B edit is in the working tree, uncommitted
+  - type: no_conflict_markers
+    description: No conflict markers
+  - type: script_passes
+    script: |
+      test "$(git log -1 --format=%s main)" = "Rename zone A to Z"
+    description: main kept its newest commit

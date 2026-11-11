@@ -4,34 +4,90 @@ level: level-111-stash-drop
 order: 111
 difficulty: intermediate
 xp: 220
-expected_time: 7m
+expected_time: 8m
 concepts:
-- '`git stash drop stash@{1}`'
-common_mistakes:
-- Running commands related to `git stash drop stash@{1}` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Drop `stash@{1}` so only one stash entry remains.
+  - git stash drop
+  - identifying obsolete stashes
+  - selective cleanup
+repo_path: wikiwise
+description: |
+  In the Wikiwise knowledge-base project you keep four stashes. One of them contains an edit to
+  `legacy_search.py`, a module that the team removed from the project last week (`Remove legacy search module`).
+  That stash can never be applied meaningfully again and is just clutter. The other three hold real work
+  (pages, editor and export). Delete exactly the obsolete one, nothing else.
+objective: |
+  - find the stash that touches `legacy_search.py` and drop it
+  - the three other stashes (touching `pages.py`, `editor.py` and `export.py`) must stay untouched
+  - the working tree must stay clean
 hints:
-- Start with the Git command related to ``git stash drop stash@{1}``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash drop stash@{1}\n   ```"
-debrief: '## What Just Happened
+  - "`git stash list` does not say what each entry changes. Use `git stash show` on each reference."
+  - "`git stash drop stash@{n}` deletes one entry. Note the numbers shift after a drop, so only drop once."
+  - "Check `git stash show --name-only stash@{n}` for n = 0..3, then `git stash drop stash@{n}` for the one listing `legacy_search.py`."
+guide: |
+  ## 1. List and inspect
+  ```bash
+  git stash list
+  git stash show --name-only stash@{0}
+  git stash show --name-only stash@{1}
+  git stash show --name-only stash@{2}
+  git stash show --name-only stash@{3}
+  ```
+  Exactly one entry names `legacy_search.py`.
 
+  ## 2. Drop only that one
+  ```bash
+  git stash drop stash@{2}
+  ```
+  (Use whatever index you found.) Git prints the dropped hash, which is useful if you regret it.
 
-  **Drop a Stash Entry**
+  ## 3. Check
+  ```bash
+  git stash list
+  ```
+  Three entries remain, renumbered.
+debrief: |
+  ## What happened
+  `git stash drop` removes a single entry from the stack. The three useful ones keep their content.
+  Because their numbers changed, listing again before the next operation avoids mistakes.
 
+  ## Undoing a drop
+  The dropped stash commit is not gone immediately. `git drop` prints its hash, and `git fsck --unreachable | grep commit`
+  can find it. `git stash apply <hash>` restores it until garbage collection removes it.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Housekeeping
+  Old stashes rot: the code they patched moves on and they stop applying. Review the list regularly, and
+  convert important entries into branches with `git stash branch`.
 
-  '
+  ## Related
+  - `git stash clear` removes all entries.
+  - `git log --oneline --all -- legacy_search.py` explains why the file disappeared.
+common_mistakes:
+  - "Using `git stash clear`, which also deletes the three useful stashes."
+  - "Dropping two entries in a row by the same index after renumbering."
+  - "Dropping by guessing the index instead of checking which file each entry changes."
 validators:
-- type: script_passes
-  description: Only one stash remains
-  script: test "$(git stash list | wc -l | tr -d ' ')" = "1"
+  - type: stash_count_eq
+    count: 3
+    description: Three stashes remain
+  - type: script_passes
+    script: |
+      files=""
+      i=0
+      while [ "$i" -lt 3 ]; do
+        files="$files $(git stash show --name-only "stash@{$i}")"
+        i=$((i + 1))
+      done
+      ! echo "$files" | grep -q legacy_search.py
+    description: No remaining stash touches legacy_search.py
+  - type: script_passes
+    script: |
+      files=""
+      i=0
+      while [ "$i" -lt 3 ]; do
+        files="$files $(git stash show --name-only "stash@{$i}")"
+        i=$((i + 1))
+      done
+      test "$(echo $files | tr ' ' '\n' | sort | tr '\n' ' ')" = "editor.py export.py pages.py "
+    description: The pages, editor and export stashes are still there
+  - type: is_clean
+    description: Working tree is clean

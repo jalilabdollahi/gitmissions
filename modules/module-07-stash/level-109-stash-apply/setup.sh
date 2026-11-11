@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main metaboost
+cd metaboost
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-printf 'stashed change
-' > app.txt
-
-git stash
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf '<head>\n<title>Shop</title>\n</head>\n' > layout.html
+git add . && git commit -q -m "Create base layout"
+git branch release/blue
+git branch release/green
+printf '<head>\n<title>Shop</title>\n<meta name="description" content="Fast shop">\n</head>\n' > layout.html
+git stash push -q -m "SEO meta tags"

@@ -4,36 +4,90 @@ level: level-113-stash-untracked
 order: 113
 difficulty: intermediate
 xp: 230
-expected_time: 7m
+expected_time: 9m
 concepts:
-- '`git stash -u` / `--include-untracked`'
-common_mistakes:
-- Running commands related to `git stash -u` / `--include-untracked` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Stash the untracked file as well.
+  - git stash -u
+  - untracked and ignored files
+  - switching branches with conflicting untracked files
+repo_path: seedly
+description: |
+  Seedly is a database-seeding toolkit. On `main` you have an edited `schema.sql` and a brand-new, still untracked
+  `seed_data.sql`. You also keep a local, git-ignored `.env.local` with your credentials. A hotfix is needed on the
+  `release/1.0` branch, which already tracks its own `seed_data.sql`, so Git refuses to switch: the untracked file
+  would be overwritten. Stash your work including the untracked seed file, but leave your ignored credentials where
+  they are, then switch.
+objective: |
+  - stash your changes so the untracked `seed_data.sql` is part of the stash (and the edit to `schema.sql` too)
+  - do NOT stash the ignored `.env.local`: it must still exist in the working directory
+  - switch to `release/1.0` with a clean working tree; the stash must remain
 hints:
-- Start with the Git command related to ``git stash -u` / `--include-untracked``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash -u\n   ```"
-debrief: '## What Just Happened
+  - "A plain `git stash` ignores untracked files, so `git switch release/1.0` would still fail. Check the stash options (`git stash --help`)."
+  - "`-u` / `--include-untracked` adds untracked files. `-a` / `--all` would also take ignored files, which is too much here."
+  - "`git stash push -u -m \"WIP seeding\" && git switch release/1.0`"
+guide: |
+  ## 1. Try and fail
+  ```bash
+  git status --short --ignored
+  git switch release/1.0
+  ```
+  Git: "The following untracked working tree files would be overwritten by checkout: seed_data.sql".
 
+  ## 2. Stash including untracked files
+  ```bash
+  git stash push -u -m "WIP seeding"
+  git status --short --ignored
+  ```
+  `schema.sql` is restored and `seed_data.sql` is gone from the folder. `.env.local` remains: it is ignored.
 
-  **Stash Untracked Files**
+  ## 3. Switch
+  ```bash
+  git switch release/1.0
+  cat seed_data.sql
+  ```
+  You see the release's own seed file.
 
+  ## 4. Peek inside the stash
+  ```bash
+  git stash show --include-untracked --name-only
+  ```
+debrief: |
+  ## What happened
+  Untracked files are saved in a third parent commit of the stash. `-u` made Git include them and delete
+  them from the working tree, so the checkout no longer collided with the release's tracked file of the
+  same name.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## `-u` vs `-a`
+  `--include-untracked` takes new files that are not ignored. `--all` also takes ignored files (build output,
+  credentials...), which you usually do not want to move around.
 
-  '
+  ## Restoring
+  `git stash pop` brings back both the schema edit and the seed file, provided the target branch does
+  not have a conflicting `seed_data.sql`. Pop on `main`, not on `release/1.0`.
+
+  ## Related
+  - `git stash push -u -- <path>` limits it to one path.
+  - `git clean -n` previews untracked files that would be deleted.
+common_mistakes:
+  - "Using a plain `git stash`, which leaves the untracked seed file in place and the switch still fails."
+  - "Using `--all`, which also removes `.env.local` and its credentials from the working directory."
+  - "Deleting `seed_data.sql` to make room instead of stashing it, which loses the file."
 validators:
-- type: stash_not_empty
-  description: A stash entry exists
-- type: file_not_exists
-  path: scratch.txt
-  description: scratch.txt was stashed away
+  - type: is_on_branch
+    branch: release/1.0
+    description: HEAD is on release/1.0
+  - type: stash_count_eq
+    count: 1
+    description: One stash exists
+  - type: script_passes
+    script: |
+      git show 'stash@{0}^3:seed_data.sql' | grep -q 'new seed'
+    description: The untracked seed_data.sql is stored in the stash
+  - type: file_exists
+    path: .env.local
+    description: The ignored .env.local was left alone
+  - type: script_passes
+    script: |
+      grep -q 'v1 seed' seed_data.sql
+    description: The release's own seed file is checked out
+  - type: is_clean
+    description: Working tree is clean

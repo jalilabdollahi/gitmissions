@@ -6,33 +6,86 @@ difficulty: intermediate
 xp: 200
 expected_time: 7m
 concepts:
-- "`git stash` \u2014 save dirty state"
-common_mistakes:
-- "Running commands related to `git stash` \u2014 save dirty state without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Save the current modifications into the stash.
+  - git stash
+  - clean working tree
+  - interrupted work
+repo_path: tablewise
+description: |
+  You are halfway through a waitlist-promotion feature in `waitlist.js` for Tablewise, a restaurant reservation
+  system. The file is modified but nowhere near ready to commit. The owner just reported a typo on the
+  booking confirmation ("Reservaton confirmed" in `labels.txt`) that must be fixed on `main` right now. Park
+  your half-done work safely so that the tree is clean, fix the typo, and keep the parked work for later.
+objective: |
+  - stash your uncommitted change to `waitlist.js` (it must stay available in the stash list)
+  - fix the typo so `labels.txt` reads `Reservation confirmed` and commit it with the message `Fix typo in booking label`
+  - end with a clean working tree and exactly one stash entry that holds the waitlist work
 hints:
-- "Start with the Git command related to ``git stash` \u2014 save dirty state`."
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows `waitlist.js` as modified. A commit would take the unfinished work with it, and editing `labels.txt` on top of it mixes two topics."
+  - "`git stash` (or `git stash push`) saves tracked changes and restores the last commit, leaving a clean tree."
+  - "`git stash push -m \"WIP waitlist promotion\"`, fix and commit the label, and check `git stash list`."
+guide: |
+  ## 1. Look at the situation
+  ```bash
+  git status -sb
+  git diff
+  ```
+  One tracked file has unfinished edits.
 
+  ## 2. Park the work
+  ```bash
+  git stash push -m "WIP waitlist promotion"
+  git status -sb
+  git stash list
+  ```
+  The working tree equals HEAD again, and the stash holds your edit.
 
-  **Basic Stash**
+  ## 3. Do the urgent fix
+  ```bash
+  printf 'Reservation confirmed\n' > labels.txt
+  git commit -am "Fix typo in booking label"
+  ```
 
+  ## 4. Verify the stash is still there
+  ```bash
+  git stash list
+  git stash show -p
+  ```
+debrief: |
+  ## What happened
+  `git stash` records the working tree and index changes as a special commit stored on a stack
+  (`refs/stash`), then resets the tree to HEAD. Nothing was lost, and nothing unfinished ended up in the typo
+  fix commit.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Why not commit as WIP?
+  A "WIP" commit pollutes history and has to be removed again later. A stash is private, local and easy to
+  discard or reuse.
 
-  '
+  ## Remember
+  - Stashes are local: they are not pushed or cloned.
+  - By default only tracked files are saved (untracked files need `-u`, see a later level).
+  - `git stash show -p` prints the saved diff.
+
+  ## Related
+  - `git stash pop` and `git stash apply` bring the work back.
+  - `git stash list` shows the stack, newest first.
+common_mistakes:
+  - "Committing the unfinished waitlist code together with the typo fix."
+  - "Reverting the file with `git checkout -- .`, which destroys the work instead of parking it."
+  - "Fixing the typo before stashing, so the stash and the fix get mixed up."
 validators:
-- type: stash_not_empty
-  description: A stash entry exists
-- type: is_clean
-  description: Working tree is clean
+  - type: stash_count_eq
+    count: 1
+    description: There is exactly one stash entry
+  - type: script_passes
+    script: |
+      git stash show -p 'stash@{0}' | grep -q 'promote guests'
+    description: The stash holds the waitlist work
+  - type: commit_message_equals
+    text: Fix typo in booking label
+    description: The typo fix is committed
+  - type: file_content_contains
+    path: labels.txt
+    text: Reservation confirmed
+    description: The label is corrected
+  - type: is_clean
+    description: Working tree is clean
