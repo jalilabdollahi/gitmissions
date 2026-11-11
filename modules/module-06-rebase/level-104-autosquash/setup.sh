@@ -1,49 +1,23 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main adserve
+cd adserve
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-value=base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-git checkout -b feature/rebase
-
-printf 'feature
-' > feature.txt
-
-git add feature.txt
-
-git commit -m "Feature change"
-
-printf 'extra1
-' > one.txt
-
-git add one.txt
-
-git commit -m "Feature step 1"
-
-printf 'extra2
-' > two.txt
-
-git add two.txt
-
-git commit -m "Feature step 2"
-
-git checkout main
-
-printf 'main branch
-' > main.txt
-
-git add main.txt
-
-git commit -m "Main change"
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+c() { git add -A && git commit -q -m "$1"; }
+printf '# adserve\n' > README.md && c "Add readme"
+git switch -q -c feature/campaigns
+printf 'BUDGET = None\n' > campaign.py && c "Add campaign model"
+printf 'CAP_PER_DAY = None\n' > budget.py && c "Add budget caps"
+printf 'GEO = None\n' > targeting.py && c "Add targeting rules"
+printf 'def report():\n    return {}\n' > report.py && c "Add reporting endpoint"
+printf 'CAP_PER_DAY = 100\n' > budget.py
+git add -A && git commit -q --fixup="$(git log -1 --format=%H --grep='Add budget caps')"
+printf 'BUDGET = 0\n' > campaign.py
+git add -A && git commit -q --fixup="$(git log -1 --format=%H --grep='Add campaign model')"
+printf 'GEO = "EU"\n' > targeting.py
+git add -A && git commit -q --fixup="$(git log -1 --format=%H --grep='Add targeting rules')"

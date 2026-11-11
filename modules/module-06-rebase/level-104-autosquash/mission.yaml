@@ -4,44 +4,92 @@ level: level-104-autosquash
 order: 104
 difficulty: intermediate
 xp: 350
-expected_time: 12m
+expected_time: 11m
 concepts:
-- '`git commit --fixup=<hash>`'
-- '`--autosquash`'
-common_mistakes:
-- Running commands related to `git commit --fixup=<hash>`, `--autosquash` without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The feature branch has several tiny commits that should become one clean
-  commit.
-objective: Squash the feature branch history so only one feature commit remains on
-  top of `main`.
+  - git commit --fixup
+  - --autosquash
+  - cleaning history in one step
+repo_path: adserve
+description: |
+  The Adserve ad-campaign manager branch `feature/campaigns` has four commits: model, budget caps, targeting rules and
+  a reporting endpoint. During review you added three small corrections with `git commit --fixup <commit>`, each aimed at
+  an earlier commit (budget caps, the campaign model and the targeting rules). They sit at the top of the branch as
+  `fixup! ...` commits. Before merging, fold each of them into its target without touching the
+  todo list by hand.
+objective: |
+  - rewrite `feature/campaigns` so that it has exactly four commits on top of `main` (`Add campaign model`, `Add budget caps`, `Add targeting rules`, `Add reporting endpoint`, oldest to newest)
+  - no `fixup!` commits may remain, and each correction must now be inside the commit it belonged to
+  - stay on `feature/campaigns`, no rebase in progress
 hints:
-- An interactive rebase is the usual approach.
-- Any valid Git method is okay if the final history has one feature commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git reset --soft main\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Squashed feature work\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline main..feature/campaigns` shows seven commits; three of them start with `fixup!` followed by the target's subject."
+  - "`git rebase -i --autosquash main` reorders the fixup commits below their targets and marks them `fixup` automatically."
+  - "`git rebase -i --autosquash main`, then just save the todo. (`GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main` skips the editor.)"
+guide: |
+  ## 1. Look at the branch
+  ```bash
+  git log --oneline main..feature/campaigns
+  ```
+  Names such as `fixup! Add budget caps` tell Git which commit to fold into.
 
+  ## 2. Let Git arrange the todo
+  ```bash
+  git rebase -i --autosquash main
+  ```
+  The todo opens already rearranged:
+  ```
+  pick  Add campaign model
+  fixup fixup! Add campaign model
+  pick  Add budget caps
+  fixup fixup! Add budget caps
+  ...
+  ```
+  Save and close it.
 
-  **Autosquash with fixup!**
+  ## 3. Check
+  ```bash
+  git log --oneline main..feature/campaigns
+  git show --stat HEAD~2
+  ```
+  Four commits; each one now carries its correction.
+debrief: |
+  ## What happened
+  `--autosquash` looks for commits whose subjects start with `fixup!` or `squash!`, finds the commit whose
+  subject matches the rest, moves them right below it, and sets the right command. The commit keeps its
+  own message.
 
+  ## The workflow
+  1. During review: `git commit --fixup <hash>` for each correction. No thinking about message wording.
+  2. Before merging: `git rebase -i --autosquash <base>`.
+  Config `rebase.autoSquash=true` makes `--autosquash` the default for interactive rebases.
 
-  Squashing is a history-cleanup step that trades granular checkpoints for a simpler
-  review story.
+  ## Variants
+  - `git commit --squash <hash>` creates `squash!` commits that keep the extra message.
+  - `git commit --fixup=amend:<hash>` / `reword:<hash>` also fix the message.
 
-  '
+  ## Related
+  - `git log --oneline` shows the subjects Git matches against.
+  - `git rebase --abort` cancels if the arrangement looks wrong.
+common_mistakes:
+  - "Leaving off `--autosquash`, so the todo is in the original order and the fixups remain separate."
+  - "Editing the subjects of the fixup commits, which breaks the matching."
+  - "Squashing everything into one commit instead of folding each correction into its own target."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 3
-  description: Feature branch has one rebased feature commit plus main history
-- type: commit_message_contains
-  text: Squashed feature work
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/campaigns
+    description: HEAD is on feature/campaigns
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/campaigns | tr '\n' '|')" = "Add campaign model|Add budget caps|Add targeting rules|Add reporting endpoint|"
+    description: Four clean commits remain, in order
+  - type: script_passes
+    script: |
+      b=$(git log -1 --format=%H --grep='Add budget caps' main..feature/campaigns)
+      c=$(git log -1 --format=%H --grep='Add campaign model' main..feature/campaigns)
+      t=$(git log -1 --format=%H --grep='Add targeting rules' main..feature/campaigns)
+      git show "$b:budget.py" | grep -qx 'CAP_PER_DAY = 100'
+      git show "$c:campaign.py" | grep -qx 'BUDGET = 0'
+      git show "$t:targeting.py" | grep -qx 'GEO = "EU"'
+    description: Each correction lives inside its target commit
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && test \"$(git log --format=%s main..feature/campaigns | grep -c 'fixup!')\" = 0"
+    description: No rebase in progress and no fixup! commits are left

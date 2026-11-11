@@ -4,36 +4,86 @@ level: level-091-skip-commit-in-rebase
 order: 91
 difficulty: intermediate
 xp: 280
-expected_time: 12m
+expected_time: 10m
 concepts:
-- '`git rebase --skip`'
-common_mistakes:
-- Running commands related to `git rebase --skip` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A bad commit on the feature branch should be skipped during a rebase.
-objective: Rebase `feature/rebase` onto `main` and skip the commit whose message is
-  `Broken commit`.
+  - git rebase --skip
+  - redundant commits
+  - conflict triage
+repo_path: shelfy
+description: |
+  Shelfy is an online storefront. Your branch `feature/wishlist` has three commits: the wishlist page, a commit that
+  pins `lodash` to 4.17.20 in `deps.txt`, and tests. While you worked, a colleague upgraded `lodash` on `main` to
+  4.17.21. Rebasing now conflicts in `deps.txt` on your pinning commit, which is obsolete: `main` already has the newer
+  version and the pin would be a downgrade. Rebase, and drop that one commit during the rebase instead of resolving it.
+objective: |
+  - rebase `feature/wishlist` onto `main`
+  - the pin commit (`Pin lodash 4.17.20`) must be gone: `deps.txt` must equal main's version (lodash 4.17.21)
+  - the other two commits, `Add wishlist page` and `Add wishlist tests`, must remain, in that order, on top of main
+  - finish the rebase completely, staying on `feature/wishlist`
 hints:
-- You want to replay only the good commit on top of `main`.
-- A targeted `git rebase --onto` can exclude the bad commit in one step.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase --onto main HEAD~1 HEAD\n   ```"
-debrief: '## What Just Happened
+  - "`git rebase main` stops at the second commit. `git status` says which file conflicts, and `git log main` shows the newer upgrade."
+  - "When a commit is no longer wanted, `git rebase --skip` omits it instead of `--continue`. No resolution is needed."
+  - "`git rebase main` then `git rebase --skip`, and check `git log --oneline main..feature/wishlist`."
+guide: |
+  ## 1. Start the rebase
+  ```bash
+  git rebase main
+  ```
+  The first commit applies, then Git stops: CONFLICT in `deps.txt`.
 
+  ## 2. Understand the conflict
+  ```bash
+  git status
+  git diff
+  git log --oneline main -3
+  ```
+  Main's side has 4.17.21, yours has 4.17.20. Your commit has become pointless.
 
-  **Skip a Commit in Rebase**
+  ## 3. Skip it
+  ```bash
+  git rebase --skip
+  ```
+  Git discards that commit and continues with `Add wishlist tests`, which applies cleanly.
 
+  ## 4. Verify
+  ```bash
+  git log --oneline main..feature/wishlist
+  cat deps.txt
+  ```
+debrief: |
+  ## What happened
+  The rebase replays commits one by one. For the pinning commit, the "right" resolution was to take main's version
+  entirely, which leaves an empty commit. `--skip` expresses that: omit this commit from the new history.
 
-  Skipping a commit during rebase drops it from the rewritten history.
+  ## Skip vs resolve
+  If you resolve a conflict by choosing main's side and run `--continue`, Git may complain that the
+  commit is empty. Skipping is the clean way to say "this change is already superseded".
 
-  '
+  ## When Git skips automatically
+  Commits whose change is already identical on the target (same patch) are dropped by rebase without
+  any prompt. Skipping manually is for cases where the change differs but you decide it is obsolete.
+
+  ## Related
+  - `git rebase --abort` undoes everything if you skipped the wrong one.
+  - `git rebase -i` with `drop` removes a commit up front.
+common_mistakes:
+  - "Resolving the conflict by keeping 4.17.20, which downgrades the dependency."
+  - "Using `git rebase --continue` with nothing staged, which stops with an empty-commit error."
+  - "Skipping the wrong commit (for instance the wishlist page) because the message was not read."
 validators:
-- type: script_passes
-  description: Broken commit is gone from history
-  script: '! git log --pretty=%s | grep -q ''^Broken commit$'''
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/wishlist
+    description: HEAD is on feature/wishlist
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && ! test -d .git/rebase-apply"
+    description: No rebase is in progress
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/wishlist | tr '\n' '|')" = "Add wishlist page|Add wishlist tests|"
+    description: Only the two wanted commits sit on top of main
+  - type: script_passes
+    script: |
+      git merge-base --is-ancestor main HEAD && git diff --quiet main HEAD -- deps.txt && grep -q '4.17.21' deps.txt
+    description: deps.txt keeps main's lodash 4.17.21
+  - type: no_conflict_markers
+    description: No conflict markers remain

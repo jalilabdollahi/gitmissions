@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-git switch feature/rebase
-git rebase main
+GIT_SEQUENCE_EDITOR="sed -i.bak -e '1s/^pick/reword/'" \
+GIT_EDITOR="printf 'Initial commit: scaffold ticket-board\n' >" \
+  git rebase -i --root

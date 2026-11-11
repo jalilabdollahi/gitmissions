@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-git switch feature/rebase
-git reset --soft main
-git commit -m "Squashed feature work"
+GIT_SEQUENCE_EDITOR="sed -i.bak -e '2s/^pick/squash/' -e '3s/^pick/squash/'" git rebase -i main

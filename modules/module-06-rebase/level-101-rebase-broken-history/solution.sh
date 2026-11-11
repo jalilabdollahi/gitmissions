@@ -1,5 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-git switch feature/rebase
-git rebase main
+git rebase origin/feature/stock-sync

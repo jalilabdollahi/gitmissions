@@ -1,42 +1,19 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main shelfy
+cd shelfy
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-git checkout -b feature/rebase
-
-printf 'bad
-' > bad.txt
-
-git add bad.txt
-
-git commit -m "Broken commit"
-
-printf 'good
-' > good.txt
-
-git add good.txt
-
-git commit -m "Good commit"
-
-git checkout main
-
-printf 'main
-' > main.txt
-
-git add main.txt
-
-git commit -m "Main update"
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+c() { git add -A && git commit -q -m "$1"; }
+printf 'lodash=4.17.15\nexpress=4.17.1\n' > deps.txt && c "List dependencies"
+git switch -q -c feature/wishlist
+printf 'export const wishlist = [];\n' > wishlist.js && c "Add wishlist page"
+printf 'lodash=4.17.20\nexpress=4.17.1\n' > deps.txt && c "Pin lodash 4.17.20"
+printf 'assert(Array.isArray(wishlist));\n' > wishlist.test.js && c "Add wishlist tests"
+git switch -q main
+printf 'lodash=4.17.21\nexpress=4.17.1\n' > deps.txt && c "Upgrade lodash to 4.17.21"
+git switch -q feature/wishlist

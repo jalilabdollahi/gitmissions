@@ -4,40 +4,88 @@ level: level-101-rebase-broken-history
 order: 101
 difficulty: intermediate
 xp: 360
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "someone rebased shared history \u2014 what now"
-common_mistakes:
-- "Running commands related to someone rebased shared history \u2014 what now without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - duplicated commits after a force-push
+  - rebase skips already-applied patches
+  - repairing a messy pull
+repo_path: stockwise
+description: |
+  In the Stockwise inventory-sync project your teammate Dara rebased `feature/stock-sync` onto the new `main` and
+  force-pushed it. You had not noticed, added a local commit (`Add low-stock alert`), and ran a plain `git pull`
+  (configured to merge). Now your branch contains a merge commit, and the stock-reservation and reservation-expiry
+  commits appear twice: once as your old copies and once as Dara's rewritten copies. The pull request shows
+  a mess. Repair your local branch so it reads as Dara's branch plus your one commit, in a straight line.
+objective: |
+  - on `feature/stock-sync` the commits above `origin/main` must be, oldest first: `Add stock reservation`, `Add reservation expiry`, `Add low-stock alert`
+  - no merge commit and no duplicated subjects
+  - `origin/feature/stock-sync` (Dara's rebased branch) must be an ancestor of your branch, so a normal push will be a fast-forward
+  - end on `feature/stock-sync`
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows two copies of each of the first two commits, joined by a merge. `git branch -vv` shows the remote branch."
+  - "Rebasing your branch onto `origin/feature/stock-sync` flattens the merge, and Git skips commits whose changes already exist upstream (same patch)."
+  - "`git rebase origin/feature/stock-sync` while on `feature/stock-sync`."
+guide: |
+  ## 1. See the damage
+  ```bash
+  git log --oneline --graph --all
+  ```
+  Old copies (A, B), Dara's copies (A', B'), your commit C, and a merge M joining C with B'.
 
+  ## 2. Rebase onto the remote branch
+  ```bash
+  git rebase origin/feature/stock-sync
+  ```
+  Rebase ignores merge commits and replays only your non-merge commits that the target does not have.
+  A and B have the same patches as A' and B', so Git recognises them as "already applied" and skips them.
+  Only C is replayed.
 
-  **Fix Broken Rebase**
+  ## 3. Check
+  ```bash
+  git log --oneline origin/main..feature/stock-sync
+  git status -sb
+  ```
+  Three commits, no merge, one ahead of the remote.
 
+  ## 4. Publish (optional here)
+  A plain `git push` now fast-forwards, because Dara's tip is your ancestor.
+debrief: |
+  ## What happened
+  Plain `git pull` merged two versions of the same work: the pre-rebase commits and the post-rebase ones. They
+  have different hashes, so Git treats them as different commits, even though the patches match.
+  `git rebase` computes a patch id for every commit and omits those already present in the new base.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## Prevention
+  - `git pull --rebase` (or `pull.rebase=true`) would have handled this from the start.
+  - Fetch first and look: `git log origin/branch...branch` warns about divergence.
 
-  '
+  ## When patches differ
+  If Dara's rewrite also changed the content, rebase would stop with conflicts. Then `git rebase --onto
+  origin/branch <old-tip-before-your-commits> branch` transplants only your own commits explicitly.
+
+  ## Related
+  - `git range-diff` compares two versions of a rewritten series.
+  - `git cherry -v origin/branch` lists which of your commits are not upstream yet (`+`) or already are (`-`).
+common_mistakes:
+  - "Resetting to origin/feature/stock-sync, which throws away your `Add low-stock alert` commit."
+  - "Merging again or trying to resolve duplicates by hand."
+  - "Force-pushing the merge-containing branch to hide the problem."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/stock-sync
+    description: HEAD is on feature/stock-sync
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s origin/main..feature/stock-sync | tr '\n' '|')" = "Add stock reservation|Add reservation expiry|Add low-stock alert|"
+    description: The branch has the three commits once each
+  - type: script_passes
+    script: |
+      test "$(git rev-list --merges --count origin/main..feature/stock-sync)" = 0
+    description: No merge commit remains
+  - type: script_passes
+    script: |
+      git merge-base --is-ancestor origin/feature/stock-sync feature/stock-sync
+    description: Dara's remote branch is part of your history
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && ! test -d .git/rebase-apply"
+    description: No rebase in progress

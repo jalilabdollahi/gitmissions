@@ -4,40 +4,84 @@ level: level-086-what-is-rebase
 order: 86
 difficulty: intermediate
 xp: 250
-expected_time: 12m
+expected_time: 9m
 concepts:
-- "rebase vs merge \u2014 mental model"
-common_mistakes:
-- "Running commands related to rebase vs merge \u2014 mental model without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - git rebase <branch>
+  - replaying commits
+  - linear history
+repo_path: snapgrid
+description: |
+  You are building photo captions for Snapgrid, a photo-sharing site. You branched `feature/captions` from
+  `main` two commits ago, wrote two commits, and meanwhile the team added a thumbnail cache and lazy loading to
+  `main`. The feature branch now starts from an old commit. The team lead wants your branch to look as if
+  you had started it from today's `main`, without a merge commit, before the review.
+objective: |
+  - rebase `feature/captions` onto the current `main`
+  - afterwards `main` must be an ancestor of `feature/captions`, the branch must have exactly its two commits on top of main
+    (`Add caption field`, `Render captions under photos`) and no merge commit
+  - stay on `feature/captions`; do not change `main`
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows the two lines of work forking from the same old commit."
+  - "`git rebase <upstream>` replays the current branch's commits on top of the given branch."
+  - "Make sure you are on `feature/captions`, then run `git rebase main`."
+guide: |
+  ## 1. Look at the fork
+  ```bash
+  git log --oneline --graph --all
+  ```
+  `main` and `feature/captions` share only the first commit.
 
+  ## 2. Replay your commits
+  ```bash
+  git rebase main
+  ```
+  Git finds the common ancestor, saves your two commits as patches, moves the branch to main's tip and
+  re-applies them one by one.
 
-  **What Is Rebase?**
+  ## 3. Compare
+  ```bash
+  git log --oneline --graph --all
+  git log --oneline main..feature/captions
+  ```
+  The history is now a straight line. Your commits have new hashes because their parent changed.
+debrief: |
+  ## What happened
+  A commit's hash includes its parent, so putting the same change on a new base creates new commits.
+  Rebase does exactly that: same patches, same messages, new parents and new hashes. The old commits
+  stay in the reflog for a while.
 
+  ## Why teams like it
+  A rebased feature branch reads like a story told in order, and a later fast-forward merge adds no merge
+  commit. `git log` and `git bisect` stay simple.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## Mental model
+  Merge says "combine these two histories". Rebase says "pretend I started from here".
 
-  '
+  ## Rule of thumb
+  Rebase only commits that nobody else has yet. This branch is local, so it is safe.
+
+  ## Related
+  - `git rebase --abort` returns to the state before the rebase.
+  - `git reflog` finds the pre-rebase tip if you change your mind.
+common_mistakes:
+  - "Running `git rebase feature/captions` while on main, which does nothing useful."
+  - "Merging main into the feature branch, which works but leaves a merge commit the lead did not want."
+  - "Resetting the branch to main, which discards your two commits."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/captions
+    description: HEAD is on feature/captions
+  - type: is_ancestor
+    ancestor: main
+    descendant: feature/captions
+    description: main is an ancestor of feature/captions
+  - type: script_passes
+    script: test "$(git log --reverse --format=%s main..feature/captions | tr '\n' '|')" = "Add caption field|Render captions under photos|"
+    description: The branch has exactly its two commits on top of main
+  - type: no_merge_commit
+    branch: feature/captions
+    description: No merge commits
+  - type: commit_count_eq
+    count: 3
+    branch: main
+    description: main was not changed

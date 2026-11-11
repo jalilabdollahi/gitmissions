@@ -4,43 +4,88 @@ level: level-093-interactive-squash
 order: 93
 difficulty: intermediate
 xp: 320
-expected_time: 12m
+expected_time: 11m
 concepts:
-- '`squash` / `s` in interactive rebase'
-common_mistakes:
-- Running commands related to `squash` / `s` in interactive rebase without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The feature branch has several tiny commits that should become one clean
-  commit.
-objective: Squash the feature branch history so only one feature commit remains on
-  top of `main`.
+  - squash
+  - combining commit messages
+  - git rebase -i
+repo_path: gatewise
+description: |
+  In the Gatewise API gateway you built retry support on `feature/retry` in three small commits: the retry loop, 503
+  handling and backoff. The reviewers asked for one commit per feature, but they also want the message to
+  keep the story of all three steps, so nothing may be thrown away. Combine the three commits into a single commit
+  whose message lists all three messages (that is what `squash` does, unlike `fixup`).
+objective: |
+  - squash the three commits of `feature/retry` into one commit on top of `main`
+  - the combined message must still contain all of `Add retry loop`, `Handle 503 responses in retry` and `Add retry backoff`
+  - the file `retry.py` must keep the contents of all three steps; stay on `feature/retry`
 hints:
-- An interactive rebase is the usual approach.
-- Any valid Git method is okay if the final history has one feature commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git reset --soft main\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Squashed feature work\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline main..feature/retry` lists the three commits. An interactive rebase over `main` covers exactly those."
+  - "In the todo, keep the first commit as `pick` and change the other two to `squash`. Git then opens an editor with the three messages joined."
+  - "`git rebase -i main`, edit the todo (`pick`, `squash`, `squash`), save the combined message."
+guide: |
+  ## 1. Open the todo
+  ```bash
+  git rebase -i main
+  ```
+  ```
+  pick aaa Add retry loop
+  pick bbb Handle 503 responses in retry
+  pick ccc Add retry backoff
+  ```
 
+  ## 2. Mark the later two as squash
+  ```
+  pick aaa Add retry loop
+  squash bbb Handle 503 responses in retry
+  squash ccc Add retry backoff
+  ```
+  `squash` melts a commit into the one above it and keeps its message for editing.
 
-  **Squash Commits**
+  ## 3. Edit the combined message
+  Git shows all three messages. Tidy them (or keep as is) and save.
 
+  ## 4. Check
+  ```bash
+  git log --oneline main..feature/retry
+  git log -1
+  ```
+  One commit remains, with the three original subjects inside its message.
+debrief: |
+  ## What happened
+  Rebase replayed the first commit, then folded the next two into it. The tree of the result equals the tree
+  of your old tip, only the history is shorter. The messages were concatenated, because `squash` keeps them
+  and lets you edit.
 
-  Squashing is a history-cleanup step that trades granular checkpoints for a simpler
-  review story.
+  ## squash vs fixup
+  - `squash`: combine the changes and the messages, then open the editor.
+  - `fixup`: combine the changes, discard the message of the folded commit.
+  Use squash when the folded commits explain something worth keeping.
 
-  '
+  ## Real-world use
+  Squash before opening a pull request or at merge time to get one reviewable commit per logical change.
+
+  ## Related
+  - `git merge --squash feature` does a similar thing at merge time.
+  - `git rebase -i --autosquash` prepares squash/fixup lines automatically.
+common_mistakes:
+  - "Marking the first commit as squash, which has nothing above it to melt into."
+  - "Using `fixup`, which throws away the messages the reviewers wanted to keep."
+  - "Deleting the todo lines instead of changing them to squash, which drops the commits."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 3
-  description: Feature branch has one rebased feature commit plus main history
-- type: commit_message_contains
-  text: Squashed feature work
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/retry
+    description: HEAD is on feature/retry
+  - type: script_passes
+    script: |
+      test "$(git rev-list --count main..feature/retry)" = 1
+    description: Exactly one commit sits on top of main
+  - type: script_passes
+    script: |
+      m=$(git log -1 --format=%B)
+      echo "$m" | grep -q 'Add retry loop' && echo "$m" | grep -q 'Handle 503 responses in retry' && echo "$m" | grep -q 'Add retry backoff'
+    description: The commit message keeps all three original messages
+  - type: script_passes
+    script: |
+      grep -q 'ATTEMPTS = 3' retry.py && grep -q 'RETRY_ON = 503' retry.py && grep -q 'BACKOFF = 2' retry.py
+    description: retry.py contains all three steps
