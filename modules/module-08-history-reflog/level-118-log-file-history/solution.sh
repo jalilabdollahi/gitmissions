@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > file-history.txt <<'EOF'
-app_changes=2
-EOF
-git add file-history.txt
-git commit -m "docs: add report"
+git log --follow --format=%H -- rules/de/vat.yaml > .followed
+wc -l < .followed | tr -d ' ' > history-count.txt
+tail -1 .followed > first-commit.txt
+rm .followed

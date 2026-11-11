@@ -4,51 +4,82 @@ level: level-125-reflog-time-syntax
 order: 125
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 9m
 concepts:
-- '`HEAD@{2.hours.ago}`'
-- '`HEAD@{yesterday}`'
-common_mistakes:
-- Running commands related to `HEAD@{2.hours.ago}`, `HEAD@{yesterday}` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``HEAD@{2.hours.ago}`,
-  `HEAD@{yesterday}``.
-objective: 'Inspect the repository history and create `time-syntax.txt` containing
-  exactly:
-
-
-  `supported=yes`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - "reflog date syntax: branch@{date}"
+  - git branch <name> <rev>
+description: |
+  The currency-rates repository feeds the treasury dashboards. This morning's import for 3 June swapped units
+  (USD shows as 108.61), and the finance team needs a clean snapshot of **end of day, 2 June 2025** to rebuild
+  yesterday's reports. The log shows the bad commit with an author date of 20:00 on 2 June, because the
+  import script back-dated it, so you cannot trust the dates in `git log`. What matters is where `main` actually
+  *was* at 23:59 that evening.
+objective: |
+  Create a branch named `eod-2025-06-02` that points to the commit `main` was pointing at on **2025-06-02 at 23:59**,
+  according to the reflog (not the author dates). Do not move `main` and do not change any file.
 hints:
-- Start with the Git command related to ``HEAD@{2.hours.ago}`, `HEAD@{yesterday}``.
-- Write the exact expected answer into `time-syntax.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > time-syntax.txt <<'EOF'\n\
-  supported=yes\nEOF\n   ```\n\n2.\n   ```bash\n   git add time-syntax.txt\n   ```\n\
-  \n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Git can answer 'where was this branch at time X?' because the reflog stores timestamps of every move."
+  - "Reflog selectors accept dates: `<branch>@{<date>}`. Try `git rev-parse` or `git log -1` with such a selector."
+  - "`git branch eod-2025-06-02 'main@{2025-06-02 23:59:00}'` (quote the selector so the shell keeps the braces and space)."
+guide: |
+  ## Time travel with the reflog
 
+  The log suggests the bad import happened before midnight:
 
-  **Reflog Time Syntax**
+  ```bash
+  git log --format='%h %ad  %s' --date=iso
+  git reflog --date=iso
+  ```
 
+  Compare the two. The reflog's timestamps are when `main` actually moved. Ask git for the position at a
+  given time:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git log -1 --oneline 'main@{2025-06-02 23:59:00}'
+  ```
 
-  '
+  That is the "Correct JPY rate" commit, not the import. Create the branch from this selector:
+
+  ```bash
+  git branch eod-2025-06-02 'main@{2025-06-02 23:59:00}'
+  git log --oneline eod-2025-06-02
+  ```
+
+  Other valid selectors: `main@{yesterday}`, `main@{2.hours.ago}`, `main@{3}` (three moves ago).
+debrief: |
+  ## What you learned
+
+  The `@{...}` suffix addresses a ref's **reflog**. A number is "n moves ago"; anything else is parsed as a
+  date, so `main@{2025-06-02 23:59:00}`, `HEAD@{yesterday}` and `main@{1.week.ago}` all work. Commit
+  dates (author or committer) are metadata inside a commit and can be anything; the reflog timestamp is
+  the local time when the ref changed.
+
+  ## Real-world use
+
+  "What was in production last Tuesday?" is exactly this question. It also exposes back-dated or
+  rebased commits, where history looks older than it really is.
+
+  ## Pitfalls
+
+  - Reflog dates are in the **local** timezone of the machine that did the move.
+  - Dates older than the oldest reflog entry give a warning and resolve to the oldest entry.
+  - Unquoted braces/spaces are mangled by the shell; always quote selectors.
+  - Because the reflog is local, a colleague's clone answers differently.
+common_mistakes:
+  - "Using `git log --until` or looking at author dates: the back-dated import then appears to be the last commit before midnight."
+  - "Forgetting to quote `'main@{...}'`, so the shell splits the argument and git complains."
+  - "Creating the branch from HEAD or HEAD~1 by luck of counting; the check is based on the reflog date, not guessing."
 validators:
-- type: file_content_equals
-  path: time-syntax.txt
-  text: supported=yes
-  description: time-syntax.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: branch_exists
+    branch: eod-2025-06-02
+    description: branch eod-2025-06-02 exists
+  - type: script_passes
+    description: it points to where main was on 2025-06-02 at 23:59 (reflog time, not author date)
+    script: |
+      test "$(git rev-parse eod-2025-06-02)" = "$(git rev-parse 'main@{2025-06-02 23:59:00}')"
+      git log -1 --format=%s eod-2025-06-02 | grep -q 'Correct JPY rate'
+  - type: script_passes
+    description: main still has all four commits and the working tree is untouched
+    script: |
+      test "$(git rev-list --count main)" = 4
+      test -z "$(git status --porcelain)"

@@ -6,47 +6,81 @@ difficulty: advanced
 xp: 300
 expected_time: 10m
 concepts:
-- "`git log -S \"function_name\"` \u2014 pickaxe"
-common_mistakes:
-- "Running commands related to `git log -S \"function_name\"` \u2014 pickaxe without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ log -S \"function_name\"` \u2014 pickaxe`."
-objective: 'Inspect the repository history and create `pickaxe.txt` containing exactly:
-
-
-  `matches=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log -S (pickaxe)
+  - searching history for a string
+description: |
+  A security scan of the stock-ticker scraper's public repo found a leaked production API token with the prefix
+  `tk_live_`. The current code reads the token from the environment, so the secret is no longer in the files you
+  see. Security wants to know exactly when the token entered the history and when it was finally removed, so
+  they can work out the exposure window. Commit messages alone are useless: some mention tokens and none say "leak".
+objective: |
+  Using the history search, find the commit that **introduced** a string starting with `tk_live_` and the commit
+  that **removed** it again. Write the full hash of the introducing commit into `introduced.txt` and the
+  full hash of the removing commit into `removed.txt`. (A token rotation changes the string but keeps one token in the file.)
 hints:
-- "Start with the Git command related to ``git log -S \"function_name\"` \u2014 pickaxe`."
-- Write the exact expected answer into `pickaxe.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > pickaxe.txt <<'EOF'\nmatches=1\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add pickaxe.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "You are not searching commit messages but the content of changes. Look at the pickaxe option of `git log`."
+  - "`git log -S<string>` lists commits that change the *number of occurrences* of the string. Think about what a rotation does to that number."
+  - "`git log -S'tk_live_' --format=%H` prints two hashes. The newest is the removal, the oldest is the introduction."
+guide: |
+  ## The pickaxe
 
+  Searching messages with `--grep` finds nothing useful. `-S` searches the **diffs**:
 
-  **Search Code Changes**
+  ```bash
+  git log -S'tk_live_' --oneline
+  ```
 
+  It lists only commits where the count of the string changed. Introduction: 0 to 1. Rotation: still 1
+  (one token replaced by another), so it does not appear. Removal: 1 to 0.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  Check each commit with a patch to be sure:
 
-  '
+  ```bash
+  git log -S'tk_live_' -p -- scraper
+  ```
+
+  Then record the answers. Newest is first in the output:
+
+  ```bash
+  git log -S'tk_live_' --format=%H > hits.txt
+  head -1 hits.txt > removed.txt
+  tail -1 hits.txt > introduced.txt
+  ```
+
+  (Delete `hits.txt` afterwards, or leave it; it does not matter.)
+debrief: |
+  ## What you learned
+
+  `git log -S<text>` (pickaxe) finds commits that add or remove occurrences of a string, and `-G<regex>` finds
+  commits whose diff lines match a regex, including edits that keep the count the same. Combined with `-p` it
+  shows exactly the lines. `--all` extends the search to every branch.
+
+  ## Real-world use
+
+  Finding when a secret, a function, a feature flag or a magic constant was introduced is a daily task during
+  incident response. Remember that a secret that touched history stays in clones and forks: removing it from
+  the latest commit is not enough. **Rotate the credential**, and only then consider rewriting history.
+
+  ## Pitfalls
+
+  - `-S` compares counts, so a rotation or a move inside the same commit hides the change; use `-G` for that.
+  - Both `-S` and `-G` are slow on large repositories; restrict them with a path or `--since`.
+  - `--diff-filter=A` or `D` can narrow results to file additions or deletions.
+common_mistakes:
+  - "Using `git log --grep=token`, which matches the commit messages about rotation and docs instead of the diffs."
+  - "Using the rotation commit as the introduction, even though it did not change the number of `tk_live_` occurrences."
+  - "Swapping the two answers: `git log` prints the newest commit first."
 validators:
-- type: file_content_equals
-  path: pickaxe.txt
-  text: matches=1
-  description: pickaxe.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: introduced.txt holds the commit that first added a tk_live_ token
+    script: |
+      want=$(git log -S'tk_live_' --format=%H | tail -1)
+      got=$(git rev-parse --verify "$(tr -d ' \r\n' < introduced.txt)^{commit}")
+      test "$got" = "$want"
+  - type: script_passes
+    description: removed.txt holds the commit that removed the token from the code
+    script: |
+      want=$(git log -S'tk_live_' --format=%H | head -1)
+      got=$(git rev-parse --verify "$(tr -d ' \r\n' < removed.txt)^{commit}")
+      test "$got" = "$want"
+      test "$(git log -S'tk_live_' --format=%H | wc -l | tr -d ' ')" -eq 2

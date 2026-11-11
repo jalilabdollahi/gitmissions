@@ -6,38 +6,87 @@ difficulty: advanced
 xp: 350
 expected_time: 10m
 concepts:
-- '`git fsck --lost-found`'
-common_mistakes:
-- Running commands related to `git fsck --lost-found` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Useful history was made unreachable, and your job is to recover it.
-objective: 'Recover the lost work so `recovered.txt` exists in the current branch,
-  then commit it with `chore: recover history`.'
+  - git fsck --lost-found
+  - dangling commits
+  - rescuing unreferenced work
+description: |
+  The expense tracker keeps corrections in `adjustments.csv`. Last week three temporary branches were used to
+  prepare corrections and then deleted. Accounting now says one of them, the refund for expense **E-4471**
+  (a cancelled conference booking), was never applied and must be re-submitted. Nobody remembers a branch name
+  or a hash, and the reflog was cleaned by a colleague's maintenance script, so `git reflog` is of no help.
+objective: |
+  Search the repository for unreachable ("dangling") commits, find the one whose `adjustments.csv` contains
+  a row for `E-4471`, and create a branch `rescued-adjustments` pointing at it. Leave `main` as it is.
 hints:
-- Use `git reflog` or `git fsck --lost-found` to find the lost commit.
-- Restore the file or reset to the right commit.
-- Commit the recovered file when needed.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reflog\n   ```\n\n2.\n   ```bash\n\
-  \   git checkout <lost-commit> -- recovered.txt\n   ```\n\n3.\n   ```bash\n   git\
-  \ add recovered.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: recover\
-  \ history\"\n   ```"
-debrief: '## What Just Happened
+  - "Commits that no branch, tag or reflog entry references are not listed by `git log`, but they are still stored. `git fsck` can find them."
+  - "`git fsck --lost-found` prints `dangling commit <hash>` lines. Inspect each with `git show <hash>` and look at the adjustments row."
+  - "`git fsck --lost-found | grep commit`, then `git show <hash>:adjustments.csv | grep E-4471`, then `git branch rescued-adjustments <hash>`."
+guide: |
+  ## Looking for orphans
 
+  Neither of these shows the deleted work:
 
-  **Find Dangling Commits**
+  ```bash
+  git branch --all
+  git reflog
+  ```
 
+  The file-system check lists objects that nothing points to:
 
-  Reflog and object recovery tools are the difference between panic and a calm recovery.
+  ```bash
+  git fsck --lost-found
+  ```
 
-  '
+  You get several `dangling commit` lines (and possibly blobs). Look at each candidate:
+
+  ```bash
+  git show --stat <hash>
+  git show <hash>:adjustments.csv
+  ```
+
+  One of them has the `E-4471` row. Pin it with a branch so it cannot be collected:
+
+  ```bash
+  git branch rescued-adjustments <hash>
+  git log --oneline rescued-adjustments
+  ```
+
+  Optionally compare with main: `git diff main rescued-adjustments`.
+debrief: |
+  ## What you learned
+
+  A commit stays in the object database even when nothing refers to it. `git fsck --lost-found` walks all
+  objects and reports **dangling** ones (unreachable and unreferenced) and also writes them to `.git/lost-found`.
+  Normally the reflog is enough, which is why `fsck` is the last resort: after the reflog expired, or when a
+  branch was created and deleted in a clone that never had a reflog for it.
+
+  ## Real-world use
+
+  Recovering from a bad `git gc`, a botched rebase in a temporary clone, or an editor crash that lost a
+  stash all end in this command. Stashes dropped by mistake can be found the same way (`dangling commit` with message "WIP on ...").
+
+  ## Pitfalls
+
+  - Git eventually prunes dangling objects (`git gc` default: after two weeks). Rescue quickly.
+  - `git fsck` also lists dangling blobs and trees; a lost uncommitted `git add` shows up there as a blob.
+  - Create the branch first, inspect afterwards: a pinned commit cannot disappear while you read it.
+common_mistakes:
+  - "Relying on `git reflog` or `git log --all`, which show nothing here."
+  - "Choosing a different dangling commit (taxi charge, hotel reclass) because its message sounds like a refund."
+  - "Creating the branch with `git branch rescued-adjustments` without a hash, which points at main."
 validators:
-- type: file_content_equals
-  path: recovered.txt
-  text: rescued
-  description: Recovered file is present
-- type: is_clean
-  description: Working tree is clean
+  - type: branch_exists
+    branch: rescued-adjustments
+    description: branch rescued-adjustments exists
+  - type: script_passes
+    description: the branch holds the adjustment for E-4471, one commit on top of main
+    script: |
+      git show rescued-adjustments:adjustments.csv | grep -q '^E-4471,refund'
+      test "$(git rev-list --count main..rescued-adjustments)" = 1
+      test "$(git rev-parse rescued-adjustments~1)" = "$(git rev-parse main)"
+  - type: script_passes
+    description: the other adjustments were not pulled into main
+    script: |
+      ! git show main:adjustments.csv | grep -q E-4471
+      test "$(git rev-list --count main)" = 2
+

@@ -4,49 +4,96 @@ level: level-121-what-is-reflog
 order: 121
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 9m
 concepts:
-- "`git reflog` \u2014 the safety net"
-common_mistakes:
-- "Running commands related to `git reflog` \u2014 the safety net without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ reflog` \u2014 the safety net`."
-objective: 'Inspect the repository history and create `reflog.txt` containing exactly:
-
-
-  `entries>=3`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git reflog
+  - commits that no branch points to
+description: |
+  The open-data team publishes census CSVs. Yesterday you amended the "publish" commit twice: once to rename
+  it for review and once to remove a `respondent_name` column that leaked personal data. The privacy officer now
+  asks what exactly the very first draft contained, but that commit is no longer part of any branch,
+  so `git log` will never show it. It still exists in the repository, though.
+objective: |
+  Find the very first version of the "Publish census 2024 tables" commit (the one whose message still ends with
+  `(draft)`). Write its full hash into `first-draft.txt`, and write the header line of `census.csv` **as it was in
+  that commit** into `draft-header.txt`. Do not rewrite or move any branch.
 hints:
-- "Start with the Git command related to ``git reflog` \u2014 the safety net`."
-- Write the exact expected answer into `reflog.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > reflog.txt <<'EOF'\nentries>=3\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add reflog.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log` follows parents, but amended commits are replaced. Git keeps a journal of where HEAD and branches pointed."
+  - "`git reflog` lists every position HEAD has had, newest first, with a short message such as `commit (amend): ...`."
+  - "`git reflog` to find the entry whose subject ends with `(draft)`, then `git show <hash>:census.csv`. Or `git log -g --grep='(draft)' --format=%H`."
+guide: |
+  ## The journal behind your branches
 
+  Look at what the ordinary log says:
 
-  **What Is Reflog?**
+  ```bash
+  git log --oneline
+  ```
 
+  Three commits, no draft. Now read the reflog, which records every time HEAD moved:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git reflog
+  ```
 
-  '
+  You will see entries like `commit (amend): Publish census 2024 tables (review)` and the earlier
+  `commit: Publish census 2024 tables (draft)`. The left column is the hash of the commit HEAD pointed at then.
+
+  Inspect the draft without checking it out:
+
+  ```bash
+  git show <hash>:census.csv
+  ```
+
+  The reflog can also be walked like a log, which makes searching easy:
+
+  ```bash
+  git log -g --grep='(draft)' --format=%H
+  ```
+
+  Write the answers:
+
+  ```bash
+  git log -g --grep='(draft)' --format=%H -1 > first-draft.txt
+  git show "$(cat first-draft.txt)":census.csv | head -1 > draft-header.txt
+  ```
+debrief: |
+  ## What you learned
+
+  The **reflog** is a local, private diary of where `HEAD` and each branch tip have pointed. Amending,
+  resetting, rebasing, switching branches and committing all add entries. An amended commit is not changed: a
+  new commit is created and the branch is moved, so the old commit survives, unreferenced, until garbage
+  collection removes it.
+
+  ## Real-world use
+
+  This is your safety net: nearly any "I just destroyed my work" situation can be repaired by finding the old
+  hash in the reflog. It is also an investigative tool: `git reflog show <branch>` tells you how a branch moved.
+
+  ## Pitfalls
+
+  - The reflog is **local**. It is not pushed, and a fresh clone has none of your history of amends.
+  - Entries expire (90 days for reachable, 30 for unreachable ones by default).
+  - Privacy: amending away a secret does not delete it. The old commit remains in the object database and in the reflog.
+common_mistakes:
+  - "Looking at `git log --all`, which only shows commits reachable from a ref; the draft is not."
+  - "Copying the hash of the amended `(review)` commit, which has a similar message but already differs."
+  - "Writing the header of the current `census.csv`, which no longer has the `respondent_name` column."
 validators:
-- type: file_content_equals
-  path: reflog.txt
-  text: entries>=3
-  description: reflog.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: first-draft.txt is the full hash of the original (draft) commit
+    script: |
+      want=$(git log -g --format=%H --grep='(draft)' -1)
+      test -n "$want"
+      got=$(git rev-parse --verify "$(tr -d ' \r\n' < first-draft.txt)^{commit}")
+      test "$got" = "$want"
+  - type: script_passes
+    description: draft-header.txt holds census.csv's header as it was in that draft
+    script: |
+      want=$(git log -g --format=%H --grep='(draft)' -1)
+      test "$(tr -d '\r' < draft-header.txt | sed '/^$/d')" = "$(git show "$want:census.csv" | head -1)"
+  - type: script_passes
+    description: history was not rewritten (still three commits on main)
+    script: |
+      test "$(git rev-list --count main)" = 3
+

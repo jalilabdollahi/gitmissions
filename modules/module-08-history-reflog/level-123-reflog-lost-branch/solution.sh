@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-git reflog
-git checkout HEAD@{1} -- recovered.txt
-git add recovered.txt
-git commit -m "chore: recover history"
+git reflog | grep 'Rewrite API reference headings'
+tip=$(git reflog --format='%H %gs' | grep 'commit: Rewrite API reference headings' | head -1 | cut -d' ' -f1)
+git branch docs/v2-migration "$tip"

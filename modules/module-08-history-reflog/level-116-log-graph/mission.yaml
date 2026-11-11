@@ -4,49 +4,84 @@ level: level-116-log-graph
 order: 116
 difficulty: advanced
 xp: 280
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git log --graph --oneline --all`'
-common_mistakes:
-- Running commands related to `git log --graph --oneline --all` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log
-  --graph --oneline --all``.
-objective: 'Inspect the repository history and create `graph.txt` containing exactly:
-
-
-  `branches=3`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --graph --oneline --decorate --all
+  - git branch --no-merged
+description: |
+  You maintain the invoicing engine of a small accounting firm. The release manager asks for a picture of how the
+  work has been flowing: several feature branches were created, some were merged into `main` and one is
+  still floating around. Plain `git log` only shows a single straight line and hides the branches, so it
+  cannot answer her question.
+objective: |
+  1. Save the commit graph of the whole repository, **all** branches, one line per commit, with branch and
+     tag labels shown next to the commits and drawn as an ASCII graph, into `invoice-history.txt`.
+  2. Find the branch that has **not** been merged into `main` yet and write its name (just the name) into `unmerged.txt`.
 hints:
-- Start with the Git command related to ``git log --graph --oneline --all``.
-- Write the exact expected answer into `graph.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > graph.txt <<'EOF'\nbranches=3\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add graph.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log` only follows the current branch. Look at the options `--graph`, `--oneline`, `--decorate` and `--all`."
+  - "Redirect the output of your log command into the file with `>`. For the second part, ask git which branches `--no-merged` into a given branch."
+  - "`git log --graph --oneline --decorate --all > invoice-history.txt` and `git branch --no-merged main`. The second command prefixes names with spaces, so write the name cleanly."
+guide: |
+  ## Seeing the real shape of history
 
+  Start with the plain log and notice what is missing:
 
-  **Visual Branch Graph**
+  ```bash
+  git log --oneline
+  ```
 
+  Only commits reachable from `main` appear, and the merges are flattened. Now add the options one by one:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git log --oneline --graph            # draws the branch/merge lines with * and |
+  git log --oneline --graph --all      # starts from every branch, not only HEAD
+  git log --oneline --graph --all --decorate   # prints (branch, tag) labels at the tips
+  ```
 
-  '
+  Save the final view into the file the release manager asked for:
+
+  ```bash
+  git log --graph --oneline --decorate --all > invoice-history.txt
+  ```
+
+  Now find the branch that is not yet part of `main`:
+
+  ```bash
+  git branch --no-merged main
+  ```
+
+  Only one branch is listed. Write its name into `unmerged.txt` (for example with `git branch --no-merged main --format='%(refname:short)' > unmerged.txt`).
+debrief: |
+  ## What you learned
+
+  `git log` starts at HEAD and walks parents. `--all` adds every ref as a starting point, `--graph` draws how
+  the lines join, `--oneline` shortens each commit to hash and subject, and `--decorate` shows which branch
+  or tag points at each commit. Together they are the most useful "where is everything?" command in git, and many
+  people alias it (`git config --global alias.lg "log --graph --oneline --decorate --all"`).
+
+  `git branch --merged <branch>` and `--no-merged <branch>` answer the other half of the question: which
+  work is already safe inside a branch, and which is not. They are the basis of branch clean-up.
+
+  ## Pitfalls
+
+  - `--all` includes remote-tracking branches and tags; add `--branches` to restrict to local branches.
+  - On a huge repository add `-n 30` or a path, otherwise the graph is unreadable.
+  - A branch that is "not merged" may still have its content in `main` if it was squash-merged, so check before deleting it with `-D`.
+common_mistakes:
+  - "Running `git log --graph --oneline` without `--all`, so `experiment/proration` and the merged feature branches never show up."
+  - "Leaving out `--decorate` when redirecting to a file: git only decorates automatically on a terminal, so the saved file has no branch names."
+  - "Writing the output of `git branch --no-merged` as it is, including leading spaces or an asterisk, or choosing a branch that was already merged."
 validators:
-- type: file_content_equals
-  path: graph.txt
-  text: branches=3
-  description: graph.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: invoice-history.txt contains the full decorated graph of all branches
+    script: |
+      test -f invoice-history.txt
+      diff <(git log --graph --oneline --decorate --all | sed 's/[[:space:]]*$//') <(sed 's/[[:space:]]*$//' invoice-history.txt)
+  - type: script_passes
+    description: unmerged.txt names the one branch that is not merged into main
+    script: |
+      test -f unmerged.txt
+      want=$(git branch --no-merged main --format='%(refname:short)')
+      test -n "$want"
+      test "$(tr -d ' *\r' < unmerged.txt | sed '/^$/d')" = "$want"
+
