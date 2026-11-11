@@ -6,34 +6,81 @@ difficulty: intermediate
 xp: 230
 expected_time: 9m
 concepts:
-- "`origin/main` \u2014 what it means"
-common_mistakes:
-- "Running commands related to `origin/main` \u2014 what it means without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Fetch from `origin` so `origin/main` appears locally.
+  - remote-tracking branches
+  - git fetch
+  - git branch -r --no-merged
+repo_path: gatepass
+description: |
+  You inherit the Gatepass ticketing service from a colleague who left. Before planning the next
+  release you need to know which branches on the team's server hold work that has not reached `main`
+  yet, because those are the ones that could still change the release. You cloned the repository last
+  week, and since then another developer pushed a new hotfix branch. Your local list of remote
+  branches may therefore be out of date.
+objective: |
+  Write the names of every branch on the remote that is not yet merged into the remote's `main` to
+  `unmerged.txt`, one name per line, without the `origin/` prefix (for example `feature/xyz`).
+  Do not include `main`. The list must be complete, which means you have to refresh your view of the
+  remote first.
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git fetch origin\n   ```"
-debrief: '## What Just Happened
+  - "`git branch -r` prints remote-tracking branches, but only as of your last fetch."
+  - "Run `git fetch` first. Then `git branch -r --no-merged origin/main` lists remote branches with commits that main does not contain."
+  - "`git fetch && git branch -r --no-merged origin/main | sed 's#^ *origin/##' > unmerged.txt`"
+guide: |
+  ## 1. See what you know
+  ```bash
+  git branch -r
+  ```
+  Remote-tracking branches such as `origin/main` are local bookmarks. They move only when you
+  fetch, push or pull.
 
+  ## 2. Refresh
+  ```bash
+  git fetch
+  git branch -r
+  ```
+  A new `origin/hotfix/...` branch appears that was not there before.
 
-  **Remote Tracking Branches**
+  ## 3. Ask Git which ones are unmerged
+  ```bash
+  git branch -r --no-merged origin/main
+  ```
+  `--no-merged <ref>` keeps only branches whose tip is not contained in `<ref>`. The `origin/HEAD`
+  alias is merged by definition, so it disappears.
 
+  ## 4. Save the names without the prefix
+  ```bash
+  git branch -r --no-merged origin/main | sed 's#^ *origin/##' > unmerged.txt
+  cat unmerged.txt
+  ```
+debrief: |
+  ## What happened
+  `origin/*` branches are your cached copy of the server's branches. Until `git fetch` updated them,
+  one hotfix branch was invisible. `--no-merged` then compared each tip with `origin/main` and printed
+  only branches carrying commits that main lacks.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why it matters
+  Teams use this list before a release or a cleanup: merged branches are safe to delete, unmerged ones
+  need a decision. The reverse query is `git branch -r --merged origin/main`.
 
-  '
+  ## Pitfalls
+  - A stale list gives wrong answers with full confidence. Fetch first.
+  - Branches merged by squash or rebase look unmerged to Git, because the commits are different objects.
+  - `git ls-remote --heads origin` asks the server directly without touching your local refs.
+
+  ## Related
+  - `git branch -vv` shows which local branch tracks which remote branch.
+  - `git remote show origin` summarises tracking and stale refs.
+common_mistakes:
+  - "Reading `git branch -r` without fetching, which misses the newly pushed hotfix branch."
+  - "Leaving the `origin/` prefix on the names or including `main` in the file."
+  - "Using `git branch --no-merged` (local branches only) instead of the `-r` form."
 validators:
-- type: script_passes
-  description: origin/main exists locally
-  script: git rev-parse --verify refs/remotes/origin/main >/dev/null
+  - type: script_passes
+    script: git rev-parse --verify -q refs/remotes/origin/hotfix/qr-scan >/dev/null
+    description: The new hotfix branch has been fetched
+  - type: script_passes
+    script: |
+      exp=$(git --git-dir=../origin.git for-each-ref --no-merged main --format='%(refname:short)' refs/heads | sort)
+      got=$(sed 's#^ *##; s#^origin/##' unmerged.txt | sort)
+      test -n "$exp" && test "$exp" = "$got"
+    description: unmerged.txt lists exactly the unmerged remote branches

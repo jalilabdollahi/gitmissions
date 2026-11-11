@@ -4,36 +4,89 @@ level: level-056-add-a-remote
 order: 56
 difficulty: intermediate
 xp: 200
-expected_time: 9m
+expected_time: 8m
 concepts:
-- '`git remote add origin <url>`'
-common_mistakes:
-- Running commands related to `git remote add origin <url>` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Add a remote named `origin` that points to `../remote.git`.
+  - git remote add
+  - git push -u
+  - upstream tracking
+repo_path: newsletter
+description: |
+  You maintain the Brightletter newsletter platform, a small Python service that renders and sends
+  weekly digests. Until now the repository only lived on your laptop. The platform team has just
+  created an empty bare repository for it on the shared git host; in this sandbox it sits next to
+  your project as `../hosting.git`.
+  Your local repo has a `main` branch with the real history, and a private `draft-templates` branch
+  you are not ready to share.
+objective: |
+  Connect the local repo to the hosting repository and publish `main`:
+  - add a remote named `origin` that points to `../hosting.git`
+  - push `main` to it and make `origin/main` the upstream of your local `main`
+  - `../hosting.git` must end up with `main` at exactly the same commit as your local `main`
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git remote add origin ../remote.git\n   ```"
-debrief: '## What Just Happened
+  - "Run `git remote -v`. It prints nothing, so the repository knows no remote yet."
+  - "`git remote add <name> <url>` registers a remote. The url can be a relative path to a bare repository."
+  - "After adding it, `git push -u origin main` uploads the branch and records it as upstream in one step."
+guide: |
+  ## 1. Look at what you have
+  ```bash
+  git remote -v
+  git branch
+  ```
+  No remotes are listed, so there is nowhere to push yet.
 
+  ## 2. Register the remote
+  ```bash
+  git remote add origin ../hosting.git
+  git remote -v
+  ```
+  `origin` is only a nickname stored in `.git/config`. Any name works, but `origin` is the convention.
 
-  **Add a Remote**
+  ## 3. Publish main and set the upstream
+  ```bash
+  git push -u origin main
+  ```
+  `-u` (`--set-upstream`) stores `branch.main.remote` and `branch.main.merge`, so later a bare
+  `git push` or `git pull` knows where to go.
 
+  ## 4. Check
+  ```bash
+  git status -sb
+  git branch -vv
+  ```
+  You should see `main...origin/main` with no ahead/behind counters.
+debrief: |
+  ## What happened
+  A remote is just a named URL plus a fetch refspec in `.git/config`. `git remote add` wrote those
+  two lines, and `git push -u` sent your objects over and created the remote-tracking branch
+  `origin/main` on your side.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why the upstream matters
+  Without `-u`, the first `git push` fails with "has no upstream branch", and `git status` cannot tell
+  you how far ahead or behind you are. Newer Git can do this automatically with `push.autoSetupRemote`,
+  but you should not rely on it being enabled on every machine.
 
-  '
+  ## Only main left
+  `draft-templates` stayed private on purpose. `git push origin main` sends exactly one branch, whereas
+  `git push --all` would have published every local branch.
+
+  ## Related
+  - `git remote set-url origin <url>` changes the address later.
+  - `git remote rename old new` and `git remote remove name` manage the list.
+  - `git config --get remote.origin.url` prints the stored address.
+common_mistakes:
+  - "Adding the remote but never pushing, so `../hosting.git` stays empty."
+  - "Pushing with `git push --all`, which also publishes the private draft-templates branch."
+  - "Pushing without `-u`, so `main` has no upstream and `git pull` complains."
 validators:
-- type: remote_exists
-  name: origin
-  description: origin remote exists
+  - type: remote_exists
+    name: origin
+    description: A remote named origin exists
+  - type: script_passes
+    script: git remote get-url origin | grep -q 'hosting.git'
+    description: origin points at the hosting repository
+  - type: script_passes
+    script: test "$(git --git-dir=../hosting.git rev-parse refs/heads/main)" = "$(git rev-parse main)"
+    description: hosting.git has main at the same commit as your local main
+  - type: script_passes
+    script: test "$(git config branch.main.remote)" = origin && test "$(git config branch.main.merge)" = refs/heads/main
+    description: Local main tracks origin/main

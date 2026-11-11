@@ -6,35 +6,73 @@ difficulty: intermediate
 xp: 230
 expected_time: 9m
 concepts:
-- '`git push origin --delete <branch>`'
-common_mistakes:
-- Running commands related to `git push origin --delete <branch>` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Delete the remote branch `feature/old` from `origin`.
+  - git push --delete
+  - merged vs unmerged branches
+  - remote housekeeping
+repo_path: hirewell
+description: |
+  The Hirewell job-board repository has accumulated branches on the server. The tech lead asks you to
+  clean up: delete the remote branches that are already merged into `main`, but keep `main`, anything
+  under `release/`, and every branch that still carries unmerged work. Deleting the wrong branch
+  would throw away a teammate's unreleased feature, so check before you delete.
+objective: |
+  After the cleanup, the remote `origin` must have exactly these branches: `main`, the `release/*`
+  branch, and every branch with commits that are not in `main`. All other (fully merged) branches must be
+  removed from the remote. Do not modify the branches you keep.
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git push origin --delete feature/old\n   ```"
-debrief: '## What Just Happened
+  - "`git branch -r --merged origin/main` lists remote branches that main already contains. Be careful: `main` itself and `release/*` are in that list, too."
+  - "Delete a remote branch with `git push origin --delete <name>`; list several names in one command if you like."
+  - "Delete only the merged non-release branches, e.g. `git push origin --delete feature/salary-filter feature/saved-searches`."
+guide: |
+  ## 1. Fetch and sort
+  ```bash
+  git fetch --prune
+  git branch -r --merged origin/main
+  git branch -r --no-merged origin/main
+  ```
+  The first list holds candidates for deletion, the second list must stay.
 
+  ## 2. Apply the exceptions
+  `origin/main` and the `release/*` branch are merged but must be kept.
 
-  **Delete a Remote Branch**
+  ## 3. Delete on the server
+  ```bash
+  git push origin --delete feature/salary-filter feature/saved-searches
+  ```
+  Each deletion prints `- [deleted]`.
 
+  ## 4. Verify
+  ```bash
+  git ls-remote --heads origin
+  ```
+debrief: |
+  ## What happened
+  Deleting a remote branch is a push of "nothing" to that name. `git push origin --delete x` is the
+  readable form of `git push origin :x`. Only the pointer is removed; commits stay reachable through
+  `main` because the branches were merged.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why check merged status
+  An unmerged branch holds commits that nothing else references. Deleting it on the server may make
+  them unreachable for everyone, and hosts garbage-collect them after a while.
 
-  '
+  ## Local copies
+  Your own `origin/*` tracking branches and local branches are not removed automatically.
+  `git fetch --prune` cleans the first; `git branch -d` handles the second.
+
+  ## Related
+  - `git push origin --delete` also works for tags (`git push origin --delete tag v1`).
+  - Many hosts offer "delete branch after merge" to automate this.
+common_mistakes:
+  - "Deleting `feature/remote-badge`, which looked finished but still has unmerged commits."
+  - "Deleting the `release/*` branch because it also shows up as merged."
+  - "Deleting only the local branches and assuming the remote was cleaned."
 validators:
-- type: script_passes
-  description: Remote branch was deleted
-  script: '! git -C ../remote.git rev-parse --verify refs/heads/feature/old >/dev/null
-    2>&1'
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git for-each-ref --format='%(refname:short)' refs/heads | sort | tr '\n' ' ')" = "feature/remote-badge main release/2025-03 "
+    description: The remote has exactly main, release/2025-03 and feature/remote-badge
+  - type: script_passes
+    script: git --git-dir=../origin.git log -1 --format=%s feature/remote-badge | grep -qx 'Add remote badge to listings'
+    description: The unmerged branch is untouched
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git log -1 --format=%s main)" = "Show job count in header"
+    description: main on the remote is untouched

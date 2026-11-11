@@ -1,43 +1,30 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
+git init -q --bare -b main origin.git
+git clone -q origin.git seed 2>/dev/null
+cd seed
+git config user.name "Amara"
+git config user.email "amara@studyloop.dev"
+git config commit.gpgsign false
+printf 'def start_quiz():\n    return "go"\n' > quiz.py
+git add . && git commit -q -m "Start quiz page"
+git push -q origin main
+git switch -q -c feature/quiz-scoring
+printf 'def score(answers):\n    return len(answers)\n' > scoring.py
+git add . && git commit -q -m "Add quiz scoring"
+git push -q origin feature/quiz-scoring
+git switch -q main
+git switch -q -c feature/quiz-timer
+printf 'class Timer:\n    def __init__(self):\n        self.elapsed = 0\n\n    def pause(self):\n        self.elapsed = 0\n' > timer.py
+git add . && git commit -q -m "Add quiz countdown timer"
+git push -q origin feature/quiz-timer
 
-git init --bare remote.git
-
-git clone remote.git local
-
-cd local
-
-git config user.email "player@gitmissions.local"
-
+cd "$SANDBOX"
+git clone -q origin.git studyloop 2>/dev/null
+cd studyloop
 git config user.name "Player"
-
-cat > README.md <<'EOF'
-remote sandbox
-EOF
-
-git add README.md
-
-git commit -m "Initial scaffold"
-
-git branch -M main
-
-git push origin main
-
-git -C ../remote.git symbolic-ref HEAD refs/heads/main
-
-cd ..
-git clone remote.git seed2
-cd seed2
-git config user.email "seed@example.com"
-git config user.name "Seed"
-git switch -c feature/api
-printf 'api branch
-' > api.txt
-git add api.txt
-git commit -m "API branch"
-git push -u origin feature/api
-cd ../local
-git fetch origin
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false

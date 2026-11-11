@@ -4,38 +4,82 @@ level: level-068-force-push-safely
 order: 68
 difficulty: intermediate
 xp: 280
-expected_time: 9m
+expected_time: 12m
 concepts:
-- '`git push --force-with-lease` vs `--force`'
-common_mistakes:
-- Running commands related to `git push --force-with-lease` vs `--force` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Rewrite the local commit and force-push it safely with `--force-with-lease`.
+  - git push --force-with-lease
+  - amended commits
+  - not overwriting teammates
+repo_path: stridely
+description: |
+  On the Stridely fitness app you pushed `feature/step-goals` with two commits, then noticed the second one
+  said "(wip)" and amended it to polish the message and add a test file. Amending changes the commit hash,
+  so a normal push is now rejected as non-fast-forward. Meanwhile your teammate Jonas, without telling
+  you, pushed a third commit ("Sync goals with watch") onto the same remote branch. A plain
+  `git push --force` would wipe his commit.
+objective: |
+  Publish your amended history without losing Jonas's commit. When you are done, the history of
+  `origin/feature/step-goals` (newest first) must be: `Sync goals with watch`, `Add step goal screen`, `Add step goal model`, then main's history.
+  Use `--force-with-lease` (never plain `--force`), and keep your local branch equal to the remote one.
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git commit --amend -m \"Rewrite local commit\"\n   ```\n\n3.\n   ```bash\n \
-  \  git push --force-with-lease origin main\n   ```"
-debrief: '## What Just Happened
+  - "Try `git push --force-with-lease`. It refuses because the remote has a commit you have not seen. That is the safety net working."
+  - "Fetch, then put Jonas's commit on top of your amended one (cherry-pick it), because rebasing alone would restore your old, un-amended commit."
+  - "`git fetch && git cherry-pick origin/feature/step-goals && git push --force-with-lease`"
+guide: |
+  ## 1. See the divergence
+  ```bash
+  git fetch
+  git log --oneline --graph --all
+  ```
+  Remote: seed, model, screen (wip), Jonas's sync. Local: seed, model, screen (amended).
 
+  ## 2. Why not plain force
+  `git push --force` would discard Jonas's commit. `--force-with-lease` only overwrites when the remote is
+  exactly what your last fetch saw, and it would have refused here.
 
-  **Force Push Safely**
+  ## 3. Re-apply his commit on top of your amended one
+  ```bash
+  git cherry-pick origin/feature/step-goals
+  ```
+  The cherry-pick copies only Jonas's change (the tip), not the old "(wip)" commit under it.
 
+  ## 4. Force with a lease
+  ```bash
+  git push --force-with-lease
+  git log --oneline -4
+  ```
+  Because you just fetched, your lease matches the server and the push is accepted.
+debrief: |
+  ## What happened
+  Amending rewrote history, so your branch and the remote disagreed about the second commit. A lease
+  compares the remote ref with what you expect it to be and aborts if someone pushed in between.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## The sharp edge
+  If you fetch and do nothing else, the lease is refreshed and a later `--force-with-lease` happily
+  overwrites Jonas's commit, because Git assumes you have looked at what you fetched. Always integrate
+  fetched work before forcing.
 
-  '
+  ## Rules of thumb
+  - Rewrite only branches that are yours; tell people when you must rewrite a shared one.
+  - Prefer `--force-with-lease=<ref>:<expected>` in scripts for an explicit expectation.
+  - `--force-if-includes` adds a check that you integrated the remote tip.
+
+  ## Related
+  - `git reflog` helps if a forced push ever goes wrong.
+  - `git cherry-pick <commit>` copies one commit onto the current branch.
+common_mistakes:
+  - "Using `git push --force`, which silently deletes Jonas's commit from the server."
+  - "Fetching and then running `--force-with-lease` without integrating, which still overwrites his commit."
+  - "Rebasing onto `origin/feature/step-goals`, which brings back the un-amended (wip) commit."
 validators:
-- type: script_passes
-  description: Remote main has the rewritten commit message
-  script: test "$(git -C ../remote.git log -1 --pretty=%s main)" = "Rewrite local
-    commit"
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git log --format=%s -3 refs/heads/feature/step-goals | tr '\n' '|')" = "Sync goals with watch|Add step goal screen|Add step goal model|"
+    description: The remote branch has the amended history plus Jonas's commit
+  - type: script_passes
+    script: "! git --git-dir=../origin.git log --format=%s refs/heads/feature/step-goals | grep -q 'wip'"
+    description: The old (wip) commit is gone from the remote branch
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/feature/step-goals)" = "$(git rev-parse feature/step-goals)"
+    description: Local feature/step-goals equals the remote branch
+  - type: script_passes
+    script: git --git-dir=../origin.git show --stat --format= refs/heads/feature/step-goals~1 | grep -q 'goal_screen_test.dart'
+    description: The amended commit keeps the test file you added

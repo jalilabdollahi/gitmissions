@@ -6,36 +6,78 @@ difficulty: intermediate
 xp: 250
 expected_time: 9m
 concepts:
-- '`git pull --rebase` to avoid merge commits'
-common_mistakes:
-- Running commands related to `git pull --rebase` to avoid merge commits without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Pull from `origin/main` with rebase so history stays linear.
+  - git pull --rebase
+  - linear history
+  - integrating upstream work
+repo_path: menu-service
+description: |
+  The Forkful food-delivery menu service uses a linear history on `main`: no merge bubbles. You made
+  two commits (allergen list and calorie display) and want to push them, but your colleague Mira
+  pushed a vegan-flag commit first, so Git rejects your push. This clone is configured to merge on
+  a plain `git pull`, so you have to ask for the rebase explicitly.
+objective: |
+  - bring Mira's commit in with `git pull --rebase` so that your two commits are replayed on top of it
+  - `main` must contain no merge commits
+  - push, so `origin/main` equals your local `main`
+  - final order, oldest to newest: `Add vegan flag to menu items`, `Add allergen list`, `Show calories`
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git pull --rebase origin main\n   ```"
-debrief: '## What Just Happened
+  - "A plain `git pull` here would create a merge commit, because `pull.rebase` is false in this repo."
+  - "`git pull --rebase` (or `git pull -r`) fetches and replays your local commits on top of the fetched ones."
+  - "`git pull --rebase && git push origin main`"
+guide: |
+  ## 1. Why the push fails
+  ```bash
+  git push origin main     # rejected: fetch first
+  git fetch
+  git log --oneline --graph --all
+  ```
 
+  ## 2. Replay your commits on top of hers
+  ```bash
+  git pull --rebase
+  ```
+  Git sets your two commits aside, fast-forwards to Mira's tip, then reapplies yours one by one with
+  new hashes. There are no conflicts here because the commits touch different files.
 
-  **Pull with Rebase**
+  ## 3. Inspect and push
+  ```bash
+  git log --oneline -4
+  git push origin main
+  ```
+  The history reads as if you had started your work after Mira finished.
+debrief: |
+  ## What happened
+  Rebasing rewrote your local, never-published commits so they sit after the remote tip. The result is
+  a straight line, and your push became a fast-forward.
 
+  ## Why it is safe here
+  Only you had those two commits, so changing their hashes affects nobody. That is the condition for
+  safe rebasing: the commits must not exist anywhere else yet.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Making it the default
+  ```bash
+  git config pull.rebase true       # this repo
+  git config --global pull.rebase true
+  ```
+  `git pull --rebase=merges` preserves merge commits if you must keep them.
 
-  '
+  ## Pitfalls
+  - On conflict, Git stops: resolve, `git add`, `git rebase --continue`, or `git rebase --abort` to back out.
+  - Do not rebase commits you already pushed and others use.
+
+  ## Related
+  - `git fetch` + `git rebase origin/main` is the same thing in two steps.
+common_mistakes:
+  - "Running a plain `git pull`, which in this repo creates a merge commit and breaks the linear-history rule."
+  - "Forgetting the final push, so origin/main never receives the replayed commits."
+  - "Force-pushing instead of integrating the remote commit first."
 validators:
-- type: no_merge_commit
-  branch: HEAD
-  description: History stayed linear
-- type: is_clean
-  description: Working tree is clean
+  - type: no_merge_commit
+    branch: main
+    description: main has no merge commits
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/main)" = "$(git rev-parse main)"
+    description: origin/main equals your local main
+  - type: script_passes
+    script: test "$(git log --reverse --format=%s -3 main | tr '\n' '|')" = "Add vegan flag to menu items|Add allergen list|Show calories|"
+    description: Your two commits sit on top of Mira's commit
