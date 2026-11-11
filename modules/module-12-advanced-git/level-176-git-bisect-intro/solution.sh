@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
-
-cat > bisect.txt <<'EOF'
-bad_commit=known
-EOF
-git add bisect.txt
-git commit -m "docs: add report"
+git bisect start
+git bisect bad HEAD
+git bisect good "$(git rev-list --max-parents=0 HEAD)"
+git bisect run ./check.sh
+git rev-parse refs/bisect/bad > culprit.txt
+git bisect reset

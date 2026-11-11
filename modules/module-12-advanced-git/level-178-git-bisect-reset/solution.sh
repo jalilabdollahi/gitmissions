@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > bisect.txt <<'EOF'
-bad_commit=known
-EOF
-git add bisect.txt
-git commit -m "docs: add report"
+git bisect log > bisect-session.log
+culprit=$(git rev-parse refs/bisect/bad)
+git bisect reset
+git revert --no-edit "$culprit"

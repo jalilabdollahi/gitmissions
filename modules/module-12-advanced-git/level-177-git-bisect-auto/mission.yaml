@@ -6,47 +6,89 @@ difficulty: expert
 xp: 420
 expected_time: 14m
 concepts:
-- '`git bisect run <script>`'
-common_mistakes:
-- Running commands related to `git bisect run <script>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git bisect
-  run <script>``.
-objective: 'Inspect the repository history and create `bisect.txt` containing exactly:
+- git bisect run
+- exit code 125 (skip)
+- tagging the culprit
+description: |
+  The monitoring team's alert-rules repo has a lint script, `check.sh`, that fails if any alert is missing a `severity` label. It fails on `main` now and passed at the start, 34 commits ago. Midway through, someone moved `rules/` to `alerts/` for a week and moved it back, so the script cannot even run on those commits. The postmortem needs the exact commit that dropped the label, and nobody wants to check 34 commits by hand.
+objective: |
+  Let Git find the culprit automatically with `git bisect run`.
 
+  1. Create a tag named `first-bad` that points at the first commit where `check.sh` fails.
+  2. Reset the bisect so HEAD is on `main` again with no bisect in progress.
 
-  `bad_commit=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  `check.sh` signals "cannot test this commit" with exit code 125, which Git treats as a skip. The commit message of the culprit does not mention labels at all.
 hints:
-- Start with the Git command related to ``git bisect run <script>``.
-- Write the exact expected answer into `bisect.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > bisect.txt <<'EOF'\nbad_commit=known\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add bisect.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git bisect run <command>` runs the command at each step and reads its exit code: 0 good, 1-127 bad
+  (except 125 skip).'
+- Start the session by hand with `git bisect start`, `git bisect bad`, `git bisect good <root>`, then
+  hand over to `git bisect run ./check.sh`.
+- When Git reports the first bad commit, tag it with `git tag first-bad refs/bisect/bad`, and then run
+  `git bisect reset`.
+guide: |
+  ## Automating the search
 
+  Set up the range once, then let the script answer:
 
-  **Automated Bisect**
+  ```bash
+  git bisect start
+  git bisect bad HEAD
+  git bisect good $(git rev-list --max-parents=0 HEAD)
+  git bisect run ./check.sh
+  ```
 
+  Exit codes matter: `0` means good, `125` means "cannot test, skip", any other code from 1 to 127 means bad. `check.sh` returns 125 when `rules/` does not exist, so the reorganised commits are skipped instead of being blamed.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  When the run ends, `refs/bisect/bad` points at the culprit:
 
-  '
+  ```bash
+  git tag first-bad refs/bisect/bad
+  git bisect reset
+  ```
+
+  Check the result with `git show first-bad`.
+debrief: |
+  ## What you did
+
+  `git bisect run` turned a manual binary search into one command. Only about five commits were tested, and the temporary directory rename was handled by the 125 convention.
+
+  ## Why exit 125 exists
+
+  Some commits are not testable: they do not compile, a file is missing, a dependency is absent. Reporting those as "bad" would blame an innocent commit. Skipping lets Git test a neighbour instead. If the culprit is adjacent to a skipped range Git may only be able to name a range of suspects.
+
+  ## The culprit
+
+  The offending commit is called "docs: tidy comments in cpu rules" and quietly deleted a label line. Commit messages cannot be trusted for this reason; a test can.
+
+  ## Related
+
+  - `git bisect log > file` and `git bisect replay file` save and replay a session.
+  - `git bisect run sh -c 'make && ./test'` for multi-step tests.
+  - `git bisect --term-old/--term-new` renames good and bad for non-bug hunts, e.g. "when did performance improve".
+common_mistakes:
+- Using a test script that exits 1 when the setup is missing (instead of 125) so innocent commits are
+  blamed.
+- Tagging the commit Git checked out last instead of `refs/bisect/bad`.
+- Running `git bisect run` before marking a good and a bad commit.
 validators:
-- type: file_content_equals
-  path: bisect.txt
-  text: bad_commit=known
-  description: bisect.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: tag_exists
+  tag: first-bad
+  description: Tag first-bad exists
+- type: script_passes
+  description: first-bad points at the first commit where check.sh really fails
+  script: "want=\"\"\nfor c in $(git rev-list --reverse main); do\n  t=$(mktemp -d); git archive \"$c\"\
+    \ | tar -x -C \"$t\"\n  rc=0; (cd \"$t\" && bash check.sh >/dev/null 2>&1) || rc=$?\n  rm -rf \"$t\"\
+    \n  if [ \"$rc\" = 1 ]; then want=$c; break; fi\ndone\ntest -n \"$want\"\ntest \"$(git rev-parse first-bad^{commit})\"\
+    \ = \"$want\"\n"
+- type: is_on_branch
+  branch: main
+  description: HEAD is back on main
+- type: script_passes
+  description: No bisect session is in progress
+  script: 'test ! -f "$(git rev-parse --git-path BISECT_START)"
+
+    '
+- type: commit_count_eq
+  count: 34
+  branch: main
+  description: History of main is untouched (34 commits)

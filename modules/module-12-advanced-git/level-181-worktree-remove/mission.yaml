@@ -6,32 +6,99 @@ difficulty: expert
 xp: 400
 expected_time: 14m
 concepts:
-- '`git worktree remove`'
-common_mistakes:
-- Running commands related to `git worktree remove` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You need a second working tree attached to the same repository.
-objective: Create a worktree at `wt-feature/` for branch `feature/worktree`.
+- git worktree remove / prune / unlock
+- saving work before removing a worktree
+repo_path: ci-config
+description: |
+  Release week is over and the CI-config repo has accumulated four extra worktrees. One was deleted with `rm -rf` and still haunts `git worktree list`. One is locked "on the build laptop" but its branch was released long ago. One still holds an uncommitted edit that Kenji never committed (a caching setup he promised to finish). One is the branch you are actively working on. Management wants the clutter gone, but nobody is allowed to lose Kenji's edit.
+objective: |
+  Clean up the worktrees, keeping only the main checkout and the worktree for `ci/matrix-build`.
+
+  1. Commit Kenji's uncommitted edit on its own branch `ci/cache-fix` (inside its worktree), then remove that worktree.
+  2. Remove the locked worktree for `release-2024` (unlock it first, do not force through the lock).
+  3. Prune the stale record of the worktree whose directory is already gone.
+  4. Leave `../wt-active` (branch `ci/matrix-build`) alone.
+
+  At the end `git worktree list` shows two entries and none is marked prunable. All four branches still exist.
 hints:
-- Create the branch if needed while adding the worktree.
-- Use `git worktree add`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git worktree add wt-feature -b\
-  \ feature/worktree\n   ```"
-debrief: '## What Just Happened
+- '`git worktree list --porcelain` shows locked and prunable entries with a reason.'
+- A dirty worktree refuses to be removed. Commit the edit on its branch first with `git -C ../wt-cache-fix
+  commit -am ...`, so that nothing is lost.
+- '`git worktree unlock <path>` and then `git worktree remove <path>`; for the vanished directory run
+  `git worktree prune`.'
+guide: |
+  ## Look first
 
+  ```bash
+  git worktree list --porcelain
+  ```
 
-  **Remove a Worktree**
+  You will see four extra entries: one `prunable`, one `locked`, one dirty, one fine.
 
+  ## Save the dirty work, then remove
 
-  Worktrees let one repository checkout multiple branches at once without cloning
-  again.
+  ```bash
+  git -C ../wt-cache-fix status --short
+  git -C ../wt-cache-fix commit -am "ci: cache dependencies between jobs"
+  git worktree remove ../wt-cache-fix
+  ```
 
-  '
+  Removing a dirty worktree requires `--force` which would destroy the edit, so commit first.
+
+  ## Locked and stale ones
+
+  ```bash
+  git worktree unlock ../wt-release
+  git worktree remove ../wt-release
+  git worktree prune          # forgets wt-old-lint, whose directory is gone
+  git worktree list
+  ```
+debrief: |
+  ## The three states of a stray worktree
+
+  - **Clean**: `git worktree remove <path>` is enough.
+  - **Dirty**: removal is refused; commit or deliberately `--force`.
+  - **Locked**: `git worktree lock` protects a worktree on removable media from pruning. It must be unlocked before removal.
+  - **Missing directory**: the metadata in `.git/worktrees/` is stale and `git worktree prune` removes it (Git also prunes automatically during `git gc`).
+
+  ## Why save first
+
+  Uncommitted changes exist only in that directory. The branch `ci/cache-fix` is the only place where a commit can keep them reachable, so the commit is the backup.
+
+  ## Related
+
+  - `git worktree move` relocates a worktree.
+  - `git worktree repair` fixes links after moving directories by hand.
+  - Branches are not deleted with their worktrees; `git branch -d` is a separate step.
+common_mistakes:
+- Using `git worktree remove --force` on the dirty worktree and throwing away Kenji's edit.
+- Deleting directories with `rm -rf` instead of `git worktree remove`, which leaves stale metadata.
+- Removing ../wt-active along with the rest.
 validators:
 - type: worktree_count
   count: 2
-  description: Two worktrees are registered
+  description: Only the main worktree and wt-active remain
+- type: script_passes
+  description: No worktree is locked or prunable and wt-active is still there
+  script: '! git worktree list --porcelain | grep -Eq ''^(locked|prunable)''
+
+    git worktree list --porcelain | grep -q ''wt-active''
+
+    test -d ../wt-active
+
+    '
+- type: script_passes
+  description: Kenji's edit is committed on ci/cache-fix
+  script: 'git show ci/cache-fix:pipelines/build.yml | grep -q ''key: deps-v2''
+
+    test "$(git rev-list --count ci/cache-fix --not main)" -ge 1
+
+    test ! -d ../wt-cache-fix
+
+    '
+- type: script_passes
+  description: All four branches still exist and the release worktree directory is gone
+  script: 'for b in ci/cache-fix ci/old-lint release-2024 ci/matrix-build; do git rev-parse --verify -q
+    "refs/heads/$b" >/dev/null; done
+
+    test ! -d ../wt-release'

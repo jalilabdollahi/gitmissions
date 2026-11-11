@@ -6,47 +6,110 @@ difficulty: expert
 xp: 380
 expected_time: 14m
 concepts:
-- '`git bisect reset`'
-common_mistakes:
-- Running commands related to `git bisect reset` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git bisect
-  reset``.
-objective: 'Inspect the repository history and create `bisect.txt` containing exactly:
+- git bisect log
+- git bisect reset
+- reverting a bisect culprit
+description: |
+  Dmitri was bisecting the corporate DNS zone repo yesterday, found the commit that broke resolution of `www`, and went on holiday without cleaning up. You open the repo and find it detached in the middle of history with a `BISECT_LOG` still around. His notes file says "culprit found, see bisect state". The zone check `./check.sh` still fails on `main`, and five later commits (new records) must stay.
+objective: |
+  Finish Dmitri's work properly.
 
+  1. Save the bisect session with `git bisect log > bisect-session.log` (in the repo root) before you leave it.
+  2. Reset the bisect so HEAD is on `main` and no bisect state remains.
+  3. Undo only the culprit with `git revert` so that `./check.sh` passes again. All five later record commits must still be in the history and their records must still be in the zone file.
 
-  `bad_commit=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  `notes.txt` is Dmitri's untracked scratch file; leave it alone.
 hints:
-- Start with the Git command related to ``git bisect reset``.
-- Write the exact expected answer into `bisect.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > bisect.txt <<'EOF'\nbad_commit=known\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add bisect.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git bisect log` still works while the session is active, and it ends with a comment naming the first
+  bad commit.'
+- '`git bisect reset` returns to the branch you started on. Take the culprit SHA from the log before you
+  reset.'
+- Revert the culprit on main with `git revert --no-edit <sha>`; later commits only appended records far
+  away, so the revert applies cleanly.
+guide: |
+  ## Cleaning up somebody else's bisect
 
+  Look at the state first:
 
-  **Reset After Bisect**
+  ```bash
+  git status            # HEAD detached at <sha>
+  git bisect log        # every good/bad answer plus "first bad commit"
+  ```
 
+  Save it, because `bisect reset` throws the session away:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git bisect log > bisect-session.log
+  grep 'first bad commit' bisect-session.log
+  ```
 
-  '
+  Leave the session and fix main:
+
+  ```bash
+  git bisect reset
+  git revert --no-edit <culprit-sha>
+  ./check.sh
+  ```
+
+  A revert is right here because `main` is shared. Rewriting history would hurt everyone who already pulled.
+debrief: |
+  ## What you did
+
+  You read the evidence out of a half-finished bisect, preserved it, ended the session and repaired `main` with a new commit that undoes exactly one change.
+
+  ## Why revert and not reset
+
+  The culprit sits in the middle of history with five good commits on top. `git reset` would delete them, and a rebase would rewrite the shared branch. A revert keeps every commit and records "this change was undone" for the postmortem.
+
+  ## The state Git keeps
+
+  During a bisect Git stores answers in `.git/BISECT_LOG`, `.git/BISECT_START` and the refs `refs/bisect/*`. `git bisect reset` removes them and checks out the original branch (named in `BISECT_START`).
+
+  ## Related
+
+  - `git bisect replay <file>` replays a saved log.
+  - `git revert -m 1 <merge>` when the culprit is a merge commit.
+  - `git bisect reset <commit>` ends the session on a different commit.
+common_mistakes:
+- Running `git bisect reset` first and then losing track of which commit was the culprit.
+- Using `git reset --hard` on main to drop the culprit and with it the five later commits.
+- Fixing the zone by hand-editing the record and committing, so no revert exists in history.
 validators:
-- type: file_content_equals
-  path: bisect.txt
-  text: bad_commit=known
-  description: bisect.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
+- type: script_passes
+  description: No bisect session is left over
+  script: 'test ! -f "$(git rev-parse --git-path BISECT_START)"
+
+    test ! -s "$(git rev-parse --git-path BISECT_LOG)"
+
+    '
+- type: script_passes
+  description: bisect-session.log records the real first bad commit
+  script: "want=\"\"\nfor c in $(git rev-list --reverse main); do\n  t=$(mktemp -d); git archive \"$c\"\
+    \ | tar -x -C \"$t\"\n  if ! (cd \"$t\" && bash check.sh >/dev/null 2>&1); then want=$c; rm -rf \"\
+    $t\"; break; fi\n  rm -rf \"$t\"\ndone\ntest -n \"$want\"\ngrep -q \"first bad commit: \\[$want\\\
+    ]\" bisect-session.log\n"
+- type: script_passes
+  description: The culprit is undone by a revert commit and the history keeps the later work
+  script: 'want=$(sed -n ''s/.*first bad commit: \[\([0-9a-f]*\)\].*/\1/p'' bisect-session.log | head
+    -1)
+
+    git log --format=%b main | grep -q "This reverts commit $want"
+
+    git merge-base --is-ancestor "$want" main
+
+    test "$(git log --format=%s main | grep -c ''^dns: '')" -ge 5
+
+    '
+- type: script_passes
+  description: check.sh passes and the five later records survive
+  script: 'bash check.sh
+
+    for h in api cdn vpn grafana wiki; do grep -q "^$h " corp.zone; done
+
+    '
+- type: file_exists
+  path: notes.txt
+  description: notes.txt is untouched

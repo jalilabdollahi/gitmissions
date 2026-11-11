@@ -4,34 +4,99 @@ level: level-179-worktree-intro
 order: 179
 difficulty: expert
 xp: 420
-expected_time: 14m
+expected_time: 12m
 concepts:
-- "`git worktree add` \u2014 multiple checkouts"
-common_mistakes:
-- "Running commands related to `git worktree add` \u2014 multiple checkouts without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You need a second working tree attached to the same repository.
-objective: Create a worktree at `wt-feature/` for branch `feature/worktree`.
+- git worktree add --detach
+- comparing two releases side by side
+- leaving the main worktree untouched
+repo_path: mdparse
+description: |
+  You maintain `mdparse`, an open source Markdown parser. A user reports that the parser got "much stricter" between v1.0 and v2.0 and asks for hard numbers. The benchmark script `bench.sh` prints how many grammar rules a checkout ships. You are in the middle of editing `src/emphasis.sh` on `main` (uncommitted, not ready to stash), so you cannot just check out the old tags in this directory.
+objective: |
+  Check out both releases at the same time next to your repository, without disturbing `main`.
+
+  1. Create a detached worktree `../wt-v1` at tag `v1.0` and a detached worktree `../wt-v2` at tag `v2.0`.
+  2. Run `./bench.sh` in each and write the results to `compare.txt` in the repository root, one line per release in the form `v1.0 <output of bench.sh>` and `v2.0 <output of bench.sh>`.
+  3. `main` stays checked out in the original directory with your uncommitted edit to `src/emphasis.sh` still in place. Do not stash or commit it.
 hints:
-- Create the branch if needed while adding the worktree.
-- Use `git worktree add`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git worktree add wt-feature -b\
-  \ feature/worktree\n   ```"
-debrief: '## What Just Happened
+- '`git worktree add <path> <commit-ish>` creates a second checkout of the same repository. Add `--detach`
+  when you only want to look at a tag.'
+- Each worktree has its own working directory, so `cd ../wt-v1 && ./bench.sh` shows the numbers for v1.0
+  only.
+- Build compare.txt with `echo "v1.0 $(cd ../wt-v1 && ./bench.sh)" >> compare.txt` and the same for v2.0.
+guide: |
+  ## Two releases at once
 
+  A worktree is an extra checkout that shares the same object database. Creating one never touches your current directory.
 
-  **Git Worktrees**
+  ```bash
+  git worktree add --detach ../wt-v1 v1.0
+  git worktree add --detach ../wt-v2 v2.0
+  git worktree list
+  ```
 
+  Now measure each release where it lives:
 
-  Worktrees let one repository checkout multiple branches at once without cloning
-  again.
+  ```bash
+  (cd ../wt-v1 && ./bench.sh)
+  (cd ../wt-v2 && ./bench.sh)
+  ```
 
-  '
+  Combine the lines the way the report wants them:
+
+  ```bash
+  { echo "v1.0 $(cd ../wt-v1 && ./bench.sh)"
+    echo "v2.0 $(cd ../wt-v2 && ./bench.sh)"; } > compare.txt
+  ```
+
+  Finally `git status` in the main directory should still show your unstaged edit to `src/emphasis.sh`.
+debrief: |
+  ## What you did
+
+  You used `git worktree add` to get three simultaneous checkouts (main, v1.0, v2.0) of one repository. No stash, no clone, no copy of the object store.
+
+  ## Why detached
+
+  A branch can be checked out in only one worktree at a time. Tags are not branches, so `--detach` is the natural fit for read-only inspection and benchmarking.
+
+  ## Real-world uses
+
+  Comparing performance between releases, running two versions of a test-suite in parallel, reviewing a pull request while your own tree is dirty, building docs for several versions.
+
+  ## Related
+
+  - `git worktree list` shows every checkout and its HEAD.
+  - Worktrees live in `.git/worktrees/<name>` metadata; you remove them with `git worktree remove` (a later level).
+  - Per-worktree files such as HEAD and index are separate, objects and refs are shared.
+common_mistakes:
+- Checking out v1.0 in the main directory (after stashing) and losing the uncommitted edit by accident.
+- Creating worktrees inside the repository directory, so they show up as untracked folders.
+- Adding the worktree on the branch `main` and getting "already checked out".
 validators:
 - type: worktree_count
-  count: 2
-  description: Two worktrees are registered
+  count: 3
+  description: The repository has three worktrees
+- type: script_passes
+  description: wt-v1 and wt-v2 are detached at the right tags
+  script: 'test "$(git -C ../wt-v1 rev-parse HEAD)" = "$(git rev-parse v1.0^{commit})"
+
+    test "$(git -C ../wt-v2 rev-parse HEAD)" = "$(git rev-parse v2.0^{commit})"
+
+    ! git -C ../wt-v1 symbolic-ref -q HEAD
+
+    ! git -C ../wt-v2 symbolic-ref -q HEAD
+
+    '
+- type: script_passes
+  description: compare.txt has the real bench output of each release
+  script: "for tag in v1.0 v2.0; do\n  t=$(mktemp -d); git archive \"$tag\" | tar -x -C \"$t\"\n  exp=$(cd\
+    \ \"$t\" && bash bench.sh); rm -rf \"$t\"\n  grep -qxF \"$tag $exp\" compare.txt\ndone\n"
+- type: script_passes
+  description: main is checked out and the uncommitted edit is still there
+  script: 'test "$(git symbolic-ref --short HEAD)" = main
+
+    grep -q ''WIP'' src/emphasis.sh
+
+    test -z "$(git stash list)"
+
+    git diff --name-only | grep -qx ''src/emphasis.sh'''

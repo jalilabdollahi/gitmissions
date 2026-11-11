@@ -4,33 +4,104 @@ level: level-185-submodule-remove
 order: 185
 difficulty: expert
 xp: 460
-expected_time: 14m
+expected_time: 15m
 concepts:
-- multi-step submodule removal
-common_mistakes:
-- Running commands related to multi-step submodule removal without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: An external repository should be linked into this repo as a submodule.
-objective: Add `./lib.git` as a submodule at `vendor/lib`.
+- git submodule deinit
+- git rm on a gitlink
+- cleaning .git/modules
+- vendoring files
+repo_path: observability
+description: |
+  The observability repo pulls Grafana's jsonnet helpers in as a submodule `third_party/jsonnet-libs`, pinned to the release `v0.7.2` that all dashboards were written against. The upstream project is now archived and moves to a new layout, so the team decides to vendor the library: keep the exact files of the pinned version as normal tracked files and stop being a submodule. A careless `git rm` would delete the files and leave `.git/modules` and config entries behind.
+objective: |
+  Convert the submodule into plain files.
+
+  1. Remove the submodule completely: its entry in `.gitmodules`, its `submodule.*` config in `.git/config` and its clone in `.git/modules/third_party/jsonnet-libs`.
+  2. Keep the files of the pinned version (v0.7.2, not the upstream tip) at `third_party/jsonnet-libs/` as ordinary tracked files, with no gitlink and no nested `.git`.
+  3. Commit with a message starting `Vendor jsonnet-libs`. The working tree must be clean.
 hints:
-- Git needs a separate repository to point at.
-- Use `git submodule add`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git -c protocol.file.allow=always\
-  \ submodule add ./lib.git vendor/lib\n   ```"
-debrief: '## What Just Happened
+- '`git rm` on a submodule deletes its files, so copy the pinned files to a temporary place first (and
+  drop the `.git` file from the copy).'
+- 'Removal needs three actions: `git submodule deinit -f <path>`, `git rm -f <path>`, and `rm -rf .git/modules/<path>`.'
+- Copy the files back to the same path, `git add third_party/jsonnet-libs`, and commit. `git ls-files
+  -s third_party` should show mode 100644, never 160000.
+guide: |
+  ## Preserve the content first
 
+  ```bash
+  tmp=$(mktemp -d)
+  cp -R third_party/jsonnet-libs "$tmp/lib"
+  rm -f "$tmp/lib/.git"          # the gitfile that links to .git/modules
+  ```
 
-  **Remove a Submodule**
+  ## Remove the submodule completely
 
+  ```bash
+  git submodule deinit -f third_party/jsonnet-libs   # drops config + empties worktree
+  git rm -f third_party/jsonnet-libs                 # edits .gitmodules, removes gitlink
+  rm -rf .git/modules/third_party/jsonnet-libs       # the cached clone
+  ```
 
-  Submodules pin one repository inside another at a specific commit.
+  ## Add the files as your own
 
-  '
+  ```bash
+  mkdir -p third_party && cp -R "$tmp/lib" third_party/jsonnet-libs
+  git add third_party/jsonnet-libs
+  git commit -m "Vendor jsonnet-libs v0.7.2, drop submodule"
+  ```
+
+  Check `git ls-files -s third_party/jsonnet-libs | head`.
+debrief: |
+  ## Why so many steps
+
+  A submodule lives in four places: the gitlink in the tree, `.gitmodules`, `.git/config` and the repository clone in `.git/modules`. Each command handles a subset, and forgetting `.git/modules` makes a later `git submodule add` of the same path fail with "already exists in the index" or "a git directory is found locally".
+
+  ## Vendoring versus submodule
+
+  Vendoring trades update convenience for independence: the code is now part of your history, reviewable and offline. For archived upstreams it is the safer choice. The price is that you carry the files forever.
+
+  ## Keeping the right version
+
+  Copying out of the submodule working tree preserved the *pinned* commit. Re-cloning upstream would have given you the tip, a different library.
+
+  ## Related
+
+  - `git subtree add --squash` is an alternative that keeps history importable.
+  - `git rm --cached <path>` removes only the gitlink and keeps the files, but leaves other state behind.
+common_mistakes:
+- Re-cloning the library from upstream, which vendors the newest version instead of the pinned v0.7.2.
+- Running only `git rm`, leaving `.git/modules` and `.git/config` entries behind.
+- Copying the files back including the `.git` gitfile, so Git sees a submodule-like directory again.
 validators:
-- type: submodule_exists
-  path: vendor/lib
-  description: vendor/lib is registered as a submodule
+- type: script_passes
+  description: Submodule registration is gone from .gitmodules and .git/config
+  script: 'if [ -f .gitmodules ]; then ! grep -q jsonnet-libs .gitmodules; fi
+
+    test -z "$(git config --get-regexp ''^submodule\.'' || true)"
+
+    '
+- type: script_passes
+  description: The cached clone in .git/modules is removed
+  script: 'test ! -e "$(git rev-parse --git-path modules/third_party/jsonnet-libs)"
+
+    '
+- type: script_passes
+  description: The directory contains regular tracked files and no gitlink or nested .git
+  script: 'test -z "$(git ls-files -s third_party/jsonnet-libs | grep ''^160000'' || true)"
+
+    test "$(git ls-files third_party/jsonnet-libs | wc -l | tr -d '' '')" -ge 3
+
+    test ! -e third_party/jsonnet-libs/.git
+
+    '
+- type: script_passes
+  description: The vendored files are the pinned v0.7.2 version, not the upstream tip
+  script: "r=../remotes/jsonnet-libs.git\nfor f in grafana.libsonnet panels.libsonnet VERSION; do\n  test\
+    \ \"$(git hash-object third_party/jsonnet-libs/$f)\" = \"$(git -C $r rev-parse v0.7.2:$f)\"\ndone\n\
+    test \"$(git hash-object third_party/jsonnet-libs/VERSION)\" != \"$(git -C $r rev-parse main:VERSION)\"\
+    \n"
+- type: commit_message_contains
+  text: Vendor jsonnet-libs
+  description: Commit message starts with Vendor jsonnet-libs
+- type: is_clean
+  description: Working tree is clean

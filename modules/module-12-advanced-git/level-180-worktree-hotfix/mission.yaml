@@ -6,32 +6,111 @@ difficulty: expert
 xp: 440
 expected_time: 14m
 concepts:
-- worktree for parallel branches
-common_mistakes:
-- Running commands related to worktree for parallel branches without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You need a second working tree attached to the same repository.
-objective: Create a worktree at `wt-feature/` for branch `feature/worktree`.
+- git worktree add -b
+- hotfix from a tag
+- dirty tree stays untouched
+repo_path: edge-proxy
+description: |
+  Production runs `v3.4.0` of the edge proxy and uploads above 1 KiB are being rejected: `config/limits.yaml` shipped with `max_request_bytes: 1024`. You are halfway through the HTTP/3 listener on `feature/http3` with a staged edit to `envoy.yaml`, an unstaged edit to `config/routes.yaml` and an untracked planning note. Stashing is not an option: the staged and unstaged parts must come back exactly as they are, and `main` has moved on with unreleased 3.5 work that must not ship.
+objective: |
+  Ship `v3.4.1` from a second worktree.
+
+  1. Create the worktree `../edge-hotfix` with a new branch `hotfix/3.4.1` that starts at the tag `v3.4.0`.
+  2. In that worktree set `max_request_bytes` to `1048576` in `config/limits.yaml` and commit it with a message starting `fix:`.
+  3. Create the annotated tag `v3.4.1` on that commit.
+
+  In the original directory the branch is still `feature/http3`, the staged change to `envoy.yaml` is still staged, the unstaged change to `config/routes.yaml` is still unstaged, the untracked note still exists, and the stash is empty.
 hints:
-- Create the branch if needed while adding the worktree.
-- Use `git worktree add`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git worktree add wt-feature -b\
-  \ feature/worktree\n   ```"
-debrief: '## What Just Happened
+- '`git worktree add -b <new-branch> <path> <start-point>` creates the branch and the checkout in one
+  step.'
+- The hotfix has to be based on the release tag, not on main. Check with `git log --oneline v3.4.0..hotfix/3.4.1`,
+  which should show exactly your single commit.
+- Use `git tag -a v3.4.1 -m "..."` inside the hotfix worktree, then check the original directory with
+  `git status` that nothing changed there.
+guide: |
+  ## Hotfix without touching your work in progress
 
+  ```bash
+  git worktree add -b hotfix/3.4.1 ../edge-hotfix v3.4.0
+  cd ../edge-hotfix
+  ```
 
-  **Hotfix Without Stashing**
+  This directory is a clean checkout of the release. Edit and commit as usual:
 
+  ```bash
+  sed -i.bak 's/max_request_bytes: 1024$/max_request_bytes: 1048576/' config/limits.yaml
+  rm config/limits.yaml.bak
+  git commit -am "fix: raise max_request_bytes to 1 MiB"
+  git tag -a v3.4.1 -m "v3.4.1"
+  ```
 
-  Worktrees let one repository checkout multiple branches at once without cloning
-  again.
+  Go back and confirm the original tree is exactly as you left it:
 
-  '
+  ```bash
+  cd ../edge-proxy
+  git status --short     # M  envoy.yaml (staged)  / M config/routes.yaml / ?? notes/
+  ```
+
+  No stash, no WIP commit, no risk of popping into the wrong branch.
+debrief: |
+  ## The idea
+
+  A hotfix needs a clean tree at an old commit, your feature work needs a dirty tree at a new one. A worktree gives both at the same time.
+
+  ## Compared with stashing
+
+  `git stash` hides the index state (staged versus unstaged is lost unless you use `--index`), it ignores untracked files by default and a `stash pop` on the wrong branch can conflict. A second worktree has none of those risks.
+
+  ## Details worth knowing
+
+  - The new worktree shares objects and refs: the tag you created is immediately visible in the original directory.
+  - The branch `hotfix/3.4.1` is locked to the new worktree. Git refuses to check it out elsewhere until the worktree is removed.
+  - Start points can be tags, SHAs or remote branches.
+
+  ## Related
+
+  - `git worktree list`, `git worktree remove`, `git worktree prune`.
+  - `git cherry-pick` to carry the fix onto `main` afterwards.
+common_mistakes:
+- Branching hotfix/3.4.1 from the current branch instead of v3.4.0, shipping unfinished HTTP/3 code.
+- Running `git stash -u` "just for a minute" and flattening the staged versus unstaged state.
+- Forgetting to put the new worktree outside the repository directory.
 validators:
 - type: worktree_count
   count: 2
-  description: Two worktrees are registered
+  description: There are exactly two worktrees
+- type: script_passes
+  description: ../edge-hotfix is a worktree on branch hotfix/3.4.1
+  script: 'test "$(git -C ../edge-hotfix symbolic-ref --short HEAD)" = "hotfix/3.4.1"
+
+    '
+- type: script_passes
+  description: The hotfix is one commit on top of v3.4.0 and sets the new limit
+  script: 'test "$(git rev-parse hotfix/3.4.1~1)" = "$(git rev-parse v3.4.0^{commit})"
+
+    git show hotfix/3.4.1:config/limits.yaml | grep -q ''max_request_bytes: 1048576$''
+
+    git log -1 --format=%s hotfix/3.4.1 | grep -q ''^fix:''
+
+    git show hotfix/3.4.1:envoy.yaml | grep -vq http3
+
+    '
+- type: tag_is_annotated
+  tag: v3.4.1
+  description: v3.4.1 is an annotated tag
+- type: refs_equal
+  left: v3.4.1^{commit}
+  right: hotfix/3.4.1
+  description: v3.4.1 sits on the hotfix commit
+- type: is_on_branch
+  branch: feature/http3
+  description: The original directory is still on feature/http3
+- type: script_passes
+  description: Staged, unstaged and untracked state of the original tree are intact and nothing was stashed
+  script: 'test "$(git diff --cached --name-only)" = "envoy.yaml"
+
+    test "$(git diff --name-only)" = "config/routes.yaml"
+
+    test -f notes/http3-plan.md
+
+    test -z "$(git stash list)"'

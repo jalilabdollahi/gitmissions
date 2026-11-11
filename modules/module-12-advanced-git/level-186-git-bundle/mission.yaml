@@ -6,48 +6,104 @@ difficulty: expert
 xp: 440
 expected_time: 14m
 concepts:
-- "`git bundle create` \u2014 offline transfer"
-common_mistakes:
-- "Running commands related to `git bundle create` \u2014 offline transfer without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ bundle create` \u2014 offline transfer`."
-objective: 'Inspect the repository history and create `advanced-report.txt` containing
-  exactly:
+- git bundle create --all
+- incremental bundles with a prerequisite
+- git bundle verify
+repo_path: obc-firmware
+description: |
+  The cubesat's on-board-computer firmware lives in this repo, but the ground station in the polar research camp has no network. Once a month an engineer carries a USB stick over. The station already holds everything up to the tag `v1.0`. You must prepare two files in `../transfer/`: a complete bundle for the second station that has nothing yet, and a small incremental bundle for the first station. The stick is small, so the incremental file must not contain history the station already has.
+objective: |
+  Create the directory `../transfer` and in it:
 
+  1. `full.bundle` with every branch and tag of the repository (`main`, `develop`, `v1.0`, `v2.0`).
+  2. `delta.bundle` containing only the commits on `main` that come after the tag `v1.0`; it must list `refs/heads/main` and carry `v1.0` as a prerequisite.
 
-  `done=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  Both must pass `git bundle verify`. A repository that only has `v1.0` must be able to fetch `main` from `delta.bundle`.
 hints:
-- "Start with the Git command related to ``git bundle create` \u2014 offline transfer`."
-- Write the exact expected answer into `advanced-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > advanced-report.txt <<'EOF'\n\
-  done=1\nEOF\n   ```\n\n2.\n   ```bash\n   git add advanced-report.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- A bundle is a pack file with a small ref header. `git bundle create <file> <rev-list-args>` accepts
+  the same ranges as `git log`.
+- Everything is `--all`; "only what is new since v1.0" is the range `v1.0..main`.
+- Check with `git bundle verify ../transfer/delta.bundle` and `git bundle list-heads ../transfer/delta.bundle`.
+guide: |
+  ## Full bundle
 
+  ```bash
+  mkdir -p ../transfer
+  git bundle create ../transfer/full.bundle --all
+  git bundle list-heads ../transfer/full.bundle
+  ```
 
-  **Bundle a Repo**
+  ## Incremental bundle
 
+  A range limits the content; the left side of the range becomes a *prerequisite*, i.e. a commit the receiver must already have.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git bundle create ../transfer/delta.bundle v1.0..main
+  git bundle verify ../transfer/delta.bundle   # "requires this ref: <v1.0 sha>"
+  ```
 
-  '
+  ## On the receiving side
+
+  ```bash
+  git fetch /media/usb/delta.bundle main:main     # a bundle behaves like a remote
+  git clone /media/usb/full.bundle obc-firmware   # or clone from it
+  ```
+
+  A range that does not name at least one ref (for example `v1.0..HEAD~0` with nothing to point at) is refused with "empty bundle".
+debrief: |
+  ## What a bundle is
+
+  `git bundle` packs objects and a list of refs into one file so that Git's normal transport can run over a USB stick, e-mail or a one-way data diode. The receiver treats the file like a remote.
+
+  ## Prerequisites
+
+  The header of the incremental bundle lists `-<sha>` lines: commits the receiver is required to have. `git bundle verify` in a repository that lacks them fails with "does not have all necessary objects". That is the safety net that prevents you from shipping a delta to the wrong station.
+
+  ## Size
+
+  Because `v1.0..main` excludes everything reachable from `v1.0`, the delta contains only the new commits, trees and blobs. Compare the two file sizes.
+
+  ## Related
+
+  - `git bundle unbundle` and `git fetch <bundle>`.
+  - `git bundle create x.bundle --since=2.weeks main` is another way to bound the content.
+  - Backups: a `--all` bundle is a complete, single-file backup of a repository.
+common_mistakes:
+- Creating the bundle with `main` only, which excludes the tags and the develop branch the second station
+  needs.
+- Bundling `main` without the range, so the delta contains the whole history and no prerequisite.
+- Forgetting `mkdir -p ../transfer`, or placing the bundle inside the repository.
 validators:
-- type: file_content_equals
-  path: advanced-report.txt
-  text: done=1
-  description: advanced-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: script_passes
+  description: full.bundle verifies and contains all branches and tags
+  script: "f=../transfer/full.bundle\ngit bundle verify \"$f\" >/dev/null 2>&1\nfor r in refs/heads/main\
+    \ refs/heads/develop refs/tags/v1.0 refs/tags/v2.0; do\n  git bundle list-heads \"$f\" | grep -q \"\
+    \ $r\\$\"\ndone\n"
+- type: script_passes
+  description: delta.bundle verifies, lists main and requires the v1.0 commit
+  script: 'd=../transfer/delta.bundle
+
+    git bundle verify "$d" >/dev/null 2>&1
+
+    git bundle list-heads "$d" | grep -q '' refs/heads/main$''
+
+    head -c 4000 "$d" | grep -aq "^-$(git rev-parse ''v1.0^{commit}'')"
+
+    '
+- type: script_passes
+  description: delta.bundle is smaller than full.bundle and really carries the new main
+  script: 'test "$(wc -c < ../transfer/delta.bundle)" -lt "$(wc -c < ../transfer/full.bundle)"
+
+    t=$(mktemp -d); git init -q "$t"
+
+    git -C "$t" fetch -q "$PWD/../transfer/full.bundle" ''refs/tags/v1.0:refs/tags/v1.0''
+
+    git -C "$t" fetch -q "$PWD/../transfer/delta.bundle" ''refs/heads/main:refs/heads/main''
+
+    test "$(git -C "$t" rev-parse main)" = "$(git rev-parse main)"
+
+    rm -rf "$t"
+
+    '
 - type: is_clean
-  description: Working tree is clean
+  description: The repository itself is unchanged
