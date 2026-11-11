@@ -4,34 +4,83 @@ level: level-134-reset-single-file
 order: 134
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 6m
 concepts:
-- '`git reset HEAD <file>`'
-common_mistakes:
-- Running commands related to `git reset HEAD <file>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Two files are staged, but one should be removed from the index only.
-objective: Unstage `debug.txt` while keeping `app.txt` staged.
+  - git reset -- <path>
+  - unstaging one file
+description: |
+  The bank statement importer now merges the `debit` and `credit` columns into one amount. While
+  testing you dropped a 150 KB real statement into `fixtures/` and then ran `git add -A`, so both the
+  importer change and the huge sample statement are staged. The sample contains customer transaction data and
+  does not belong in the repo, but you still need it on disk to keep testing.
+objective: |
+  Unstage `fixtures/statement_jan_full.csv` **only**, keeping `importer.py` staged, and commit with the message
+  `Parse debit and credit columns`. The statement must remain on disk, untracked, and the commit must contain
+  nothing but `importer.py`.
 hints:
-- Use file-specific reset or restore-staged.
-- Check `git status --short` afterward.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset HEAD debug.txt\n   ```"
-debrief: '## What Just Happened
+  - "`git status` tells you both files are staged. You want to undo `git add` for just one of them."
+  - "`git reset -- <path>` (or `git restore --staged <path>`) resets one path in the index to HEAD without touching the file."
+  - "`git reset -- fixtures/statement_jan_full.csv` then `git commit -m \"Parse debit and credit columns\"`."
+guide: |
+  ## Unstage one file
 
+  Check what is staged:
 
-  **Reset a Single File**
+  ```bash
+  git status
+  ```
 
+  Remove only the fixture from the index. The file itself stays in the working directory:
 
-  File-scoped reset changes the index for one path without touching the committed
-  history.
+  ```bash
+  git reset -- fixtures/statement_jan_full.csv
+  ```
 
-  '
+  (The modern equivalent is `git restore --staged fixtures/statement_jan_full.csv`.) Now status shows
+  `importer.py` as staged and the fixture as untracked. Commit:
+
+  ```bash
+  git commit -m "Parse debit and credit columns"
+  git show --stat HEAD
+  ```
+
+  Finally, stop it from being added next time with a line in `.git/info/exclude`, or a `.gitignore` rule.
+debrief: |
+  ## What you learned
+
+  With a path, `git reset` never moves the branch: it only copies that path from HEAD (or another commit) into the
+  index. That is why it is safe, and why it is the exact inverse of `git add <path>`. The working tree is not
+  touched. `git restore --staged` is the newer, clearer spelling.
+
+  ## Real-world use
+
+  Preparing a clean, focused commit when you staged too much. Pair it with `git add -p` to stage individual hunks.
+
+  ## Pitfalls
+
+  - A path reset has no `--hard` mode; discarding the file's edits is a different command (`git restore <path>`).
+  - Do not confuse it with `git rm --cached`, which stages a *deletion* of a file that is already tracked.
+  - If the sample data had already been committed, resetting the index is too late; you would need to amend or reset the commit.
+common_mistakes:
+  - "Running `git reset` for everything and re-adding only importer.py, which works but is more error-prone than resetting the single path."
+  - "Deleting the fixture from disk, even though you still need it for testing."
+  - "Committing first and removing the fixture afterwards, so the sample data remains in history."
 validators:
-- type: script_passes
-  description: debug.txt is unstaged and app.txt is still staged
-  script: git status --porcelain | grep -q '^M  app.txt' && git status --porcelain
-    | grep -q '^ M debug.txt'
+  - type: script_passes
+    description: the commit has the requested message and contains only importer.py
+    script: |
+      test "$(git log -1 --format=%s)" = "Parse debit and credit columns"
+      test "$(git show --name-only --format= HEAD)" = "importer.py"
+      test "$(git rev-list --count HEAD)" = 2
+  - type: script_passes
+    description: the fixture is still on disk but not tracked or in history
+    script: |
+      test -s fixtures/statement_jan_full.csv
+      test -z "$(git ls-files fixtures)"
+      test -z "$(git log --all --format=%H -- fixtures)"
+  - type: script_passes
+    description: importer.py has no uncommitted changes
+    script: |
+      git diff --quiet HEAD -- importer.py
+      git diff --cached --quiet
+

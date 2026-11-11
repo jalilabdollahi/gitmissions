@@ -4,40 +4,85 @@ level: level-132-mixed-reset
 order: 132
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 7m
 concepts:
-- "`git reset HEAD~1` \u2014 uncommit"
-- unstage
-- keep files
-common_mistakes:
-- "Running commands related to `git reset HEAD~1` \u2014 uncommit, unstage, keep files\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest commit should be removed while preserving work according to
-  the reset mode.
-objective: Run `git reset  HEAD~1` and leave the repo in the expected state.
+  - git reset (mixed)
+  - re-staging selectively
+description: |
+  In the tax-rule library you just committed the California rule, but `git add .` also swept in
+  `notes_private.txt`, a scratch file with confidential client remarks that must never reach the shared repository.
+  You have not pushed yet. You want to keep the file on your disk (you still need the notes) but out of the commit.
+objective: |
+  Redo the last commit so that `Add California sales tax rule` contains **only** `rules/us_ca.py`. The notes
+  file must still exist in your working directory with its content, but it must not be tracked or committed
+  anywhere in history. `main` must have exactly 3 commits and the new commit must sit on top of the Texas commit.
 hints:
-- Look at `git status` before and after the reset.
-- Use `git reset  HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset  HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "You need to take the commit apart: undo it but keep the files. Then commit again with only the file you want."
+  - "`git reset` without flags (mixed) moves the branch back and unstages everything, leaving the files in the working directory."
+  - "`git reset HEAD~1`, `git add rules/us_ca.py`, `git commit -m \"Add California sales tax rule\"`."
+guide: |
+  ## Take the commit apart
 
+  Look at what went in:
 
-  **Mixed Reset**
+  ```bash
+  git show --stat HEAD
+  ```
 
+  Both files are there. Undo the commit but keep the files in your working tree:
 
-  Reset moves the branch pointer; the mode determines what happens to the index and
-  working tree.
+  ```bash
+  git reset HEAD~1
+  git status
+  ```
 
-  '
+  This is a **mixed** reset: the branch moved back one commit and the index was reset to match, so both
+  files are now just "untracked" again, with their content intact. Stage only the rule and commit:
+
+  ```bash
+  git add rules/us_ca.py
+  git commit -m "Add California sales tax rule"
+  ```
+
+  The notes remain untracked, safe on disk. Verify with `git show --stat HEAD` and `git status`. To avoid a repeat
+  you could add the notes file to `.git/info/exclude`.
+debrief: |
+  ## What you learned
+
+  `git reset <commit>` defaults to `--mixed`: move the branch, reset the index, leave the working tree alone.
+  The result is "my changes, uncommitted and unstaged", which is the perfect starting point to re-stage
+  selectively (`git add -p` helps when the unwanted part is inside a file).
+
+  ## Real-world use
+
+  Fixing a commit that is too large, or that contains accidental files, before pushing it. Compare it with
+  `git commit --amend` plus `git rm --cached`, which also works for the *last* commit; `reset` generalises to any number
+  of commits.
+
+  ## Pitfalls
+
+  - If you had already pushed, the notes are on the server: resetting is not enough, and you would need to coordinate a history rewrite.
+  - Once a secret has been in a commit, it stays in the reflog until it expires.
+  - `git add .` and `git commit -a` are the usual culprits; check `git status` first.
+common_mistakes:
+  - "Running `git reset --hard HEAD~1`, which deletes both files, including the private notes you wanted to keep."
+  - "Committing again with `git add .`, which puts the notes straight back into the commit."
+  - "Using `git rm notes_private.txt` and committing: the notes stay in the previous commit, and the file is deleted from disk."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 1
-  description: Branch has one commit after reset
-- type: script_passes
-  description: Status matches the reset mode
-  script: git status --porcelain | grep -q '^ M change.txt'
+  - type: script_passes
+    description: the commit contains only rules/us_ca.py, with the original message, on top of the Texas commit
+    script: |
+      test "$(git log -1 --format=%s)" = "Add California sales tax rule"
+      test "$(git show --name-only --format= HEAD)" = "rules/us_ca.py"
+      test "$(git rev-parse HEAD~1)" = "$(cat .git/gm-base)"
+      test "$(git rev-list --count HEAD)" = 3
+  - type: file_exists
+    path: notes_private.txt
+    description: notes_private.txt still exists on disk
+  - type: script_passes
+    description: the notes are untracked and never appear in history
+    script: |
+      grep -q 'negotiating' notes_private.txt
+      test -z "$(git ls-files notes_private.txt)"
+      test -z "$(git log --all --format=%H -- notes_private.txt)"
+

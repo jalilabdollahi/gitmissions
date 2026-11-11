@@ -4,38 +4,98 @@ level: level-144-uncommit-and-redo
 order: 144
 difficulty: advanced
 xp: 320
-expected_time: 10m
+expected_time: 9m
 concepts:
-- soft reset workflow
-common_mistakes:
-- Running commands related to soft reset workflow without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest commit should be removed while preserving work according to
-  the reset mode.
-objective: Run `git reset --soft HEAD~1` and leave the repo in the expected state.
+  - git reset to uncommit
+  - fixing a commit before it is pushed
+  - keeping secrets out of history
+description: |
+  You committed the report mailer's SMTP config and realised, one minute later, that `config/smtp.ini` contains the real
+  mail password. Nothing was pushed. Merely editing the file in a *new* commit would leave the password in history, so the right move is
+  to uncommit, remove the secret from the file, and create the commit again as if the mistake never happened. Production
+  will inject the password through an environment variable.
+objective: |
+  Redo the last commit with the same message `Add SMTP settings for the report mailer`, but with the line
+  `password = ${SMTP_PASSWORD}` in `config/smtp.ini`. `mailer.py` must still be part of that commit. The old password `S3cretPass-8841` must
+  not be reachable from any branch, and `main` must have 2 commits.
 hints:
-- Look at `git status` before and after the reset.
-- Use `git reset --soft HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --soft HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "Move the branch back one commit, keep the changes, edit the file, and commit again."
+  - "`git reset --soft HEAD~1` (or `--mixed`) keeps your files. Fix the password line before you commit."
+  - "`git reset --soft HEAD~1`, edit `config/smtp.ini`, `git add config/smtp.ini`, `git commit -m \"Add SMTP settings for the report mailer\"`. `git commit --amend` is an alternative."
+guide: |
+  ## Uncommit, edit, recommit
 
+  Confirm the leak:
 
-  **Uncommit, Edit, Recommit**
+  ```bash
+  git show HEAD:config/smtp.ini
+  ```
 
+  Undo the commit but keep everything staged:
 
-  Reset moves the branch pointer; the mode determines what happens to the index and
-  working tree.
+  ```bash
+  git reset --soft HEAD~1
+  git status
+  ```
 
-  '
+  Replace the password by the placeholder, using an editor or:
+
+  ```bash
+  sed -i.bak 's/^password = .*/password = ${SMTP_PASSWORD}/' config/smtp.ini && rm config/smtp.ini.bak
+  git add config/smtp.ini
+  ```
+
+  Commit again with the same message:
+
+  ```bash
+  git commit -m "Add SMTP settings for the report mailer"
+  ```
+
+  Prove that the secret is gone from all branches:
+
+  ```bash
+  git log --all -S'S3cretPass' --oneline
+  ```
+
+  The command prints nothing. (`git commit --amend` after editing the file achieves the same here.)
+debrief: |
+  ## What you learned
+
+  Undoing a commit and recommitting is how you "fix" the very last commit(s) before anyone else has them. After
+  `reset`, the old commit is only referenced by the reflog, so no branch contains the password any more. A normal
+  follow-up commit would leave the secret one `git show` away forever.
+
+  ## Real-world use
+
+  Fixing accidental secrets, wrong author identity or a typo in the message, before a push. If the commit was already pushed, treat
+  the secret as **compromised**: rotate it first. Removing it from remote history requires a rewrite and
+  force-push, and clones/forks keep the old data.
+
+  ## Pitfalls
+
+  - The reflog still holds the old commit for ~30-90 days; `git reflog expire` + `gc` removes it locally if required.
+  - Do not commit a `.env` or password file at all; commit a `.example` template and add the real one to `.gitignore`.
+  - `--amend` and `reset --soft` give the same tree, but `reset` lets you split the work into several new commits.
+common_mistakes:
+  - "Fixing the password in a second commit, which leaves `S3cretPass-8841` in the history."
+  - "Using `--hard`, which discards `mailer.py` and the config file entirely."
+  - "Changing the commit message while recommitting, or forgetting `mailer.py` in the new commit."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 1
-  description: Branch has one commit after reset
-- type: script_passes
-  description: Status matches the reset mode
-  script: git status --porcelain | grep -q '^M  change.txt'
+  - type: script_passes
+    description: the commit was redone on the same base with the same message
+    script: |
+      test "$(git rev-parse HEAD~1)" = "$(cat .git/gm-base)"
+      test "$(git log -1 --format=%s)" = "Add SMTP settings for the report mailer"
+      test "$(git rev-list --count HEAD)" = 2
+  - type: script_passes
+    description: the config uses the environment placeholder and mailer.py is in the commit
+    script: |
+      git show HEAD:config/smtp.ini | grep -qF 'password = ${SMTP_PASSWORD}'
+      git show --name-only --format= HEAD | grep -qx 'mailer.py'
+      git show --name-only --format= HEAD | grep -qx 'config/smtp.ini'
+  - type: script_passes
+    description: the old password is not reachable from any branch and the tree is clean
+    script: |
+      test -z "$(git log --all -S'S3cretPass' --oneline)"
+      test -z "$(git status --porcelain)"
+

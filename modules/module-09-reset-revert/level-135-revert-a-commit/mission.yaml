@@ -4,35 +4,82 @@ level: level-135-revert-a-commit
 order: 135
 difficulty: advanced
 xp: 320
-expected_time: 10m
+expected_time: 7m
 concepts:
-- "`git revert <hash>` \u2014 safe undo for shared history"
-common_mistakes:
-- "Running commands related to `git revert <hash>` \u2014 safe undo for shared history\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A commit introduced a bad change that should be undone safely.
-objective: Revert the latest commit so `bad.txt` disappears from the working tree.
+  - git revert
+  - undoing a commit that is already shared
+description: |
+  Release 1.7 of the pump motor controller firmware has shipped. A field engineer reports motors burning out:
+  the commit that raised `current_limit_a` from 2.8 to 4.2 amps was a mistake. Since then two unrelated commits
+  were added on top, and all of it is already on the shared `main` branch, which deployment pipelines have
+  pulled. You must undo the bad change **without rewriting history**.
+objective: |
+  Undo the commit "Raise motor current limit to 4.2A" by adding a new revert commit on top of `main`. After that
+  `motor.cfg` must say `current_limit_a=2.8` again, the thermal shutdown and README commits must remain
+  untouched, and the original bad commit must still be part of the history.
 hints:
-- Use `git revert` to create a new inverse commit.
-- Keep the repo clean when you finish.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git revert --no-edit HEAD\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "History is shared, so you must not remove the bad commit. Add a commit that applies its opposite."
+  - "Find the hash of the bad commit with `git log`. There is a git command that creates an inverse commit."
+  - "`git revert <hash>` (add `--no-edit` to accept the default message)."
+guide: |
+  ## Undo by adding history
 
+  Locate the commit:
 
-  **Revert a Commit**
+  ```bash
+  git log --oneline
+  ```
 
+  Revert it. Because the later commits touched other files, git can apply the inverse cleanly:
 
-  Revert is the safe undo tool for history that may already be shared.
+  ```bash
+  git revert <hash-of-Raise-motor-current-limit>
+  ```
 
-  '
+  Your editor opens with a message `Revert "Raise motor current limit to 4.2A"` and a line explaining which
+  commit it undoes; save it (or pass `--no-edit`). Check:
+
+  ```bash
+  git log --oneline
+  cat motor.cfg
+  ```
+
+  There are five commits now: the four originals plus the revert. Anyone who already pulled can pull the revert normally.
+debrief: |
+  ## What you learned
+
+  `git revert <commit>` computes the diff of that commit, inverts it and commits the result as a new commit. History only
+  grows, so it is safe on shared branches; it works for a commit in the *middle* of history as long as later
+  changes do not conflict with it. The original commit remains and the message of the revert names it.
+
+  ## Real-world use
+
+  Rolling back a bad release or feature. The pull request platforms offer the same as a "Revert" button.
+  Later you can re-apply the change by reverting the revert.
+
+  ## Pitfalls
+
+  - If later commits touched the same lines, you get a conflict to resolve, as with a merge.
+  - Reverting does not remove secrets from history; the old commit is still there.
+  - `git reset` would be shorter, but rewrites history and breaks everyone who pulled.
+common_mistakes:
+  - "Using `git reset --hard HEAD~3` to drop the bad commit, which also destroys the two good commits made after it."
+  - "Reverting HEAD (the README commit) because it is the newest, instead of the commit that caused the problem."
+  - "Editing `motor.cfg` by hand and committing: the file is right but no revert commit exists."
 validators:
-- type: file_not_exists
-  path: bad.txt
-  description: bad.txt was reverted away
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: a revert commit exists for the bad commit, on top of the old tip
+    script: |
+      test "$(git rev-parse HEAD~1)" = "$(cat .git/gm-tip)"
+      git log -1 --format=%s | grep -q '^Revert "Raise motor current limit to 4.2A"'
+      test "$(git rev-list --count HEAD)" = 5
+  - type: file_content_contains
+    path: motor.cfg
+    text: current_limit_a=2.8
+    description: the current limit is back to 2.8
+  - type: script_passes
+    description: the later commits (thermal, README) are untouched and the bad commit is still in history
+    script: |
+      git log --format=%s | grep -qx 'Raise motor current limit to 4.2A'
+      grep -q 'shutdown_temp_c=85' thermal.cfg
+      grep -q 'Motor controller 1.7' README.md

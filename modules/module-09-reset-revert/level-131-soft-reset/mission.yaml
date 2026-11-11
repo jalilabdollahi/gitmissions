@@ -4,39 +4,81 @@ level: level-131-soft-reset
 order: 131
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 6m
 concepts:
-- "`git reset --soft HEAD~1` \u2014 uncommit"
-- keep staged
-common_mistakes:
-- "Running commands related to `git reset --soft HEAD~1` \u2014 uncommit, keep staged\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest commit should be removed while preserving work according to
-  the reset mode.
-objective: Run `git reset --soft HEAD~1` and leave the repo in the expected state.
+  - git reset --soft
+  - squashing recent commits
+description: |
+  You wrote the overtime calculation for the company's timesheet tool in three commits within an hour: the
+  feature, a "fix overtime default" and an "oops, round overtime". Nothing has been pushed. The reviewer
+  asked for one clean commit per feature, and she does not care for your trail of corrections.
+objective: |
+  Combine the last three commits into one commit with the message `Add overtime calculation with rounding`. The
+  final contents of `timesheet.py` must be exactly what they are now, `main` must have 2 commits in total and the
+  working tree must be clean.
 hints:
-- Look at `git status` before and after the reset.
-- Use `git reset --soft HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --soft HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "You want to move the branch back three commits but keep every change ready to commit."
+  - "`git reset` has a mode that moves only the branch pointer and leaves index and files alone."
+  - "`git reset --soft HEAD~3`, check with `git status`, then `git commit -m \"...\"`."
+guide: |
+  ## Collapse commits without an interactive rebase
 
+  See what you have:
 
-  **Soft Reset**
+  ```bash
+  git log --oneline
+  ```
 
+  The three commits to combine are the top three. Move the branch pointer back to the commit before them, but
+  keep the changes staged:
 
-  Reset moves the branch pointer; the mode determines what happens to the index and
-  working tree.
+  ```bash
+  git reset --soft HEAD~3
+  git status
+  ```
 
-  '
+  `timesheet.py` is shown as a staged modification: the net result of the three commits. Nothing in the
+  files changed. Commit once:
+
+  ```bash
+  git commit -m "Add overtime calculation with rounding"
+  git log --oneline
+  ```
+debrief: |
+  ## What you learned
+
+  `git reset --soft <commit>` moves the current branch to `<commit>` and **stops there**. The index and the
+  working tree remain as they were, so the difference between old and new tip shows up as staged changes. Committing
+  again creates one commit with the combined result. It is the shortest way to squash the last N commits.
+
+  `--mixed` (default) also resets the index; `--hard` also resets the working tree.
+
+  ## Real-world use
+
+  Cleaning up a local branch before opening a pull request. For squashing commits that are *not* at the tip,
+  use `git rebase -i`.
+
+  ## Pitfalls
+
+  - Only squash commits you have not pushed; otherwise you must force-push and surprise your teammates.
+  - The old commits stay in the reflog, so a mistake is reversible (`git reset --soft HEAD@{1}`).
+  - `HEAD~3` counts commits from the tip, so check `git log` before choosing the number.
+common_mistakes:
+  - "Using `HEAD~2`, which leaves the original feature commit in history and squashes only two fixes."
+  - "Using `--hard`, which throws away the code changes before they can be committed again."
+  - "Committing with a different message than the one requested."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 1
-  description: Branch has one commit after reset
-- type: script_passes
-  description: Status matches the reset mode
-  script: git status --porcelain | grep -q '^M  change.txt'
+  - type: commit_message_equals
+    text: Add overtime calculation with rounding
+    description: the tip commit has the requested message
+  - type: commit_count_eq
+    count: 2
+    description: main has exactly 2 commits
+  - type: script_passes
+    description: the final snapshot is identical to the three original commits combined
+    script: |
+      test "$(git rev-parse 'HEAD^{tree}')" = "$(cat .git/gm-tree)"
+      test "$(git log -1 --format=%s HEAD~1)" = "Start timesheet tool"
+  - type: is_clean
+    description: working tree and index are clean
+

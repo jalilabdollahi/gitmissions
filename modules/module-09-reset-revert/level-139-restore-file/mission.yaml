@@ -4,34 +4,86 @@ level: level-139-restore-file
 order: 139
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git restore -s <hash> -- <file>`'
-common_mistakes:
-- Running commands related to `git restore -s <hash> -- <file>` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A file should be restored from an older commit without resetting the
-  whole branch.
-objective: Restore `config.txt` from `HEAD~1` so it contains `stable`.
+  - git restore --source
+  - restoring one file from history
+description: |
+  A vendor import overwrote `rates.csv` in the loan calculator with zeros, and loans were quoted at 0% for two
+  days. The right numbers are the ones from the **Q2 rate card** commit, not the older January ones. Since the import, Mei
+  also improved `loan.py` to handle zero-rate loans, and that improvement must not be undone, so checking out the
+  old commit as a whole or resetting is out of the question.
+objective: |
+  Restore `rates.csv` to the content it had in the commit "Q2 rate card" and commit it with the message
+  `Restore Q2 rate card`. The new commit must change **only** `rates.csv`; `loan.py` must stay as it is now, and the old
+  history must remain intact.
 hints:
-- Use `git restore -s HEAD~1 -- config.txt` or checkout syntax.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git restore -s HEAD~1 -- config.txt\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "You want the contents of one file from one specific commit, placed in your current tree. Find the commit first."
+  - "`git log --oneline -- rates.csv` shows its history. Then look for a command that restores a path from a given source."
+  - "`git restore --source=<hash> rates.csv` (or `git checkout <hash> -- rates.csv`), then `git add` and `git commit`."
+guide: |
+  ## One file from the past
 
+  Find the right version of the file:
 
-  **Restore File to Version**
+  ```bash
+  git log --oneline -- rates.csv
+  git show <q2-hash>:rates.csv
+  ```
 
+  Pull it into the working tree without moving the branch or touching other files:
 
-  File-level restore is a precise rollback tool for single paths.
+  ```bash
+  git restore --source=<q2-hash> -- rates.csv
+  git status
+  git diff
+  ```
 
-  '
+  The change is only in the working tree. Stage and commit it:
+
+  ```bash
+  git add rates.csv
+  git commit -m "Restore Q2 rate card"
+  ```
+
+  Check `git show --stat HEAD`: only `rates.csv` is touched and `loan.py` keeps Mei's improvement.
+debrief: |
+  ## What you learned
+
+  `git restore --source=<commit> <path>` copies a file's content from any commit into the working tree (add
+  `--staged` to put it into the index as well). It never moves the branch, so it is the surgical alternative to
+  `reset` and `checkout <commit>` when only part of the tree should go back in time. The classic spelling is
+  `git checkout <commit> -- <path>`.
+
+  ## Real-world use
+
+  Reverting a bad data import, restoring a config file that someone "cleaned up", or recovering a deleted
+  file (`git restore --source=HEAD~1 deleted.txt`).
+
+  ## Pitfalls
+
+  - `git restore <path>` without `--source` restores from the *index*, discarding your edits.
+  - The restored file is an uncommitted change until you commit it.
+  - Be careful with `git log -- <path>` ordering: the newest version is the "Import vendor rate dump" one, not the one you want.
+common_mistakes:
+  - "Restoring the January version from the very first commit instead of the Q2 rate card."
+  - "Using `git reset --hard <q2-hash>`, which also throws away the zero-rate handling in `loan.py`."
+  - "Restoring the file but forgetting to commit it."
 validators:
-- type: file_content_equals
-  path: config.txt
-  text: stable
-  description: config.txt was restored
+  - type: script_passes
+    description: rates.csv equals the file in the 'Q2 rate card' commit
+    script: |
+      q2=$(git log --format=%H -1 --grep='Q2 rate card')
+      git show "$q2:rates.csv" | diff - rates.csv
+  - type: script_passes
+    description: the restore commit changed only rates.csv, on top of the old tip
+    script: |
+      test "$(git log -1 --format=%s)" = "Restore Q2 rate card"
+      test "$(git rev-parse HEAD~1)" = "$(cat .git/gm-tip)"
+      test "$(git show --name-only --format= HEAD)" = "rates.csv"
+  - type: script_passes
+    description: loan.py still has the zero-rate handling and the tree is clean
+    script: |
+      grep -q 'apr == 0' loan.py
+      test -z "$(git status --porcelain)"
+

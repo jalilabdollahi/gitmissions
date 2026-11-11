@@ -4,34 +4,89 @@ level: level-143-undo-a-cherry-pick
 order: 143
 difficulty: advanced
 xp: 330
-expected_time: 10m
+expected_time: 9m
 concepts:
-- '`git cherry-pick --abort`'
-common_mistakes:
-- Running commands related to `git cherry-pick --abort` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A cherry-pick has already stopped on a conflict.
-objective: Abort the cherry-pick and return the repo to a clean state.
+  - git cherry-pick --abort
+  - recovering from a wrong pick
+description: |
+  A customer was charged interest for 365 days in a leap year. The fix, "Fix leap-day interest accrual", is on `main`
+  and has to be back-ported to `release/1.x`. In a hurry you ran a cherry-pick on the wrong commit, "Refactor interest into an Interest class",
+  which is a big refactor that conflicts with `release/1.x` and must never go into a patch release. Git has stopped halfway and
+  your working tree is full of conflict markers. You are on `release/1.x`.
+objective: |
+  Cancel the pick that is in progress so that `release/1.x` is exactly as it was before (no markers, no unmerged files,
+  clean tree), then cherry-pick the **right** commit, "Fix leap-day interest accrual". `release/1.x` must end with
+  exactly one new commit over its previous tip, and the refactor must not be in it.
 hints:
-- Use `git cherry-pick --abort`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git cherry-pick --abort\n   ```"
-debrief: '## What Just Happened
+  - "Run `git status`: git tells you a cherry-pick is in progress and which commit it is applying."
+  - "There is a flag that cancels a cherry-pick and restores the branch to its state before the pick."
+  - "`git cherry-pick --abort`, then find the leap-day commit on `main` and `git cherry-pick <hash>`."
+guide: |
+  ## Back out of a bad pick
 
+  Look at the situation:
 
-  **Abort a Cherry-Pick**
+  ```bash
+  git status
+  git diff --name-only --diff-filter=U
+  ```
 
+  You are mid-pick with `interest.py` conflicted. Rather than resolving a commit you do not want, cancel it:
 
-  Abort commands exist for the high-risk history-editing workflows so you can unwind
-  safely.
+  ```bash
+  git cherry-pick --abort
+  git status
+  ```
 
-  '
+  The tree is clean again, and the branch tip is the "Round accrued interest" commit. Now pick the right one:
+
+  ```bash
+  git log main --oneline
+  git cherry-pick <hash-of-Fix-leap-day>
+  ```
+
+  It touches only `calendar_days.py`, so it applies cleanly. Confirm with `git log --oneline` and `cat calendar_days.py`.
+debrief: |
+  ## What you learned
+
+  Cherry-pick, merge, rebase and revert are *operations that can be interrupted*. While one is in progress,
+  `git status` says so and offers `--continue`, `--skip` and `--abort`. `--abort` restores the branch,
+  index and working tree to how they were before the operation began, so it is always safe if you did not
+  make other changes in the meantime.
+
+  ## Real-world use
+
+  Before resolving any conflict, ask whether you picked the right commit. Resolving a refactor by hand
+  on a release branch is exactly how regressions ship.
+
+  ## Pitfalls
+
+  - Aborting throws away manual conflict resolution you already did.
+  - `git reset --hard` also gets you out, but it does not clear the sequencer state in `.git`, so git may still claim a pick is in progress; use `--abort`.
+  - `git cherry-pick --skip` drops only the current commit when you picked a range.
+common_mistakes:
+  - "Resolving the conflicts of the refactor instead of aborting, which puts a large refactor on the release branch."
+  - "Running `git reset --hard` instead of `--abort`, leaving `.git/CHERRY_PICK_HEAD` behind."
+  - "Aborting but then forgetting to pick the leap-day fix."
 validators:
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    description: no cherry-pick in progress, nothing unmerged, no markers
+    script: |
+      test ! -f .git/CHERRY_PICK_HEAD
+      test -z "$(git ls-files --unmerged)"
+      ! grep -rq '^<<<<<<<' interest.py calendar_days.py
+  - type: script_passes
+    description: release/1.x has the leap-day fix as its single new commit and not the refactor
+    script: |
+      test "$(git branch --show-current)" = release/1.x
+      git log -1 --format=%s | grep -qx 'Fix leap-day interest accrual'
+      test "$(git rev-list --count HEAD)" = 3
+      ! git log --format=%s | grep -q 'Refactor interest'
+      grep -q 'leap' calendar_days.py
+  - type: script_passes
+    description: the release branch's own rounding change is intact and the tree is clean
+    script: |
+      grep -q 'round(balance' interest.py
+      ! grep -q 'class Interest' interest.py
+      test -z "$(git status --porcelain)"
+

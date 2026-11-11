@@ -4,38 +4,88 @@ level: level-140-cherry-pick
 order: 140
 difficulty: advanced
 xp: 340
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git cherry-pick <hash>`'
-common_mistakes:
-- Running commands related to `git cherry-pick <hash>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A useful commit exists on another branch and should be copied onto `main`.
-objective: Cherry-pick the feature commit so `picked.txt` appears on `main`.
+  - git cherry-pick
+  - cherry-pick -x
+description: |
+  Release 2.4 of the wallet API is live and a customer has just drained an account by withdrawing a negative
+  amount. The fix, "Reject negative withdrawal amounts", is already on `main`, but `main` also holds unreleased work
+  (a ledger refactor and a CSV export) that must not ship in a patch release. You need that single fix on
+  `release/2.4`, and the commit message must record where it came from so auditors can trace it.
+objective: |
+  Apply only the commit "Reject negative withdrawal amounts" to the branch `release/2.4` using cherry-pick, and
+  record the origin in the message (the `(cherry picked from commit ...)` line). The refactor and export commits must not
+  be on `release/2.4`, and `main` must stay unchanged.
 hints:
-- Find the commit on `feature/pick`.
-- Use `git cherry-pick <hash>` from `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git cherry-pick feature/pick\n   ```"
-debrief: '## What Just Happened
+  - "You want one commit from another branch, not a merge of the whole branch."
+  - "`git cherry-pick <hash>` copies a commit onto the current branch. There is a flag that appends the source hash to the message."
+  - "`git switch release/2.4` then `git cherry-pick -x <hash>`. Find the hash with `git log main --oneline`."
+guide: |
+  ## Pick one commit
 
+  Identify the fix on main:
 
-  **Cherry-Pick a Commit**
+  ```bash
+  git log main --oneline
+  ```
 
+  Switch to the release branch and look at it first. It has only the baseline commit:
 
-  Cherry-pick copies a commit''s change onto your current branch as a new commit.
+  ```bash
+  git switch release/2.4
+  git log --oneline
+  ```
 
-  '
+  Copy the fix over, with traceability:
+
+  ```bash
+  git cherry-pick -x <hash-of-the-fix>
+  ```
+
+  Check the message and the contents:
+
+  ```bash
+  git log -1
+  cat wallet.py
+  ls
+  ```
+
+  The new commit has a different hash, but the same change, and a line `(cherry picked from commit <original>)`.
+debrief: |
+  ## What you learned
+
+  `git cherry-pick` re-applies the *diff* of a commit as a new commit on your current branch. The copy has its
+  own hash, but the author and message are preserved. `-x` appends the original hash so you can later see
+  where a backport came from.
+
+  ## Real-world use
+
+  Back-porting hot fixes to maintenance branches is the typical use. Cherry-picking is cheaper than merging when
+  the source branch has unreleased work.
+
+  ## Pitfalls
+
+  - A later merge of `main` into the release branch may show the change twice, but git usually recognises it as already applied.
+  - If the commit depends on earlier changes, the pick conflicts or silently does the wrong thing; test the result.
+  - Use `-x` for public branches only; it is noise on private ones.
+common_mistakes:
+  - "Merging `main` into `release/2.4`, which brings the refactor and the export into the patch release."
+  - "Cherry-picking while still on `main`, so the commit is copied onto the wrong branch."
+  - "Copying the file by hand: the fix works but there is no commit linking it to the original."
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_exists
-  path: picked.txt
-  description: picked.txt was cherry-picked
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: release/2.4 contains the fix with the '(cherry picked from commit ...)' trailer
+    script: |
+      fix=$(git log main --format=%H -1 --grep='Reject negative withdrawal')
+      git log release/2.4 --format=%B -1 | grep -q "(cherry picked from commit $fix)"
+      git show release/2.4:wallet.py | grep -q 'must be positive'
+  - type: script_passes
+    description: release/2.4 has exactly one new commit and none of the unreleased work
+    script: |
+      test "$(git rev-list --count release/2.4)" = 2
+      ! git log release/2.4 --format=%s | grep -Eq 'Refactor ledger|CSV export'
+  - type: script_passes
+    description: main is unchanged
+    script: |
+      test "$(git rev-parse main)" = "$(cat .git/gm-tip)"
