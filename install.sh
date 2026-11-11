@@ -16,22 +16,20 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+# Recreate the virtualenv if it is missing or its interpreter no longer runs
+# (for example after a Python upgrade or when copied from another machine).
+if [ -d ".venv" ] && ! .venv/bin/python -c "import sys" >/dev/null 2>&1; then
+  echo "Existing .venv is broken; recreating it..."
+  rm -rf .venv
+fi
+
 if [ ! -d ".venv" ]; then
   python3 -m venv .venv
 fi
 
-source .venv/bin/activate
-python3 -m pip install --quiet --upgrade pip
-python3 -m pip install --quiet -r requirements.txt
-python3 scripts/generate_levels.py
-python3 scripts/generate_registry.py
+.venv/bin/python -m pip install --quiet --upgrade pip
+.venv/bin/python -m pip install --quiet -r requirements.txt
+.venv/bin/python scripts/generate_registry.py
 
-if [ ! -f progress.json ]; then
-  cat > progress.json <<'EOF'
-{"player_name":null,"total_xp":0,"completed_levels":[],"current_module":"module-01-foundations","current_level":"level-001-init-your-first-repo","module_certificates":[],"time_per_level":{},"level_start_time":null,"hint_state":{}}
-EOF
-fi
-
-echo "GitMissions is ready."
-echo "Activate the virtual environment with: source .venv/bin/activate"
-echo "Then start the game with: ./play.sh"
+echo "GitMissions is ready. Start the game with: ./play.sh"
+echo "Maintainers: verify every level with .venv/bin/python scripts/build_levels.py"

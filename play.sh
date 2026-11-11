@@ -12,19 +12,18 @@ if [[ "${1:-}" == "--reset" ]]; then
 
   read -r -p "Reset all GitMissions progress? This cannot be undone. [y/N] " confirm
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    cat > progress.json <<'EOF'
-{"player_name":null,"total_xp":0,"completed_levels":[],"current_module":"module-01-foundations","current_level":"level-001-init-your-first-repo","module_certificates":[],"time_per_level":{},"level_start_time":null,"hint_state":{}}
-EOF
+    rm -f progress.json
     echo "Progress reset. Starting again from Module 1 Level 1."
-    exit 0
   else
     echo "Cancelled."
-    exit 0
   fi
+  exit 0
 fi
 
-if [ -f ".venv/bin/activate" ]; then
-  source .venv/bin/activate
+PYTHON=".venv/bin/python"
+if ! "$PYTHON" -c "import rich, yaml" >/dev/null 2>&1; then
+  echo "The Python environment is missing or broken. Run ./install.sh first."
+  exit 1
 fi
 
-PYTHONPATH="$REPO" python3 -m engine.engine "$@"
+PYTHONPATH="$REPO" exec "$PYTHON" -m engine.engine "$@"
