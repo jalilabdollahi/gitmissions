@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-git merge --abort || true
-git switch main || git switch -c main
-printf 'recovered
-' > rescue.txt
-git add rescue.txt
-git commit -m "fix: war game recovery"
+git fetch -q ../omar-clone refs/heads/main:refs/heads/main 'refs/tags/*:refs/tags/*'
+git config receive.denyDeletes true
+git config receive.denyNonFastForwards true

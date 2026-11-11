@@ -4,43 +4,115 @@ level: level-219-wargame-hook-data-leak
 order: 219
 difficulty: expert
 xp: 700
-expected_time: 18m
+expected_time: 20m
 concepts:
-- "pre-commit found credentials \u2014 now clean history"
-common_mistakes:
-- "Running commands related to pre-commit found credentials \u2014 now clean history\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- removing a secret from all history
+- git filter-branch --index-filter
+- expiring reflogs and pruning
+description: |
+  The pre-commit hook of the billing-infra repo scans the tracked files for AWS access keys, and it is now refusing every commit. Reason: three commits ago, somebody committed `config/prod.env` with a live key (bypassing the hook with `--no-verify`), and several commits of real work were built on top of it. Nothing was pushed yet, so the history can still be rewritten. Security's requirement is strict: the key must not exist anywhere in this clone, not in any commit, not in the reflog, not even as an unreachable object. The later work (S3 module, IAM role, alarms and the threshold tuning) must survive.
+objective: |
+  Purge the secret and carry on.
+
+  1. Rewrite the history so that `config/prod.env` never existed in any commit. All other commits and their changes (`Add S3 bucket module`, `Add IAM role module`, `Add CloudWatch alarms`, `Tune alarm thresholds`, `Terraform base for billing`) are kept.
+  2. Remove every trace of the old objects: no backup refs (`refs/original`), expired reflogs and a pruning gc, so that neither `AKIAIOSFODNN7EXAMPLE` nor its secret key appears in any object of the repository.
+  3. Track `config/prod.env.example` with placeholder values, ignore `config/prod.env` in `.gitignore`, and commit that with a message starting `chore:` through the (unchanged) pre-commit hook.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git filter-branch --index-filter ''git rm --cached --ignore-unmatch -q config/prod.env'' --prune-empty
+  -- --all` rewrites every commit without that path. Set `FILTER_BRANCH_SQUELCH_WARNING=1` to silence
+  the deprecation pause.'
+- filter-branch keeps the old history under `refs/original/`. Delete those refs, then `git reflog expire
+  --expire=now --all` and `git gc --prune=now`.
+- Verify with `git cat-file --batch-all-objects --batch | grep -a AKIA` (no output) and `git log --all
+  -S AKIA` (no output). The hook only looks at tracked files, so the example file must not contain the
+  key pattern.
+guide: |
+  ## Rewrite every commit
 
+  ```bash
+  git log --oneline --stat -- config/prod.env      # shows the offending commit
+  FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --prune-empty \
+    --index-filter 'git rm --cached --ignore-unmatch -q config/prod.env' -- --all
+  git log --oneline
+  ```
 
-  **Hook Prevented Data Leak**
+  The index-filter edits each commit's tree without checking anything out, so it is fast. `--prune-empty` drops the commit that only added the file.
 
+  ## Destroy the old copies
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ```bash
+  rm -rf .git/refs/original
+  git reflog expire --expire=now --all
+  git gc --prune=now
+  git cat-file --batch-all-objects --batch | grep -a AKIA   # nothing
+  ```
 
-  '
+  ## Prevent it from happening again
+
+  ```bash
+  printf 'AWS_ACCESS_KEY_ID=<from-vault>\nAWS_SECRET_ACCESS_KEY=<from-vault>\n' > config/prod.env.example
+  echo config/prod.env >> .gitignore
+  git add config/prod.env.example .gitignore
+  git commit -m "chore: replace prod.env with an example"
+  ```
+
+  And rotate the key in AWS: removing it from Git does not make it secret again.
+debrief: |
+  ## Rewriting is not enough
+
+  A secret exists in four places after a rewrite: the old commits (kept in `refs/original`), the reflogs of every branch, loose or packed unreachable objects, and any clone or fork that fetched it earlier. Each needs its own cleanup step. `filter-branch` handles the first, `reflog expire` the second, `gc --prune=now` the third. The fourth is why the key must be *rotated* in every case.
+
+  ## Why a hook alone is not enough
+
+  Client-side hooks are advisory: `--no-verify` or a missing hook bypasses them. Real protection is server-side (push protection, `pre-receive` scanning) plus short-lived credentials.
+
+  ## Tools
+
+  `git filter-branch` is the built-in but slow and deprecated tool; `git filter-repo` and BFG are the modern replacements and use the same idea (rewrite each commit's tree). All of them change every SHA after the first modified commit, so shared branches need a coordinated force-push.
+
+  ## Related
+
+  - `git log --all -S<string>` finds commits that added or removed a string.
+  - `.gitignore` plus an example file is the standard pattern for local secrets.
+common_mistakes:
+- 'Deleting the file in a new commit: the key stays in history forever.'
+- Rewriting history but leaving `refs/original` and the reflog, so `git log --all` or `git cat-file` still
+  finds it.
+- Editing the pre-commit hook to let the commit through instead of removing the cause.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: No commit in any ref ever contained config/prod.env or the key
+  script: 'test -z "$(git log --all --format=%H -- config/prod.env)"
+
+    test -z "$(git log --all --format=%H -S AKIAIOSFODNN7EXAMPLE)"
+
+    test -z "$(git for-each-ref refs/original)"
+
+    '
+- type: script_passes
+  description: The key and secret exist in no object of the repository at all
+  script: '! git cat-file --batch-all-objects --batch | grep -aq ''AKIAIOSFODNN7EXAMPLE''
+
+    ! git cat-file --batch-all-objects --batch | grep -aq ''wJalrXUtnFEMI''
+
+    '
+- type: script_passes
+  description: The other work is intact
+  script: "for s in \"Terraform base for billing\" \"Add S3 bucket module\" \"Add IAM role module\" \"\
+    Add CloudWatch alarms\" \"Tune alarm thresholds\"; do\n  git log --format=%s main | grep -qx \"$s\"\
+    \ndone\ngrep -q 'threshold = 85' alarms.tf\ntest -f modules/s3.tf && test -f modules/iam.tf\n"
+- type: script_passes
+  description: The example file is tracked, prod.env is ignored, and the hook still passes
+  script: 'git ls-files --error-unmatch config/prod.env.example >/dev/null
+
+    git check-ignore -q config/prod.env
+
+    grep -q ''gm-hook: secret-scan'' .git/hooks/pre-commit
+
+    sh .git/hooks/pre-commit
+
+    git log -1 --format=%s main | grep -q ''^chore:''
+
+    '
 - type: is_clean
   description: Working tree is clean

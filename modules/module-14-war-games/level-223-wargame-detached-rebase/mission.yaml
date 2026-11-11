@@ -4,43 +4,113 @@ level: level-223-wargame-detached-rebase
 order: 223
 difficulty: expert
 xp: 720
-expected_time: 18m
+expected_time: 20m
 concepts:
-- rebase left HEAD detached with conflicts pending
-common_mistakes:
-- Running commands related to rebase left HEAD detached with conflicts pending without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- git rebase --abort
+- git rebase --onto after a squash merge
+- cleaning up merged branches
+repo_path: work
+description: |
+  Two stacked branches in the static-site theme repo: `feature/a` (base styles) and `feature/b` (dark mode) which was started on top of `a`. The reviewers squash-merged `feature/a` into `main` ("Add base theme (#12)"), then somebody added a docs commit on `main`. You ran `git rebase main` on `feature/b`, and Git is now in the middle of a rebase, detached, with an add/add conflict in `theme/base.css`: it is trying to replay the two commits of `feature/a` that `main` already contains in squashed form. Resolving that conflict would duplicate the base styles. The branch must instead carry only its own two commits, and the merged `feature/a` is to be removed.
+objective: |
+  1. Abort the doomed rebase and re-do it so that `feature/b` consists of exactly its own two commits (`theme: dark mode variables`, `theme: dark mode toggle`) directly on top of the current `main`; `theme/base.css` must contain the `.btn` rule once.
+  2. Publish `feature/b` with `git push --force-with-lease origin feature/b` (origin/feature/b equals the local branch).
+  3. Once that is done, delete the merged branch `feature/a` locally and on origin. (Delete it only after the rebase: you need its tip to tell Git where your commits start.)
+
+  No rebase may remain in progress and `feature/b` must be checked out.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git status` says "rebase in progress" and shows HEAD detached. `git rebase --abort` returns you to
+  `feature/b` as it was.'
+- 'A squash merge leaves no ancestry link, so `git rebase main` cannot tell which commits are already
+  included. Tell it explicitly with `git rebase --onto main feature/a feature/b`: take the commits after
+  `feature/a`, put them on `main`.'
+- Then `git push --force-with-lease origin feature/b`, `git push origin --delete feature/a` and `git branch
+  -D feature/a` (`-D`, since Git does not see it as merged).
+guide: |
+  ## 1. Back out
 
+  ```bash
+  git status                 # interactive/regular rebase in progress, conflict in theme/base.css
+  git rebase --abort
+  git log --oneline --graph --all
+  ```
 
-  **Detached HEAD + Rebase**
+  ## 2. Transplant only your own commits
 
+  ```bash
+  git rebase --onto main feature/a feature/b
+  git log --oneline main..feature/b      # two commits
+  grep -c '^\.btn' theme/base.css        # 1
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ## 3. Publish and clean up
 
-  '
+  ```bash
+  git push --force-with-lease origin feature/b
+  git push origin --delete feature/a
+  git branch -D feature/a
+  ```
+
+  `git branch -d feature/a` would refuse, because the squash commit is not an ancestor of the branch.
+debrief: |
+  ## Why plain rebase fails after a squash merge
+
+  `git rebase main` replays "commits in feature/b that are not in main". After a squash merge the original commits of `feature/a` are *not* in main (the squash is a new commit with the same net content), so Git replays them again and they collide with their own squashed copy.
+
+  ## `--onto`
+
+  `git rebase --onto <new-base> <old-base> <branch>` replays `old-base..branch` on `new-base`. With a stacked branch the old base is the parent branch's tip. Keep that tip around until the rebase is done, or recover it from the reflog.
+
+  ## Squash merge hygiene
+
+  Squash merges give a tidy main but break the ancestry that Git uses to detect merged branches and to rebase dependants. Teams that squash should retarget dependent branches right after the merge (`rebase --onto`) and delete the merged branch only then.
+
+  ## Related
+
+  - `git rebase --update-refs` for stacked branches, `git branch --merged` (does not know about squashes).
+  - `git cherry -v main feature/b` shows patches by content, a way to see what is already upstream.
+common_mistakes:
+- Resolving the add/add conflict and continuing, which duplicates the base styles and carries `feature/a`'s
+  two commits into the branch.
+- Deleting `feature/a` before the `--onto` rebase, losing the marker that says where your commits start.
+- Using `git branch -d` and giving up when it refuses; the squash-merged branch needs `-D`.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: No rebase is in progress and feature/b is checked out
+  script: 'test ! -d "$(git rev-parse --git-path rebase-merge)"
+
+    test ! -d "$(git rev-parse --git-path rebase-apply)"
+
+    test "$(git symbolic-ref --short HEAD)" = feature/b
+
+    '
+- type: script_passes
+  description: feature/b is exactly its two own commits on top of main
+  script: 'test "$(git merge-base main feature/b)" = "$(git rev-parse main)"
+
+    test "$(git log --reverse --format=%s main..feature/b)" = "theme: dark mode variables
+
+    theme: dark mode toggle"
+
+    git log --format=%s main | grep -q ''^docs: theme readme$''
+
+    '
+- type: script_passes
+  description: base.css has the rule once and the toggle's change
+  script: 'test "$(grep -c ''^\.btn'' theme/base.css)" = 1
+
+    grep -q ''var(--fg'' theme/base.css
+
+    ! grep -rqE ''^(<<<<<<<|=======|>>>>>>>)'' theme
+
+    '
+- type: script_passes
+  description: origin/feature/b equals the local branch
+  script: 'test "$(git --git-dir=../origin.git rev-parse feature/b)" = "$(git rev-parse feature/b)"
+
+    '
+- type: script_passes
+  description: feature/a is deleted locally and on origin
+  script: '! git rev-parse -q --verify refs/heads/feature/a >/dev/null
+
+    ! git --git-dir=../origin.git rev-parse -q --verify refs/heads/feature/a >/dev/null'

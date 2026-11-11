@@ -4,43 +4,105 @@ level: level-222-wargame-gc-lost
 order: 222
 difficulty: expert
 xp: 720
-expected_time: 18m
+expected_time: 20m
 concepts:
-- "`git gc --prune=now` ran too early \u2014 recover"
-common_mistakes:
-- "Running commands related to `git gc --prune=now` ran too early \u2014 recover without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- recovering pruned objects from other repositories
+- git fetch into local branches and tags
+- gc.pruneExpire
+repo_path: work
+description: |
+  Last night an over-eager clean-up script deleted the branches `feature/geo-router` and `feature/tile-cache` and the tag `v0.9-geo-beta` from the geo-service repo, expired the reflog and ran `git gc --prune=now`. In your clone the objects are really gone: `git reflog` and `git fsck` find nothing. But the work was shared: the team's backup mirror `../mirror.git` received `feature/geo-router` and the beta tag; the tile-cache branch was never pushed anywhere, but Wei's clone `../wei-clone` still has it as a local branch. Policy afterwards: the next cleanup must give people two weeks, and the grace period for unreachable objects should be 30 days.
+objective: |
+  Bring everything back from the other repositories.
+
+  1. Recreate the local branch `feature/geo-router` and the annotated tag `v0.9-geo-beta` exactly as in `../mirror.git` (same commit and tag object).
+  2. Recreate the local branch `feature/tile-cache` from `../wei-clone`, at exactly the commit Wei has.
+  3. Set `gc.pruneExpire` to `30.days.ago` in this repository's config.
+
+  `git fsck --full` must report no missing objects afterwards.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git fetch <path> <src>:<dst>` can fetch from any repository by path; no remote has to be configured.
+  `git fetch ../mirror.git feature/geo-router:feature/geo-router` creates the branch locally and downloads
+  the missing objects.'
+- '`git fetch <url> tag <name>` fetches one tag including its tag object. `git ls-remote ../mirror.git`
+  and `git ls-remote ../wei-clone` show what each copy has.'
+- '`git config gc.pruneExpire 30.days.ago` raises the grace period for unreachable loose objects.'
+guide: |
+  ## Inspect the backups
 
+  ```bash
+  git ls-remote ../mirror.git
+  git ls-remote ../wei-clone
+  git fsck --full           # nothing missing, the branches are simply gone
+  ```
 
-  **GC Ate the Commits**
+  ## Fetch by path
 
+  ```bash
+  git fetch ../mirror.git feature/geo-router:feature/geo-router tag v0.9-geo-beta
+  git fetch ../wei-clone feature/tile-cache:feature/tile-cache
+  git branch -v
+  git tag -l
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  The destination of the refspec (`:feature/geo-router`) is what creates the local branch. Without it you would only get a temporary `FETCH_HEAD`.
 
-  '
+  ## Make the next cleanup safer
+
+  ```bash
+  git config gc.pruneExpire 30.days.ago
+  git fsck --full
+  ```
+debrief: |
+  ## Distributed means redundant
+
+  When `gc --prune=now` destroys unreachable objects, local recovery is impossible. But every repository that ever received those commits is a backup: a mirror, a CI server, a colleague's clone or even a fork. Git can fetch from any path or URL without a configured remote, so recovery is a one-liner once you know where the objects live.
+
+  ## Refspecs
+
+  `src:dst` maps a ref in the other repository to a ref in yours. A leading `+` allows non-fast-forward updates. Tags can be fetched with `tag <name>` or `refs/tags/*:refs/tags/*`.
+
+  ## Prevention
+
+  `git gc` prunes only unreachable objects older than `gc.pruneExpire` (default two weeks). `--prune=now` ignores it, which is rarely a good idea outside of secret removal. A mirror (`git clone --mirror` plus periodic `git remote update`) is the cheapest backup there is.
+
+  ## Related
+
+  - `git ls-remote <path>` lists refs without fetching.
+  - `git fsck --lost-found` and `git reflog` are the local recovery tools when the objects still exist.
+  - `gc.reflogExpire` and `gc.reflogExpireUnreachable` extend reflog retention.
+common_mistakes:
+- Searching the local reflog and `fsck` for hours; after `prune=now` nothing is left locally.
+- Fetching without a destination (`git fetch ../mirror.git feature/geo-router`), which creates no branch.
+- Taking the tile-cache branch from the mirror, which never had it, instead of from Wei's clone.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: feature/geo-router and the annotated tag v0.9-geo-beta match the mirror
+  script: 'm=../mirror.git
+
+    test "$(git rev-parse refs/heads/feature/geo-router)" = "$(git --git-dir=$m rev-parse refs/heads/feature/geo-router)"
+
+    test "$(git rev-parse v0.9-geo-beta)" = "$(git --git-dir=$m rev-parse v0.9-geo-beta)"
+
+    test "$(git cat-file -t v0.9-geo-beta)" = tag
+
+    '
+- type: script_passes
+  description: feature/tile-cache matches Wei's clone
+  script: 'test "$(git rev-parse refs/heads/feature/tile-cache)" = "$(git --git-dir=../wei-clone/.git
+    rev-parse refs/heads/feature/tile-cache)"
+
+    test "$(git rev-list --count main..feature/tile-cache)" = 2
+
+    '
+- type: script_passes
+  description: The object database is complete again
+  script: 'git fsck --full --no-dangling >/dev/null 2>&1
+
+    git log --format=%s feature/geo-router | grep -q ''geo: country polygons''
+
+    '
+- type: config_equals
+  key: gc.pruneExpire
+  value: 30.days.ago
+  description: gc.pruneExpire is 30.days.ago

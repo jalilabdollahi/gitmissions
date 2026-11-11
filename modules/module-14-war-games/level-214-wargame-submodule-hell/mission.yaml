@@ -4,43 +4,123 @@ level: level-214-wargame-submodule-hell
 order: 214
 difficulty: expert
 xp: 700
-expected_time: 18m
+expected_time: 20m
 concepts:
-- submodule at wrong commit + dirty + not initialized
-common_mistakes:
-- Running commands related to submodule at wrong commit + dirty + not initialized
-  without checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- stale submodule URL in .gitmodules
+- uninitialised and dirty submodules
+- committing inside a submodule, then bumping the pointer
+repo_path: work
+description: |
+  Your fresh clone of the `render-engine` repo has three submodule problems at once. `ext/imgui` is not initialised: its remote was renamed and `.gitmodules` still points to the old URL, so the init fails. `ext/shaderlib` is initialised, but you already fixed the blur kernel in it, uncommitted, in the detached checkout. And the fix exists nowhere else: the superproject records an old shaderlib commit, so teammates would never get it. The shared libraries live next to the superproject remote (`../remotes/`). Local-path submodule commands need `git -c protocol.file.allow=always`.
+objective: |
+  Repair and ship the superproject.
+
+  1. Correct the URL of `ext/imgui` in `.gitmodules` to `../imgui.git`, sync it, and initialise the submodule at its recorded commit.
+  2. In `ext/shaderlib` commit your blur change on a new branch `fix/blur-kernel` and push that branch to the submodule's `origin` (`../remotes/shaderlib.git`).
+  3. In the superproject, commit the `.gitmodules` fix and the new `ext/shaderlib` pointer and push `main` to `origin`.
+
+  Afterwards `git status` is clean (no modified submodule), and the recorded `ext/shaderlib` commit is the tip of `fix/blur-kernel` on the shaderlib remote.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git submodule status` shows `-` for imgui and a `+`/dirty state for shaderlib. `git config -f .gitmodules
+  submodule.ext/imgui.url ../imgui.git` and `git submodule sync` update the URL in both files.'
+- 'A submodule is a normal repository: `git -C ext/shaderlib switch -c fix/blur-kernel`, commit, push.
+  Its HEAD was detached, which is normal for submodules.'
+- Back in the superproject `git add .gitmodules ext/shaderlib` records the new pointer. Push it only after
+  the submodule commit is on its remote, or others cannot fetch it.
+guide: |
+  ## Diagnose
 
+  ```bash
+  git submodule status             # -<sha> ext/imgui, <sha> ext/shaderlib
+  git -C ext/shaderlib status      # HEAD detached, blur.glsl modified
+  cat .gitmodules                  # imgui points to ../imgui-old.git
+  ```
 
-  **Submodule Hell**
+  ## Fix the URL and initialise
 
+  ```bash
+  git config -f .gitmodules submodule.ext/imgui.url ../imgui.git
+  git submodule sync
+  git -c protocol.file.allow=always submodule update --init ext/imgui
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ## Commit and push the submodule change first
 
-  '
+  ```bash
+  git -C ext/shaderlib switch -c fix/blur-kernel
+  git -C ext/shaderlib commit -am "blur: widen gaussian kernel to 9"
+  git -C ext/shaderlib push origin fix/blur-kernel
+  ```
+
+  ## Then update the superproject
+
+  ```bash
+  git add .gitmodules ext/shaderlib
+  git commit -m "Fix imgui url and bump shaderlib to the blur fix"
+  git push origin main
+  ```
+debrief: |
+  ## The superproject only stores a SHA
+
+  A pointer to a commit nobody can fetch is a broken pointer. Always push the submodule's commit before (or together with) the superproject commit that references it; `git push --recurse-submodules=check` makes Git verify that for you.
+
+  ## Why URL changes need `sync`
+
+  `.gitmodules` is the tracked definition; `.git/config` holds the URL used on your machine. `git submodule sync` copies one into the other. If the repository was renamed, everyone with an initialised submodule must run it after pulling.
+
+  ## Dirty detached submodules
+
+  A submodule normally sits on a detached HEAD at the recorded commit. Edits there are easy to lose with the next `git submodule update`, which resets to the recorded commit. Put them on a branch and commit before you do anything else.
+
+  ## Related
+
+  - `git status --ignore-submodules=dirty` hides dirty content.
+  - `git submodule foreach 'git status -s'`.
+  - `git config submodule.recurse true` makes pull, checkout and switch update submodules.
+common_mistakes:
+- 'Pushing the superproject first; teammates then get "fatal: remote error: upload-pack: not our ref".'
+- Running `git submodule update` while shaderlib is dirty, which discards the fix.
+- Editing only `.gitmodules` and forgetting `git submodule sync`, so the old URL stays in `.git/config`
+  and init keeps failing.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: ext/imgui uses the new URL and is checked out at the recorded commit
+  script: 'test "$(git config -f .gitmodules submodule.ext/imgui.url)" = "../imgui.git"
+
+    test -f ext/imgui/imgui.h
+
+    want=$(git ls-tree HEAD ext/imgui | awk ''{print $3}'')
+
+    test "$(git -C ext/imgui rev-parse HEAD)" = "$want"
+
+    '
+- type: script_passes
+  description: The blur fix is committed on fix/blur-kernel on the shaderlib remote
+  script: 'r=../remotes/shaderlib.git
+
+    tip=$(git --git-dir=$r rev-parse fix/blur-kernel)
+
+    git --git-dir=$r show "$tip:blur.glsl" | grep -q ''kernel: 9''
+
+    test "$(git --git-dir=$r rev-parse "$tip^")" = "$(git --git-dir=$r rev-parse main)"
+
+    '
+- type: script_passes
+  description: The superproject records the new shaderlib commit, locally and on origin
+  script: 'r=../remotes/shaderlib.git
+
+    tip=$(git --git-dir=$r rev-parse fix/blur-kernel)
+
+    test "$(git ls-tree HEAD ext/shaderlib | awk ''{print $3}'')" = "$tip"
+
+    test "$(git --git-dir=../remotes/render-engine.git ls-tree main ext/shaderlib | awk ''{print $3}'')"
+    = "$tip"
+
+    test "$(git --git-dir=../remotes/render-engine.git rev-parse main)" = "$(git rev-parse HEAD)"
+
+    '
+- type: script_passes
+  description: Every submodule is initialised and the working tree is clean
+  script: '! git submodule status | grep -q ''^[-+U]''
+
+    test -z "$(git status --porcelain)"'

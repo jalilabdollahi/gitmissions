@@ -4,43 +4,125 @@ level: level-216-wargame-history-rewrite
 order: 216
 difficulty: expert
 xp: 700
-expected_time: 18m
+expected_time: 20m
 concepts:
-- interactive rebase deleted 3 commits from shared branch
-common_mistakes:
-- Running commands related to interactive rebase deleted 3 commits from shared branch
-  without checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- recovering dropped commits via ORIG_HEAD and reflog
+- git cherry-pick preserving authors
+- moving a tag after a rewrite
+repo_path: work
+description: |
+  You cleaned up the shared `develop` branch of the redis-lite client with `git rebase -i` and force-pushed it. In the editor you dropped what you thought were three noisy "WIP" commits, but they were real features by two colleagues: Kai's pipeline support and TTL helpers and Lena's retry-on-timeout. The release tag `v0.4.0` still points to the old, now orphaned TTL commit, so the release notes reference a commit that no longer belongs to any branch. Colleagues have not pulled yet. The server is `origin`; you may not rewrite it a second time.
+objective: |
+  Restore the lost work and fix the release tag.
+
+  1. Put the three dropped commits (`client: add pipeline support`, `client: retry on timeout`, `client: ttl helpers`) back onto `develop`, keeping their authors (Kai, Lena, Kai) and their relative order. Your later commits (`client: scan iterator`, `docs: update changelog`) stay.
+  2. Publish `develop` as a normal fast-forward of what is on `origin` now (the currently published tip must be an ancestor), no force.
+  3. Move the annotated tag `v0.4.0` to the restored `client: ttl helpers` commit, locally and on `origin`.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`ORIG_HEAD` points at the tip before the rebase; `git log --format=''%h %an %s'' ORIG_HEAD` shows all
+  eight commits and who wrote them. The reflog has the same information.'
+- '`git cherry-pick <sha>...` copies commits and keeps the original author (the committer becomes you).
+  Pick them in the original order.'
+- Tags are not moved by pushes. Recreate it with `git tag -f -a v0.4.0 -m ... <sha>` and update origin
+  with `git push --force origin v0.4.0` (a tag is a different object than a branch).
+guide: |
+  ## Locate the lost commits
 
+  ```bash
+  git log --format='%h %an %s' ORIG_HEAD     # eight commits, three by Kai and Lena missing from develop
+  git log --format='%h %an %s' develop
+  ```
 
-  **History Rewrite Recovery**
+  ## Put them back
 
+  ```bash
+  picks=$(git log --reverse -E --author='Kai|Lena' --format=%H ORIG_HEAD)
+  git cherry-pick $picks
+  git log --format='%h %an %s' -6
+  git push origin develop           # fast-forward over the published tip
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  The copies have new SHAs but the same authors and diffs.
 
-  '
+  ## Re-point the release tag
+
+  ```bash
+  new=$(git log -1 --format=%H --grep='client: ttl helpers')
+  git tag -f -a v0.4.0 -m "v0.4.0" "$new"
+  git push --force origin v0.4.0
+  git ls-remote origin v0.4.0 'v0.4.0^{}'
+  ```
+
+  Moving a published tag is unusual; do it only because the old target is orphaned.
+debrief: |
+  ## Why `drop` is dangerous
+
+  Interactive rebase makes it easy to delete commits and equally easy to misjudge them from their one-line messages ("client:" prefix told you nothing about authorship). The commits are still in the object database and listed in the reflog and `ORIG_HEAD`, which is what makes recovery possible.
+
+  ## Cherry-pick versus merge
+
+  Merging the old tip would bring back the commits with their original SHAs but also duplicate your rewritten commits' changes in a confusing way. Cherry-picking exactly the missing commits keeps history linear and preserves authorship, at the price of new SHAs.
+
+  ## Tags after a rewrite
+
+  A tag pins one commit. After history is rewritten it still points to the old commit, which stays reachable only through the tag. Anyone building `v0.4.0` gets the old tree, so the tag has to follow the replacement. Because tags are normally immutable, Git refuses to overwrite a tag without `-f`, on both sides.
+
+  ## Related
+
+  - `git range-diff` shows what happened to each commit of a rewritten series.
+  - `git log --author` and `git shortlog -sn ORIG_HEAD..develop` help audit what was dropped.
+common_mistakes:
+- Merging `ORIG_HEAD` into develop, which re-introduces rewritten duplicates of your own commits.
+- Force-pushing the branch again to "fix it", overwriting whatever colleagues pushed in the meantime.
+- Leaving the tag on the orphaned commit so that releases do not match the branch.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: origin/develop contains the three restored commits with their original authors
+  script: "o=\"git --git-dir=../origin.git\"\nfor s in \"client: add pipeline support|Kai\" \"client:\
+    \ retry on timeout|Lena\" \"client: ttl helpers|Kai\"; do\n  subj=${s%%|*}; who=${s##*|}\n  test \"\
+    $($o log develop --format=%an --grep=\"^$subj\\$\" -1)\" = \"$who\"\ndone\n$o show develop:client.py\
+    \ | grep -q 'def pipeline'\n$o show develop:client.py | grep -q 'def retry_on_timeout'\n$o show develop:client.py\
+    \ | grep -q 'def set_ttl'\n"
+- type: script_passes
+  description: The restored commits keep their relative order and the later commits stay
+  script: 'o="git --git-dir=../origin.git"
+
+    exp="client: add pipeline support
+
+    client: retry on timeout
+
+    client: ttl helpers"
+
+    test "$($o log --reverse --format=%s develop | grep -E ''^client: (add pipeline|retry|ttl)'')" = "$exp"
+
+    $o log --format=%s develop | grep -q ''^client: scan iterator$''
+
+    $o log --format=%s develop | grep -q ''^docs: update changelog$''
+
+    '
+- type: script_passes
+  description: The push was a fast-forward over the force-pushed tip
+  script: 'o="git --git-dir=../origin.git"
+
+    old=$($o log develop --format=%H --grep=''^docs: update changelog$'' -1)
+
+    $o merge-base --is-ancestor "$old" develop
+
+    test "$($o rev-parse develop)" = "$(git rev-parse develop)"
+
+    '
+- type: script_passes
+  description: v0.4.0 is annotated and points to the restored ttl commit, locally and on origin
+  script: 'o="git --git-dir=../origin.git"
+
+    want=$($o log develop --format=%H --grep=''^client: ttl helpers$'' -1)
+
+    test "$($o rev-parse ''v0.4.0^{commit}'')" = "$want"
+
+    test "$(git rev-parse ''v0.4.0^{commit}'')" = "$want"
+
+    test "$($o cat-file -t v0.4.0)" = tag
+
+    '
 - type: is_clean
   description: Working tree is clean

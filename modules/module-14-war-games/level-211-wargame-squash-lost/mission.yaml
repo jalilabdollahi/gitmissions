@@ -6,41 +6,109 @@ difficulty: expert
 xp: 640
 expected_time: 18m
 concepts:
-- '`fixup` swallowed wrong commit'
-common_mistakes:
-- Running commands related to `fixup` swallowed wrong commit without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- recovering from a bad interactive rebase with ORIG_HEAD
+- rebase.autoSquash and fixup! commits
+- force-with-lease after history rewrite
+repo_path: work
+description: |
+  You cleaned up `feature/ledger-sync` of the ledger data pipeline with `git rebase -i main`. The branch had five commits, one of them a `fixup! Add importer` commit meant to be folded into the importer commit. In the editor you changed the wrong line: `Add retry with backoff` (the commit right after the importer) was turned into a `fixup` and vanished into the importer commit, while the real `fixup!` commit stayed behind as a separate commit. The retry work is still in the tree but its history is mangled, and the reviewers want the original, separate commit. The old branch is still on `origin`.
+objective: |
+  Redo the rebase correctly.
+
+  1. `feature/ledger-sync` must have exactly four commits on top of `main`, in this order: `Add sync schema`, `Add importer`, `Add retry with backoff`, `Add exporter`. The typo fix of the `fixup!` commit must be folded into `Add importer` (no commit may add the typo `retun`), and no `fixup!` commit may remain. The retry commit changes only `retry.py`.
+  2. Set `rebase.autoSquash` to `true` in this repository so that `fixup!` commits are reordered automatically in the future.
+  3. Publish the branch with `git push --force-with-lease origin feature/ledger-sync`.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- After a rebase `ORIG_HEAD` and `git reflog` still point at the tip before it. `git log --oneline ORIG_HEAD`
+  shows the original five commits.
+- Go back with `git reset --hard ORIG_HEAD`, then run `git rebase -i main` again. With `rebase.autoSquash`
+  set, the `fixup!` commit is moved directly below its target and marked `fixup` for you.
+- In scripts use `GIT_SEQUENCE_EDITOR=true git rebase -i main` to accept the todo list as proposed.
+guide: |
+  ## Undo the bad rebase
 
+  ```bash
+  git log --oneline main..HEAD              # four commits, retry code hidden inside "Add importer"
+  git reflog | head                          # rebase (finish), rebase (fixup) ...
+  git reset --hard ORIG_HEAD                 # back to the five original commits
+  git log --oneline main..HEAD
+  ```
 
-  **Squash Lost a Commit**
+  ## Redo it with autosquash
 
+  ```bash
+  git config rebase.autoSquash true
+  git rebase -i main
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  The todo list now reads: schema, importer, `fixup importer-typo`, retry, exporter. Save and close. In a script: `GIT_SEQUENCE_EDITOR=true git rebase -i main`.
 
-  '
+  ## Verify and publish
+
+  ```bash
+  git log --oneline main..HEAD
+  git log -p main..HEAD | grep -c retun    # 0
+  git push --force-with-lease origin feature/ledger-sync
+  ```
+debrief: |
+  ## Why nothing was lost
+
+  Rebase builds new commits and then moves the branch; the old commits stay in the object database and are reachable through `ORIG_HEAD` and the reflog. A wrong `squash` or `fixup` is therefore an undoable mistake, as long as you act before garbage collection.
+
+  ## Fixup commits
+
+  `git commit --fixup=<commit>` creates a commit titled `fixup! <subject>`. With `--autosquash` (or the `rebase.autoSquash` setting) the interactive rebase moves it below its target and changes `pick` to `fixup`. You do not have to edit the todo list by hand, which is where this mistake happened.
+
+  ## Reading the todo list
+
+  Lines run oldest to newest, top to bottom. `fixup` melts a commit into the one above it. Moving or changing the wrong line merges the wrong pair, so always re-read the list before saving.
+
+  ## Related
+
+  - `git commit --fixup=amend:` and `--squash=` variants.
+  - `git rebase --edit-todo` while stopped, `git rebase --abort` to restart.
+  - `git range-diff main ORIG_HEAD HEAD` compares old and new series.
+common_mistakes:
+- Trying to repair the mangled commit with a new commit instead of redoing the rebase, leaving the retry
+  work inside the importer commit.
+- Running `git rebase -i` again without resetting first, which rebases the already mangled four commits.
+- Pushing with plain `--force` or forgetting to push at all, so reviewers still see the old branch.
 validators:
+- type: script_passes
+  description: Four clean commits in the right order on top of main
+  script: 'exp="Add sync schema
+
+    Add importer
+
+    Add retry with backoff
+
+    Add exporter"
+
+    test "$(git log --reverse --format=%s main..feature/ledger-sync)" = "$exp"
+
+    test "$(git log --format=%s main..feature/ledger-sync | grep -c ''^fixup!'')" = 0
+
+    '
+- type: script_passes
+  description: The retry commit touches only retry.py and the typo fix is folded into the importer
+  script: 'test "$(git show --name-only --format= feature/ledger-sync~1)" = "retry.py"
+
+    git show feature/ledger-sync~2:importer.py | grep -q ''return rows''
+
+    ! git log -p --format= main..feature/ledger-sync | grep -q ''retun''
+
+    '
+- type: config_equals
+  key: rebase.autoSquash
+  value: 'true'
+  description: rebase.autoSquash is enabled
+- type: script_passes
+  description: origin/feature/ledger-sync equals the local branch
+  script: 'test "$(git --git-dir=../origin.git rev-parse feature/ledger-sync)" = "$(git rev-parse feature/ledger-sync)"
+
+    '
 - type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+  branch: feature/ledger-sync
+  description: HEAD is on feature/ledger-sync
 - type: is_clean
   description: Working tree is clean
