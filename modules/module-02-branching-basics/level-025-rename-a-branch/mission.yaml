@@ -6,36 +6,84 @@ difficulty: beginner
 xp: 130
 expected_time: 6m
 concepts:
-- '`git branch -m`'
-common_mistakes:
-- Running commands related to `git branch -m` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This sandbox starts from a simple `main` branch with one commit.
-objective: Rename `old-name` to `feature/docs`.
+  - git branch -m
+  - renaming the current branch vs another
+  - master to main
+description: |
+  The school science-fair registration app was created years ago with Git's old default branch name `master`.
+  The team has decided to call it `main`. While cleaning up, you also notice that the branch you are working on,
+  `fix/pasword-reset`, has a typo in its name. Both branches contain real commits that must not be lost or rewritten;
+  only the names should change.
+objective: |
+  Rename `master` to `main` and `fix/pasword-reset` to `fix/password-reset`. No branch named `master` or
+  `fix/pasword-reset` may remain, and the branch contents (their commits) must be unchanged. End on
+  `fix/password-reset`.
 hints:
-- Start with the Git command related to ``git branch -m``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch -m old-name feature/docs\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "`git branch` shows both names. You are currently on the branch with the typo."
+  - "`git branch -m <new>` renames the current branch, and `git branch -m <old> <new>` renames any other one."
+  - "`git branch -m fix/password-reset` and `git branch -m master main`."
+guide: |
+  ## 1. Inspect
+  ```bash
+  git branch -vv
+  ```
+  `master` has one commit; the typo'd branch has two (it is based on master).
 
+  ## 2. Fix the branch you are on
+  ```bash
+  git branch -m fix/password-reset
+  ```
+  With a single argument Git renames the **current** branch.
 
-  **Rename a Branch**
+  ## 3. Rename master
+  ```bash
+  git branch -m master main
+  ```
+  With two arguments you name the old and the new name, so it works from anywhere.
 
+  ## 4. Verify
+  ```bash
+  git branch
+  git log --oneline --all
+  ```
+  Same commits, new names.
+debrief: |
+  ## What happened
+  A branch name is a label that points to a commit. `git branch -m` moves the label (and its reflog); it does not touch
+  any commit, so history, hashes and your working tree are unchanged.
 
-  Branches are lightweight references to commits, which makes them cheap to create
-  and remove.
+  ## Why it matters
+  Renaming is cheap locally, but on a shared remote others still have the old name. Real migrations from `master` to
+  `main` also need the server side renamed and every collaborator to update their tracking branch.
 
-  '
+  ## Related
+  - `git branch -M new` forces the rename when the target exists.
+  - Remote rename: `git push origin -u main` then delete the old remote branch (a later module).
+  - `git config --global init.defaultBranch main` for future repos.
+
+  ## Pitfalls
+  - You cannot rename onto an existing name without `-M`.
+  - Branch protection rules and CI configs on the server refer to names, so update those as well.
+common_mistakes:
+  - Creating a new branch with the right name and deleting the old one, which loses the branch's tracking and reflog.
+  - Renaming only `master` and forgetting the typo.
+  - Ending on `main` instead of staying on the fix branch (validators expect HEAD on the fix branch).
 validators:
-- type: branch_not_exists
-  branch: old-name
-  description: old-name no longer exists
-- type: branch_exists
-  branch: feature/docs
-  description: feature/docs exists
+  - type: branch_exists
+    branch: main
+    description: Branch main exists
+  - type: branch_not_exists
+    branch: master
+    description: Branch master is gone
+  - type: branch_exists
+    branch: fix/password-reset
+    description: Branch fix/password-reset exists
+  - type: branch_not_exists
+    branch: fix/pasword-reset
+    description: The misspelled branch is gone
+  - type: is_on_branch
+    branch: fix/password-reset
+    description: HEAD is on fix/password-reset
+  - type: script_passes
+    script: test "$(git rev-list --count main)" = "1" && test "$(git log -1 --format=%s fix/password-reset)" = "Reset token expires after 1 hour" && test "$(git rev-list --count fix/password-reset)" = "2"
+    description: Both branches keep their original commits

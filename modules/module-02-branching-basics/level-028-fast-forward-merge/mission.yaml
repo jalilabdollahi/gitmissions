@@ -6,43 +6,72 @@ difficulty: beginner
 xp: 150
 expected_time: 6m
 concepts:
-- '`git merge`'
-- fast-forward explained
-common_mistakes:
-- Running commands related to `git merge`, fast-forward explained without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is ready to be integrated into `main`.
-objective: Merge `feature/login` into `main` using a fast-forward merge.
+  - git merge
+  - fast-forward
+  - --ff-only
+description: |
+  Farah plans weekly meals in a small repository. She created the branch `add-lunch-ideas` from `main`, added two
+  commits there and has been happy with them. Meanwhile nobody touched `main`. It is time to bring the lunch ideas
+  into `main`, and the team's convention for a branch like this is a clean, linear history: no extra merge commit.
+objective: |
+  Merge `add-lunch-ideas` into `main` so that `main` points at exactly the same commit as the branch
+  and no merge commit exists. Use the option that makes Git refuse anything but a fast-forward. Stay on `main`.
 hints:
-- Make sure you are on `main`.
-- Merge with `git merge feature/login`.
-- Keep the working tree clean after the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git merge feature/login\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows that the branch is a straight continuation of `main`."
+  - "When the target branch has not moved, Git can simply slide its pointer forward. The flag `--ff-only` guarantees that no merge commit is created."
+  - "`git merge --ff-only add-lunch-ideas` (while on `main`)."
+guide: |
+  ## 1. Look at the shape
+  ```bash
+  git log --oneline --graph --all
+  ```
+  A straight line: `main` is an ancestor of `add-lunch-ideas`.
 
+  ## 2. Merge
+  ```bash
+  git merge --ff-only add-lunch-ideas
+  ```
+  Git just moves `main` forward to the tip of the branch ("Fast-forward"). No new commit is created, and
+  the files `lunch.txt` appear in your working tree.
 
-  **Fast-Forward Merge**
+  ## 3. Check
+  ```bash
+  git log --oneline
+  git branch -v
+  ```
+  Both branches show the same hash.
+debrief: |
+  ## What happened
+  Because every commit of `main` is already contained in `add-lunch-ideas`, there is nothing to combine.
+  A **fast-forward** merge just advances the `main` pointer. `--ff-only` makes that a rule: if the histories had
+  diverged, Git would stop with an error instead of creating a merge commit.
 
+  ## Why it matters
+  Linear history is easy to read and bisect. `--ff-only` is a safe default for `git pull` and for integrating short branches.
 
-  Fast-forward merges keep history linear; `--no-ff` preserves an explicit integration
-  point.
+  ## Related
+  - `git config merge.ff only` makes it the default.
+  - `git merge --no-ff` does the opposite (next mission).
+  - If it fails, rebase the branch first, or accept a merge commit.
 
-  '
+  ## Pitfalls
+  - A fast-forward leaves no trace that a branch ever existed.
+  - You must be on the receiving branch (`main`) when you run the merge.
+common_mistakes:
+  - Merging in the wrong direction: running the merge while on `add-lunch-ideas`, which does nothing.
+  - Using `--no-ff` and creating a merge commit.
+  - Cherry-picking or copying the files instead of merging, so the commit hashes differ.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_contains
-  path: feature.txt
-  text: login ready
-  description: Feature change reached main
-- type: no_merge_commit
-  branch: HEAD
-  description: History shape matches the mission
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: refs_equal
+    left: main
+    right: add-lunch-ideas
+    description: main points at the same commit as add-lunch-ideas
+  - type: no_merge_commit
+    description: No merge commit was created
+  - type: commit_count_eq
+    count: 4
+    branch: main
+    description: main has four linear commits

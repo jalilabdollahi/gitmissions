@@ -4,37 +4,79 @@ level: level-027-delete-unmerged-branch
 order: 27
 difficulty: beginner
 xp: 140
-expected_time: 6m
+expected_time: 7m
 concepts:
-- "`git branch -D` \u2014 and why it's dangerous"
-common_mistakes:
-- "Running commands related to `git branch -D` \u2014 and why it's dangerous without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A temporary branch should be removed from the repository.
-objective: Delete `feature/wip` with force and leave the repo on `main`.
+  - git branch -D
+  - unmerged work is not protected
+  - the "was <hash>" message
+description: |
+  Jun designs album-art portfolios. A week ago she tried a neon colour scheme on the branch
+  `experiment/neon-theme`. The client hated it, so the branch will never be merged. Git's normal delete refuses
+  because the two neon commits exist nowhere else. Jun is sure about throwing it away, but wants a note of the
+  branch's last commit, in case the client changes their mind next month.
+objective: |
+  Delete `experiment/neon-theme` even though it is not merged, leaving `main` and `feature/contact-form` as they are.
+  Save the abbreviated hash of the deleted branch's last commit (the value Git prints in
+  `Deleted branch ... (was <hash>)`) into `deleted-tip.txt`, with nothing else in the file.
 hints:
-- List branches first.
-- Use `git branch -D feature/wip`.
-- Stay on `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch -D feature/wip\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "Try `git branch -d experiment/neon-theme` first and read the error message carefully."
+  - "`-D` (capital) forces the deletion. Its output ends with `(was <hash>)`, which is exactly what you need to keep."
+  - "`git branch -D experiment/neon-theme`, then write the hash it printed into `deleted-tip.txt` (e.g. with `echo`)."
+guide: |
+  ## 1. The safe delete says no
+  ```bash
+  git branch -d experiment/neon-theme
+  ```
+  "The branch is not fully merged." Git is protecting two commits that no other branch contains.
 
+  ## 2. Force it
+  ```bash
+  git branch -D experiment/neon-theme
+  ```
+  The output looks like `Deleted branch experiment/neon-theme (was 3f2a9c1).` That hash is the only handle to the
+  commits afterwards.
 
-  **Force Delete a Branch**
+  ## 3. Record it
+  ```bash
+  echo 3f2a9c1 > deleted-tip.txt
+  ```
+  (Use the hash you saw.) With the hash the branch can be resurrected: `git branch experiment/neon-theme 3f2a9c1`.
+debrief: |
+  ## What happened
+  `-D` removed the branch pointer without checking whether its commits are reachable elsewhere. The commits stay in
+  the object database until garbage collection (usually weeks), and `git reflog` or the printed hash can bring them back.
 
+  ## Why it matters
+  Deleting an unmerged branch is the one routine Git operation that can lose work. Writing down the tip hash makes
+  it a reversible decision.
 
-  Deleting merged branches is cleanup; force deletion is a deliberate safety override.
+  ## Related
+  - `git reflog` lists recent tips, including deleted branches.
+  - `git branch <name> <hash>` recreates a branch at a commit.
+  - `git fsck --lost-found` finds unreachable commits.
 
-  '
+  ## Pitfalls
+  - `-D` is `--delete --force`; it silently skips all safety checks.
+  - After garbage collection the commits are really gone.
+common_mistakes:
+  - Merging the experiment into main just to be able to delete it with `-d`.
+  - Writing the hash of `main` or a made-up value instead of the deleted branch's tip.
+  - Deleting `feature/contact-form` too, which is also unmerged work.
 validators:
-- type: branch_not_exists
-  branch: feature/wip
-  description: feature/wip no longer exists
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: branch_not_exists
+    branch: experiment/neon-theme
+    description: experiment/neon-theme is deleted
+  - type: script_passes
+    script: |
+      tip=$(git config gitmissions.neonTip)
+      got=$(tr -d '[:space:]' < deleted-tip.txt)
+      test "${#got}" -ge 7 && case "$tip" in "$got"*) true;; *) false;; esac
+    description: deleted-tip.txt holds the abbreviated hash of the deleted branch's last commit
+  - type: branch_exists
+    branch: feature/contact-form
+    description: feature/contact-form is untouched
+  - type: script_passes
+    script: test "$(git log -1 --format=%s main)" = "Lighter headings" && test "$(git rev-list --count main)" = "2" && git cat-file -e "$(git config gitmissions.neonTip)"
+    description: main is unchanged and the neon commits were not merged
+  - type: no_merge_commit
+    description: No merge commit exists

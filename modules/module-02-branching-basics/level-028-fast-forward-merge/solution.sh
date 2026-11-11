@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 set -e
-
-git switch main
-git merge feature/login
+git log --oneline --graph --all
+git merge --ff-only add-lunch-ideas

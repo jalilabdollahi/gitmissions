@@ -6,32 +6,75 @@ difficulty: beginner
 xp: 120
 expected_time: 6m
 concepts:
-- '`git branch <name>`'
-common_mistakes:
-- Running commands related to `git branch <name>` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This sandbox starts from a simple `main` branch with one commit.
-objective: Create a branch named `feature/login`.
+  - git branch <name> [<start-point>]
+  - a branch is a pointer
+  - creating without switching
+description: |
+  Rosa organises an open-mic night and tracks the posters and info sheets in Git. She is currently on the
+  `poster-redesign` branch trying a bolder look. A volunteer asks her to prepare a place for the sign-up
+  page, but that work must start from the stable `main` branch, not from the half-finished poster experiment.
+  Rosa does not want to leave the poster branch yet.
+objective: |
+  Create a new branch named `volunteer-signup` that points at the same commit as `main`.
+  You must still be on `poster-redesign` afterwards, and `poster-redesign` must be unchanged.
 hints:
-- Start with the Git command related to ``git branch <name>``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch feature/login\n   ```"
-debrief: '## What Just Happened
+  - "`git branch` lists the branches and marks the current one with a star. Note where you are."
+  - "`git branch <name>` creates a branch at the current commit without switching to it. You can name a different start point after the name."
+  - "`git branch volunteer-signup main`"
+guide: |
+  ## 1. Look around
+  ```bash
+  git branch -v
+  ```
+  You are on `poster-redesign`, which is one commit ahead of `main`.
 
+  ## 2. Create the branch from `main`
+  ```bash
+  git branch volunteer-signup main
+  ```
+  If you left out `main`, the new branch would start at the current commit, i.e. include the poster experiment.
 
-  **Create a Branch**
+  ## 3. Check
+  ```bash
+  git branch -v
+  ```
+  `volunteer-signup` shows the same hash as `main`, and the star is still on `poster-redesign`.
+debrief: |
+  ## What happened
+  A branch is just a small file containing the hash of a commit. `git branch <name> <start>` writes a new
+  pointer at the commit `<start>` resolves to. It does not move `HEAD`, change files or copy anything,
+  which is why branching in Git is instant.
 
+  ## Why it matters
+  Starting from the right base is the most important branching decision. A feature branch created from an
+  experimental branch drags unreviewed work along with it.
 
-  Branches are lightweight references to commits, which makes them cheap to create
-  and remove.
+  ## Related
+  - `git switch <name>` moves to the branch afterwards.
+  - `git branch -v` shows the tip commit of each branch.
+  - The start point can be a branch, tag or hash, e.g. `git branch hotfix v1.2`.
 
-  '
+  ## Pitfalls
+  - Creating a branch does not check it out. New commits still go onto the current branch.
+  - Branch names cannot contain spaces.
+common_mistakes:
+  - Running `git branch volunteer-signup` without the start point, which branches off the poster experiment.
+  - Switching to `main` first and then creating the branch, which leaves you on the wrong branch at the end.
+  - Using `git checkout -b`, which switches away from `poster-redesign`.
 validators:
-- type: branch_exists
-  branch: feature/login
-  description: feature/login exists
+  - type: branch_exists
+    branch: volunteer-signup
+    description: Branch volunteer-signup exists
+  - type: refs_equal
+    left: volunteer-signup
+    right: main
+    description: volunteer-signup points at the same commit as main
+  - type: is_on_branch
+    branch: poster-redesign
+    description: You are still on poster-redesign
+  - type: ahead_of
+    branch: poster-redesign
+    other: main
+    count: 1
+    behind: 0
+    description: poster-redesign still has its one extra commit

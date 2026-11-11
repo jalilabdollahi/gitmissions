@@ -4,34 +4,83 @@ level: level-032-branch-from-commit
 order: 32
 difficulty: beginner
 xp: 150
-expected_time: 6m
+expected_time: 8m
 concepts:
-- '`git switch -c <name> <hash>`'
-common_mistakes:
-- Running commands related to `git switch -c <name> <hash>` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You need to preserve work by creating a branch from an older point in
-  history.
-objective: Create a branch named `rescue` from `HEAD~1`.
+  - git switch -c <name> <commit>
+  - branching from history
+description: |
+  Nadia publishes the station data of a city bike-share as a CSV in Git. Version 1.4 of the data was shipped
+  to the app stores in the commit `Ship v1.4 data release`. Since then two new stations were added on `main`,
+  but they are not in the shipped data. A user reports that station 17 (Harbor Gate) is mapped in the sea.
+  The fix must go out as a patch on top of what was actually released, without the unreleased stations 18 and 19.
+objective: |
+  Create a branch `hotfix/station-17` starting at the commit `Ship v1.4 data release` and switch to it.
+  On this branch commit a change of the station 17 row in `stations.csv` to `17,Harbor Gate,53.3446,-6.2287`
+  with the message `Correct coordinates of station 17`. The branch must not contain stations 18 and 19, and
+  `main` must stay as it is.
 hints:
-- Inspect the log if you want to confirm the target commit.
-- Use `git switch -c rescue HEAD~1` or `git branch rescue HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch -c rescue HEAD~1\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline` shows the history. The release commit is not the newest one."
+  - "`git switch -c <name> <start-point>` creates a branch at any commit, not just at the current one."
+  - "`git switch -c hotfix/station-17 <hash-of-release-commit>`, edit the row, `git commit -am \"Correct coordinates of station 17\"`."
+guide: |
+  ## 1. Find the release commit
+  ```bash
+  git log --oneline
+  ```
+  It is the second commit; two commits sit on top of it.
 
+  ## 2. Branch from it
+  ```bash
+  git switch -c hotfix/station-17 <hash>
+  cat stations.csv
+  ```
+  The working tree now shows the data as released: no stations 18 and 19.
 
-  **Create Branch from Old Commit**
+  ## 3. Fix and commit
+  Replace the row for station 17, then:
+  ```bash
+  git commit -am "Correct coordinates of station 17"
+  ```
 
+  ## 4. Verify
+  ```bash
+  git log --oneline --graph --all
+  ```
+  The hotfix branches off in the middle of the history.
+debrief: |
+  ## What happened
+  Any commit can be the start point of a branch. Here the new branch begins in the past, so its snapshot
+  matches what shipped, and the fix is applied to exactly that code.
 
-  Branches can point at any reachable commit, not just the current HEAD.
+  ## Why it matters
+  Hotfixing a release without taking along unreleased work is the textbook reason for branching from an old commit
+  (or tag). Afterwards the fix is merged or cherry-picked into `main` so that it is not lost.
 
-  '
+  ## Related
+  - `git switch -c <name> <tag>` does the same from a tag (next mission).
+  - `git cherry-pick <hash>` copies the fix to `main`.
+  - `git branch <name> <hash>` creates the branch without switching.
+
+  ## Pitfalls
+  - Branching from `HEAD` by habit takes the unreleased commits along.
+  - Searching for the hash by date is error-prone; use the message or a tag.
+common_mistakes:
+  - Creating the branch from `main` and then deleting the extra rows by hand, which hides the real base.
+  - Switching to the old commit with `git switch --detach` and committing without a branch.
+  - Changing the coordinates on `main`.
 validators:
-- type: branch_exists
-  branch: rescue
-  description: rescue exists
+  - type: is_on_branch
+    branch: hotfix/station-17
+    description: HEAD is on hotfix/station-17
+  - type: script_passes
+    script: test "$(git rev-parse HEAD~1)" = "$(git log main --format=%H --grep='Ship v1.4 data release')"
+    description: The branch starts at the "Ship v1.4 data release" commit
+  - type: commit_message_equals
+    text: Correct coordinates of station 17
+    description: Latest commit message is "Correct coordinates of station 17"
+  - type: script_passes
+    script: grep -qx '17,Harbor Gate,53.3446,-6.2287' stations.csv && ! grep -q -e '^18,' -e '^19,' stations.csv
+    description: Station 17 is corrected and stations 18/19 are absent
+  - type: script_passes
+    script: test "$(git rev-list --count main)" = "4" && git show main:stations.csv | grep -q '^19,'
+    description: main is unchanged

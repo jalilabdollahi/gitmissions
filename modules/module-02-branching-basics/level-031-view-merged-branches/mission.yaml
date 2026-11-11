@@ -4,48 +4,76 @@ level: level-031-view-merged-branches
 order: 31
 difficulty: beginner
 xp: 130
-expected_time: 6m
+expected_time: 8m
 concepts:
-- '`git branch --merged`'
-- clean up
-common_mistakes:
-- Running commands related to `git branch --merged`, clean up without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repo has a few local branches to inspect.
-objective: 'Inspect the branch list and create `merged.txt` containing exactly:
-
-
-  `feature/merged`
-
-
-  Then commit it with `docs: record branches`.'
+  - git branch --merged
+  - git branch --no-merged
+  - branch cleanup
+description: |
+  Ibrahim's smart-home configuration repository has collected a pile of branches over the months. Some were merged
+  with merge commits, one by fast-forward, one is just a leftover pointer at the tip of `main`, and a few
+  carry work that has not reached `main`: one was merged only into `develop`, and one is an untested experiment.
+  He wants to clean up all branches that `main` already contains, and absolutely nothing else.
+objective: |
+  Delete every local branch that is fully merged into `main` (except `main` itself), and keep every branch that
+  has commits `main` does not contain. Stay on `main`. Let Git tell you which branches those are instead of guessing
+  from their names.
 hints:
-- Use `git branch` or `git branch --merged` depending on the mission.
-- Write the exact answer into `merged.txt`.
-- Commit the report.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > merged.txt <<'EOF'\nfeature/merged\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add merged.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: record branches\"\n   ```"
-debrief: '## What Just Happened
+  - "`git branch` lists everything. Names like `feature/...` do not tell you whether a branch is merged."
+  - "`git branch --merged main` lists the branches whose tip is contained in `main`. `--no-merged` shows the others."
+  - "Delete the merged ones with `git branch -d <name>...`. `chore/docs` and `develop` are merged only into each other, not `main`."
+guide: |
+  ## 1. Ask Git, relative to `main`
+  ```bash
+  git branch --merged main
+  git branch --no-merged main
+  ```
+  The first list contains branches that add nothing to `main`: merged with a merge commit, fast-forwarded, or
+  pointing at the same commit. The second lists the branches that have something `main` lacks.
 
+  ## 2. Delete the merged ones
+  ```bash
+  git branch -d feature/dimmer feature/thermostat hotfix/mqtt-retry feature/new-idea
+  ```
+  (Use the names from your own `--merged` output.) The safe `-d` flag is a second guard.
 
-  **View Merged Branches**
+  ## 3. Verify
+  ```bash
+  git branch
+  ```
+  Only `main` and the branches from `--no-merged` remain.
+debrief: |
+  ## What happened
+  `git branch --merged <ref>` lists branches whose tip is an ancestor of `<ref>`, so deleting them loses no commits.
+  `--no-merged` is the complement. Note that "merged" depends on the reference: `chore/docs` is merged into `develop`
+  but not into `main`.
 
+  ## Why it matters
+  Periodic cleanup keeps the branch list useful. The one-liner `git branch --merged | xargs git branch -d` is
+  a classic, but only safe when you know which reference you are comparing with.
 
-  Branch inspection commands help you clean up stale work safely.
+  ## Related
+  - `git branch -r --merged origin/main` for remote-tracking branches.
+  - `git branch --no-merged` shows work in progress.
+  - `git for-each-ref --merged=main refs/heads` is script-friendly.
 
-  '
+  ## Pitfalls
+  - `--merged` without an argument uses the *current* branch; be on `main`.
+  - A branch pointing at the same commit as `main` also counts as merged.
+common_mistakes:
+  - Deleting `feature/blinds` or `chore/docs` because they look old.
+  - Running `git branch --merged` from the `develop` branch, which gives a different list.
+  - Deleting `main`'s alias branches by hand-typing names and missing `feature/new-idea`.
 validators:
-- type: file_content_equals
-  path: merged.txt
-  text: feature/merged
-  description: merged.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: record branches'
-  description: 'Latest commit message contains ''docs: record branches'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: for b in feature/dimmer feature/thermostat hotfix/mqtt-retry feature/new-idea; do ! git show-ref --verify -q refs/heads/$b || exit 1; done
+    description: The four merged branches are gone
+  - type: script_passes
+    script: for b in feature/blinds chore/docs develop; do git show-ref --verify -q refs/heads/$b || exit 1; done
+    description: feature/blinds, chore/docs and develop are still there
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    script: test "$(git for-each-ref refs/heads --format='%(refname:short)' | sort | tr '\n' ' ')" = "chore/docs develop feature/blinds main "
+    description: Exactly main and the three unmerged branches remain

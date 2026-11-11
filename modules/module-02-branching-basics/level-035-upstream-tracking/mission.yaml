@@ -4,38 +4,83 @@ level: level-035-upstream-tracking
 order: 35
 difficulty: beginner
 xp: 160
-expected_time: 6m
-concepts:
-- '`git branch --set-upstream-to`'
-common_mistakes:
-- Running commands related to `git branch --set-upstream-to` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
+expected_time: 8m
 repo_path: local
-description: A local clone has a branch that should track the remote branch of the
-  same name.
-objective: Set `feature/ui` to track `origin/feature/ui`.
+concepts:
+  - git push -u
+  - git branch --set-upstream-to
+  - tracking branches
+description: |
+  Maren builds the website for a school spring fundraiser. The server repository is `origin`. She pushed `main`
+  earlier with a plain `git push origin main`, so Git does not know that local `main` corresponds to `origin/main`,
+  and `git status` never tells her whether she is ahead or behind. Her new `feature/rsvp` branch exists only locally.
+  She wants to publish it and to have both branches track their server counterparts.
+objective: |
+  Publish `feature/rsvp` to `origin` and make it track `origin/feature/rsvp`. Also make the local `main`
+  track `origin/main` without pushing anything new for it. In the end `git branch -vv` shows an upstream for both
+  branches and the server has the `feature/rsvp` branch. Remain on `feature/rsvp`.
 hints:
-- Work inside `local/`.
-- Inspect remote branches with `git branch -a`.
-- Use `git branch --set-upstream-to=origin/feature/ui feature/ui`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git branch --set-upstream-to=origin/feature/ui feature/ui\n   ```"
-debrief: '## What Just Happened
+  - "`git branch -vv` shows a bracket like `[origin/main]` next to branches that have an upstream. Right now neither has one."
+  - "`git push -u origin <branch>` pushes and records the upstream in one step. For an already-published branch, `git branch --set-upstream-to=<remote>/<branch> <local-branch>` records it without pushing."
+  - "`git push -u origin feature/rsvp` and `git branch --set-upstream-to=origin/main main`."
+guide: |
+  ## 1. Inspect
+  ```bash
+  git branch -vv
+  git remote -v
+  ```
+  No `[origin/...]` markers, so no upstream is configured.
 
+  ## 2. Publish the feature branch with tracking
+  ```bash
+  git push -u origin feature/rsvp
+  ```
+  `-u` (`--set-upstream`) pushes the branch and stores `branch.feature/rsvp.remote` and `.merge` in the config.
 
-  **Set Upstream Tracking**
+  ## 3. Teach `main` its upstream
+  ```bash
+  git branch --set-upstream-to=origin/main main
+  ```
+  `origin/main` already exists, so there is nothing to push; only the config changes.
 
+  ## 4. Verify
+  ```bash
+  git branch -vv
+  git status -sb
+  ```
+  `## feature/rsvp...origin/feature/rsvp` means they are in sync.
+debrief: |
+  ## What happened
+  An upstream is a pair of config entries (`remote` and `merge`) that link a local branch to a remote branch.
+  With it, plain `git pull`, `git push` and `git status` know which remote branch to use, and `status`/`branch -vv`
+  can report "ahead 2, behind 1".
 
-  Tracking branches connect local work to a remote reference so pull and push defaults
-  behave well.
+  ## Why it matters
+  Without tracking, every push and pull needs explicit arguments and you lose the ahead/behind feedback.
+  `git push -u` the first time you publish a branch is the habit to build.
 
-  '
+  ## Related
+  - `git config push.autoSetupRemote true` sets tracking automatically on first push.
+  - `git branch --unset-upstream` removes it.
+  - `git switch <name>` creates a tracking branch when only `origin/<name>` exists.
+
+  ## Pitfalls
+  - Pushing with `git push origin <branch>` (no `-u`) does not set tracking.
+  - The upstream can point to a differently named remote branch; keep names equal to avoid confusion.
+common_mistakes:
+  - Pushing `feature/rsvp` without `-u`, which publishes it but leaves it untracked.
+  - Running `git push -u origin main` repeatedly instead of using `--set-upstream-to` (works, but pushes needlessly).
+  - Setting the upstream of `main` to `origin/feature/rsvp`.
 validators:
-- type: script_passes
-  description: feature/ui tracks origin/feature/ui
-  script: test "$(git for-each-ref --format='%(upstream:short)' refs/heads/feature/ui)"
-    = "origin/feature/ui"
+  - type: script_passes
+    script: test "$(git config branch.feature/rsvp.remote)" = "origin" && test "$(git config branch.feature/rsvp.merge)" = "refs/heads/feature/rsvp"
+    description: feature/rsvp tracks origin/feature/rsvp
+  - type: script_passes
+    script: test "$(git config branch.main.remote)" = "origin" && test "$(git config branch.main.merge)" = "refs/heads/main"
+    description: main tracks origin/main
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/feature/rsvp)" = "$(git rev-parse feature/rsvp)"
+    description: origin has feature/rsvp at the same commit
+  - type: is_on_branch
+    branch: feature/rsvp
+    description: HEAD is on feature/rsvp

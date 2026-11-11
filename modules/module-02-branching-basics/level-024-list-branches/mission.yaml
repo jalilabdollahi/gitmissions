@@ -4,56 +4,77 @@ level: level-024-list-branches
 order: 24
 difficulty: beginner
 xp: 120
-expected_time: 6m
+expected_time: 7m
+repo_path: photos
 concepts:
-- '`git branch -a`'
-- local vs remote
-common_mistakes:
-- Running commands related to `git branch -a`, local vs remote without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repo has a few local branches to inspect.
-objective: 'Inspect the branch list and create `branches.txt` containing exactly:
-
-
-  `main
-
-  feature/ui
-
-  bugfix/login`
-
-
-  Then commit it with `docs: record branches`.'
+  - git branch -a / -r
+  - local vs remote-tracking branches
+description: |
+  The Lens Collective photo club's gallery site lives on a shared server. You cloned it earlier,
+  and since then several people pushed branches. Before you pick something to review, you want to know which of the
+  server's branches you do not have as a local branch yet. A fresh clone only creates a local branch for the default
+  one, and you also set up `feature/slideshow` by hand.
+objective: |
+  Write the names of all **remote-tracking branches that have no local branch of the same name** to
+  `not-checked-out.txt`, one per line, exactly as `git branch -r` prints them (for example `origin/develop`),
+  excluding the `origin/HEAD` pointer. Do not create or delete any branch.
 hints:
-- Use `git branch` or `git branch --merged` depending on the mission.
-- Write the exact answer into `branches.txt`.
-- Commit the report.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > branches.txt <<'EOF'\nmain\n\
-  feature/ui\nbugfix/login\nEOF\n   ```\n\n2.\n   ```bash\n   git add branches.txt\n\
-  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: record branches\"\n   ```"
-debrief: '## What Just Happened
+  - "`git branch` shows only local branches. Add a flag to include the remote-tracking ones."
+  - "`git branch -r` lists `origin/...` branches, and `git branch -a` lists both. A remote branch with a local twin of the same name (minus `origin/`) must be left out."
+  - "Compare `git branch -r` with `git branch`; write the leftovers to the file with `printf` or an editor."
+guide: |
+  ## 1. Local branches
+  ```bash
+  git branch
+  ```
+  Only `main` and `feature/slideshow`.
 
+  ## 2. Remote-tracking branches
+  ```bash
+  git branch -r
+  ```
+  `origin/develop`, `origin/feature/captions`, and so on. They are your last known copy of what the server has;
+  `origin/HEAD -> origin/main` is just a pointer to the default branch.
 
-  **List All Branches**
+  ## 3. Everything at once
+  ```bash
+  git branch -a
+  ```
+  Local branches first, then `remotes/origin/...`.
 
+  ## 4. Write the answer
+  Compare the two lists. Every `origin/<name>` for which no local branch `<name>` exists belongs in the file
+  (not `origin/HEAD`). Write them with an editor or `printf`.
+debrief: |
+  ## What happened
+  Git keeps two kinds of branch names: local branches (`refs/heads/*`) that you move, and remote-tracking
+  branches (`refs/remotes/origin/*`) that only `git fetch` or `git pull` update. `git branch -a` merges both views.
 
-  Branch inspection commands help you clean up stale work safely.
+  ## Why it matters
+  "Is that branch on the server?" and "do I have it locally?" are different questions. Knowing the difference
+  avoids duplicate work and stale checkouts.
 
-  '
+  ## Related
+  - `git switch <name>` creates a local tracking branch automatically if only `origin/<name>` exists.
+  - `git branch -vv` shows tracking relationships and ahead/behind counts.
+  - `git fetch --prune` refreshes the remote list and drops deleted branches.
+
+  ## Pitfalls
+  - The remote list is a snapshot from your last fetch, not live.
+  - `origin/HEAD` is not a branch to check out.
+common_mistakes:
+  - Listing `origin/main` and `origin/feature/slideshow`, which already have local branches.
+  - Writing names without the `origin/` prefix, or with the `remotes/` prefix that `-a` adds.
+  - Creating local branches for each remote one "to check", which changes the answer.
 validators:
-- type: file_content_equals
-  path: branches.txt
-  text: 'main
-
-    feature/ui
-
-    bugfix/login'
-  description: branches.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: record branches'
-  description: 'Latest commit message contains ''docs: record branches'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: |
+      expected=$(git for-each-ref refs/remotes --format='%(refname:lstrip=2)' | grep -v '^origin/HEAD$' | while read -r r; do git show-ref --verify -q "refs/heads/${r#origin/}" || echo "$r"; done | sort)
+      test -n "$expected" && test "$(sort not-checked-out.txt | sed 's/^ *//')" = "$expected"
+    description: not-checked-out.txt lists exactly the remote branches without a local twin
+  - type: script_passes
+    script: test "$(git for-each-ref refs/heads --format='%(refname:short)' | sort | tr '\n' ' ')" = "feature/slideshow main "
+    description: No local branch was added or removed
+  - type: script_passes
+    script: test "$(wc -l < not-checked-out.txt | tr -d ' ')" = "4"
+    description: Four remote branches are listed
