@@ -6,50 +6,95 @@ difficulty: expert
 xp: 500
 expected_time: 12m
 concepts:
-- blob
-- tree
-- commit
-- tag objects
-common_mistakes:
-- Running commands related to blob, tree, commit, tag objects without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `blob,
-  tree, commit, tag objects`.
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- blob, tree, commit and tag objects
+- git rev-parse and git cat-file
+- counting reachable objects
+description: |
+  A sensor-network operator asks you to audit the object database of the `sensor-config` repository before it is migrated to a new host. The migration checklist wants facts that only the object model can answer: which tree a commit points to, which blob a file had at the first release, whether the release tag `v1.0` is a plain pointer or a real tag object, and how many objects of each kind the history needs. Nobody wants a guess; every value must come from Git itself.
+objective: |
+  Create the file `objects.txt` (untracked, repository root) with exactly these `key=value` lines. All values come from `main` and the tag `v1.0`.
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - `head_tree` the SHA of the root tree of the tip of `main`
+  - `v1_sensors_blob` the SHA of the blob of `sensors.toml` as it was at tag `v1.0`
+  - `v1_tag_object` the SHA of the tag object `v1.0` itself (not the commit it points to)
+  - `v1_tag_target_type` the type of the object that tag points to
+  - `commits`, `trees`, `blobs` the number of commit, tree and blob objects reachable from `main`
 hints:
-- Start with the Git command related to `blob, tree, commit, tag objects`.
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git rev-parse <rev>^{tree}` resolves a commit to its tree, `<tag>:<path>` resolves a path inside a
+  tag''s tree, and a bare annotated tag name resolves to the tag object.'
+- '`git cat-file -t <sha>` prints an object''s type; `git cat-file -p <tag>` shows what an annotated tag
+  points to.'
+- '`git rev-list --objects main` lists everything reachable (SHA then path); pipe the SHAs through `git
+  cat-file --batch-check=''%(objecttype)''` and count each type.'
+guide: |
+  ## Resolving names to objects
 
+  ```bash
+  git rev-parse main^{tree}          # tree of the tip commit
+  git rev-parse v1.0:sensors.toml    # blob inside the tagged tree
+  git rev-parse v1.0                 # the tag object (annotated tag)
+  git rev-parse v1.0^{commit}        # what it points to, a different SHA
+  git cat-file -p v1.0               # object, type, tag, tagger, message
+  ```
 
-  **Git''s Object Model**
+  ## Counting by type
 
+  ```bash
+  git rev-list --objects main | cut -d' ' -f1 \
+    | git cat-file --batch-check='%(objecttype)' | sort | uniq -c
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  `rev-list --objects` prints the path after the SHA, so cut it away. Write the values with `echo "head_tree=$(...)" >> objects.txt`.
+debrief: |
+  ## The four object types
 
-  '
+  - **blob**: the bytes of one file version, no name, no mode.
+  - **tree**: a directory listing of `mode name -> SHA` entries.
+  - **commit**: a tree SHA, parent SHAs, author, committer and message.
+  - **tag**: an annotated tag, which names an object, its type, a tagger and a message.
+
+  Everything is addressed by the SHA-1 of its content, so identical file contents are stored once regardless of how many commits contain them.
+
+  ## Why `v1.0` has two SHAs
+
+  A lightweight tag is just a ref pointing at a commit. An annotated tag is its own object, so `git rev-parse v1.0` and `git rev-parse v1.0^{commit}` differ. `^{}` peels a tag down to its target.
+
+  ## Why the counts matter
+
+  Deduplication means you have far fewer blobs than files-times-commits. A migration or a backup only has to carry the reachable set, which `rev-list --objects` enumerates.
+
+  ## Related
+
+  - `git count-objects -v` for the on-disk view and `git cat-file --batch-all-objects` for everything including unreachable objects.
+common_mistakes:
+- Using `git rev-parse v1.0` as the commit instead of the tag object, or the reverse.
+- Counting `git ls-files` or `git log` lines instead of reachable objects, forgetting that unchanged files
+  are shared between commits.
+- Piping `rev-list --objects` straight into `cat-file --batch-check` without cutting off the path names.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: head_tree, v1_sensors_blob and the tag facts are right
+  script: 'chk() { grep -qx "$1=$2" objects.txt; }
+
+    chk head_tree "$(git rev-parse ''main^{tree}'')"
+
+    chk v1_sensors_blob "$(git rev-parse v1.0:sensors.toml)"
+
+    chk v1_tag_object "$(git rev-parse v1.0)"
+
+    test "$(git rev-parse v1.0)" != "$(git rev-parse ''v1.0^{commit}'')"
+
+    chk v1_tag_target_type "$(git cat-file -t ''v1.0^{}'')"
+
+    '
+- type: script_passes
+  description: The reachable object counts per type are right
+  script: 'types=$(git rev-list --objects main | cut -d'' '' -f1 | git cat-file --batch-check=''%(objecttype)'')
+
+    chk() { grep -qx "$1=$2" objects.txt; }
+
+    chk commits "$(printf ''%s\n'' "$types" | grep -c ''^commit$'')"
+
+    chk trees "$(printf ''%s\n'' "$types" | grep -c ''^tree$'')"
+
+    chk blobs "$(printf ''%s\n'' "$types" | grep -c ''^blob$'')"'

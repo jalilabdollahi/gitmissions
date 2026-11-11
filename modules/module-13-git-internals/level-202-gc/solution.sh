@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > internals.txt <<'EOF'
-object=known
-EOF
-git add internals.txt
-git commit -m "docs: add report"
+tip=$(git log -g --format='%H %s' | awk '/ geo: country allowlist for flags$/ {print $1; exit}')
+git branch rescue/geo-flags "$tip"
+git reflog expire --expire=now --all
+git gc -q --prune=now

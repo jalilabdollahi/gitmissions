@@ -4,50 +4,93 @@ level: level-195-hash-object
 order: 195
 difficulty: expert
 xp: 520
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`git hash-object` \u2014 how hashes are made"
-common_mistakes:
-- "Running commands related to `git hash-object` \u2014 how hashes are made without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ hash-object` \u2014 how hashes are made`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
-
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+- git hash-object -w
+- how a blob SHA is computed
+- objects without staging
+description: |
+  The security team drops three files into `inbox/` for an air-gapped certificate rotation: a plan, a chain and a root certificate. Policy says that before anything is touched, the files must be fingerprinted with Git object hashes and stored in the repository's object database so that auditors can later fetch them by SHA, yet they must not be staged or committed, because the rotation plan is not allowed into history yet. In addition, the auditors want proof that you understand where the hash comes from: for the plan file you must compute the object SHA without using Git.
+objective: |
+  1. Store each of the three files in `inbox/` as a blob object in the object database (`git hash-object -w`) and write `MANIFEST.txt` in the repository root with one line per file in the form `<sha> inbox/<filename>`.
+  2. Write `manual-sha.txt` containing only the SHA-1 of `inbox/rotation-plan.txt` computed the way Git does it internally, using `shasum` or `sha1sum` and `printf`, not `git hash-object`.
+  3. The index must stay unchanged: nothing from `inbox/` is staged or tracked, and there are no new commits.
 hints:
-- "Start with the Git command related to ``git hash-object` \u2014 how hashes are\
-  \ made`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git hash-object <file>` only prints a SHA; adding `-w` also writes the blob into `.git/objects`. Check
+  with `git cat-file -t <sha>`.'
+- A blob's SHA is the SHA-1 of the header `blob <size-in-bytes>` followed by a NUL byte and then the raw
+  file content.
+- '`{ printf ''blob %s\0'' "$(wc -c < file | tr -d '' '')"; cat file; } | shasum` (or `sha1sum`) reproduces
+  it.'
+guide: |
+  ## Store the files as objects
 
+  ```bash
+  for f in inbox/*; do
+    echo "$(git hash-object -w "$f") $f"
+  done > MANIFEST.txt
+  cat MANIFEST.txt
+  git cat-file -t $(head -1 MANIFEST.txt | cut -d' ' -f1)   # blob
+  ```
 
-  **Hash an Object Manually**
+  `-w` writes; without it you only compute. Neither command touches the index.
 
+  ## Compute the hash yourself
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  Git hashes the string `blob <size>\0<content>`:
 
-  '
+  ```bash
+  f=inbox/rotation-plan.txt
+  { printf 'blob %s\0' "$(wc -c < "$f" | tr -d ' ')"; cat "$f"; } | shasum | cut -d' ' -f1 > manual-sha.txt
+  git hash-object "$f"      # must be identical
+  ```
+
+  ## Check the index is untouched
+
+  ```bash
+  git status --short     # inbox/ and the two txt files appear only as untracked
+  git diff --cached --quiet && echo "nothing staged"
+  ```
+debrief: |
+  ## Content addressing
+
+  The SHA depends only on the bytes. Two files with the same content get the same blob wherever they live, and changing one byte changes the whole SHA. The `blob <size>\0` prefix is there so that objects of different kinds or sizes cannot collide by accident.
+
+  ## Objects versus index
+
+  The object database and the index are separate things. `hash-object -w` creates an object that nothing references; it is a *dangling* blob until a tree points to it (and `git gc` removes it after the prune expiry). Staging is a second step, `git update-index --add`.
+
+  ## Why do this
+
+  Fingerprinting a file with Git's own scheme gives you a verifiable ID that you can later look up with `git cat-file -p <sha>` in any clone that has the object, and it is the basis of how `git add` stores content.
+
+  ## Related
+
+  - `git hash-object --stdin` hashes piped content, `--path` applies attribute filters.
+  - `git cat-file -s <sha>` is the size that went into the header.
+  - SHA-256 repositories (`--object-format=sha256`) use the same recipe with a different hash.
+common_mistakes:
+- Running `git hash-object` without `-w` and then not finding the objects with `cat-file`.
+- Hashing only the file content with `shasum`; without the `blob <size>\0` header the value never matches.
+- 'Using `echo` for the header: the NUL byte needs `printf ''\0''`, and `echo` adds a newline.'
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: All three inbox files exist as blob objects in the database
+  script: "for f in inbox/*; do\n  s=$(git hash-object \"$f\")\n  test \"$(git cat-file -t \"$s\")\" =\
+    \ blob\ndone\n"
+- type: script_passes
+  description: MANIFEST.txt lists each file with its blob SHA
+  script: "test \"$(ls inbox | wc -l | tr -d ' ')\" = 3\nfor f in inbox/*; do\n  grep -qx \"$(git hash-object\
+    \ \"$f\") $f\" MANIFEST.txt\ndone\n"
+- type: script_passes
+  description: manual-sha.txt equals the object SHA of rotation-plan.txt
+  script: 'test "$(tr -d ''[:space:]'' < manual-sha.txt)" = "$(git hash-object inbox/rotation-plan.txt)"
+
+    '
+- type: script_passes
+  description: Nothing was staged or committed
+  script: 'git diff --cached --quiet
+
+    test -z "$(git ls-files inbox)"
+
+    test "$(git rev-list --count main)" = 1'

@@ -4,49 +4,102 @@ level: level-200-packed-refs
 order: 200
 difficulty: expert
 xp: 520
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`.git/packed-refs` \u2014 what gets packed"
-common_mistakes:
-- "Running commands related to `.git/packed-refs` \u2014 what gets packed without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``.git/packed-refs`\
-  \ \u2014 what gets packed`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
-
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+- .git/packed-refs
+- loose refs override packed refs
+- peeled tag lines
+description: |
+  The `registry-promote` repo drives container image promotion. Years of history left it with experimental branches `stale/exp-1` to `stale/exp-3`, and all refs were packed into `.git/packed-refs` by a maintenance job, so `ls .git/refs/heads` shows almost nothing. Two branches have been updated since and live as loose files. The release tooling now asks three things of you: remove the stale branches without breaking the packed file, report which branches are loose, and read from `packed-refs` which commit the annotated tag `v1.1` points to.
+objective: |
+  1. Delete the three branches `stale/exp-1`, `stale/exp-2` and `stale/exp-3`. After that no ref, loose or packed, may mention them, and all other branches and tags must remain (6 refs in total).
+  2. Write `loose.txt`: the full names (for example `refs/heads/x`) of the branches that are stored as loose files in `.git/refs/heads`, one per line, sorted. Do not run `git pack-refs` or `git gc`.
+  3. Write `peeled.txt`: the commit SHA that tag `v1.1` ultimately points to, read from the `^` line under `refs/tags/v1.1` in `.git/packed-refs`.
 hints:
-- "Start with the Git command related to ``.git/packed-refs` \u2014 what gets packed`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`cat .git/packed-refs` shows one `<sha> <ref>` line per ref. A line starting with `^` is the *peeled*
+  target of the annotated tag directly above it.'
+- Branches that exist only in `packed-refs` have no file under `.git/refs/heads`. `git branch -D` and
+  `git update-ref -d` remove them from the packed file correctly.
+- Loose refs are `find .git/refs/heads -type f`. A loose file wins over a packed entry with the same name.
+guide: |
+  ## Look at both stores
 
+  ```bash
+  cat .git/packed-refs
+  find .git/refs -type f           # loose refs only
+  git for-each-ref                  # the merged view
+  ```
 
-  **Packed Refs**
+  ## Delete without hand-editing
 
+  ```bash
+  for b in $(git for-each-ref --format='%(refname)' refs/heads/stale); do
+    git update-ref -d "$b"
+  done
+  grep stale .git/packed-refs || echo "gone"
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  Git rewrites `packed-refs` for you. Editing the file by hand is possible but risks corrupting the sorted-file invariant.
 
-  '
+  ## Reports
+
+  ```bash
+  (cd .git && find refs/heads -type f | sort) > loose.txt
+  awk '$2=="refs/tags/v1.1"{f=1;next} f&&/^\^/{print substr($0,2);exit} {f=0}' .git/packed-refs > peeled.txt
+  git rev-parse v1.1^{commit}        # the same SHA
+  ```
+debrief: |
+  ## Two stores for refs
+
+  Git first looks for a loose file; only if none exists does it consult `packed-refs`. That is why a branch can appear in `packed-refs` with an old SHA while the loose file has a newer one. `git pack-refs --all` (also run by `git gc`) folds loose refs into the packed file; creating a ref again writes a loose file.
+
+  ## Peeled lines
+
+  For annotated tags the packed file stores a second line `^<sha>` with the commit the tag object points to. That makes `git rev-parse tag^{commit}` and `git show-ref -d` fast without opening the tag object.
+
+  ## Deleting refs correctly
+
+  Removing a packed ref means rewriting the packed file under a lock. `rm .git/refs/heads/x` would not delete a packed-only branch (it does not exist as a file), and a stale loose file would hide the packed entry only if one existed. Always use `update-ref -d` or `git branch -D`.
+
+  ## Related
+
+  - `git show-ref`, `git for-each-ref` for the merged view.
+  - Namespaces with thousands of refs (CI, review systems) are the reason packed-refs exists.
+common_mistakes:
+- Looking only at `ls .git/refs/heads` and concluding that the stale branches do not exist.
+- Deleting the lines from `packed-refs` by hand and leaving the peeled `^` line of a neighbouring tag
+  misaligned.
+- Running `git pack-refs --all` before writing loose.txt, which empties the loose list.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: The stale branches are gone from refs and from packed-refs
+  script: 'test -z "$(git for-each-ref refs/heads/stale)"
+
+    ! grep -q ''stale/'' "$(git rev-parse --git-path packed-refs)"
+
+    test "$(git for-each-ref | wc -l | tr -d '' '')" = 6
+
+    git rev-parse --verify -q refs/heads/release/1.0 >/dev/null
+
+    git rev-parse --verify -q refs/tags/v1.2 >/dev/null
+
+    '
+- type: script_passes
+  description: loose.txt lists exactly the loose branch refs
+  script: 'exp=$(cd "$(git rev-parse --git-dir)" && find refs/heads -type f | sort)
+
+    test -n "$exp"
+
+    test "$(sort loose.txt)" = "$exp"
+
+    '
+- type: script_passes
+  description: peeled.txt holds the commit that the annotated tag v1.1 points to
+  script: 'test "$(tr -d ''[:space:]'' < peeled.txt)" = "$(git rev-parse ''v1.1^{commit}'')"
+
+    test "$(git cat-file -t v1.1)" = tag
+
+    '
+- type: script_passes
+  description: Repository is healthy
+  script: git fsck --no-dangling >/dev/null 2>&1

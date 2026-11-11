@@ -6,47 +6,96 @@ difficulty: expert
 xp: 500
 expected_time: 12m
 concepts:
-- "`git cat-file -p <hash>` \u2014 file contents"
-common_mistakes:
-- "Running commands related to `git cat-file -p <hash>` \u2014 file contents without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ cat-file -p <hash>` \u2014 file contents`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git cat-file -p / -t / -s
+- blobs are addressed by content
+- recovering a deleted file by blob SHA
+description: |
+  During an outage review someone deleted the whole `conf/` directory from the HAProxy repo "to clean up". The on-call engineer wrote down, in `TICKET.txt`, the abbreviated SHA of the one blob that matters: the `haproxy.cfg` that was live during the incident. That file went through three versions before it was deleted, so `git log` alone does not say which one the ticket means, and you may not restore it with a checkout of an old commit: the ticket identifies the content, not a commit.
+objective: |
+  Restore the file that the ticket names, straight from the object database.
 
+  1. `TICKET.txt` contains a line `blob: <abbreviated sha>`. Write that blob's contents, byte for byte, to `restored/haproxy.cfg`.
+  2. Write the blob's size in bytes to `restored/size.txt` (just the number).
 
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  Both must come from Git's plumbing (`cat-file`); the working tree must not be changed otherwise. Do not commit.
 hints:
-- "Start with the Git command related to ``git cat-file -p <hash>` \u2014 file contents`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- An abbreviated SHA is enough for `git cat-file` as long as it is unambiguous. `git cat-file -t <sha>`
+  confirms it is a blob.
+- '`git cat-file -p <sha>` prints the content, `git cat-file -s <sha>` prints the size.'
+- '`mkdir restored`, then redirect the two outputs into the files. Compare with `git hash-object restored/haproxy.cfg`,
+  which must print the blob''s full SHA.'
+guide: |
+  ## Look at what the ticket names
 
+  ```bash
+  cat TICKET.txt
+  git cat-file -t <sha>      # blob
+  git cat-file -s <sha>      # size in bytes
+  git cat-file -p <sha>      # contents
+  ```
 
-  **Read a Blob Object**
+  ## Restore it
 
+  ```bash
+  mkdir -p restored
+  sha=$(sed -n 's/^blob: //p' TICKET.txt)
+  git cat-file -p "$sha" > restored/haproxy.cfg
+  git cat-file -s "$sha" > restored/size.txt
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Prove it is the same object
 
-  '
+  ```bash
+  git hash-object restored/haproxy.cfg   # prints the full 40-character SHA
+  git rev-parse "$sha"                   # the same value
+  ```
+
+  If the two SHAs are equal, the file is identical to the blob, byte for byte, because the SHA is computed from the content.
+debrief: |
+  ## What a blob is
+
+  A blob stores only file content. The name and mode live in the tree that references it. That is why the ticket can name content without naming a path, and why you can fetch an old version of a file that no longer exists in any branch tip.
+
+  ## Why `hash-object` proves identity
+
+  The object name is `SHA1("blob <size>\0" + content)`. Hashing your restored file and getting the ticket's SHA means that the content is exactly the same; a single changed byte (a trailing newline, CRLF endings) would produce a different SHA.
+
+  ## Real-world use
+
+  Incident reports, scanner results and security advisories often cite blob SHAs. `git cat-file -p` and `git show <blob>` retrieve them even if the file was deleted, renamed or the branch was removed, as long as the object has not been garbage collected.
+
+  ## Related
+
+  - `git cat-file --batch-check` and `--batch` for scripted lookups.
+  - `git log --all --find-object=<sha>` finds the commits that introduced or removed a blob.
+common_mistakes:
+- Using `git show` on an old commit and copying whichever version was last, instead of the blob the ticket
+  names.
+- Copy-pasting from `git cat-file -p` output in a terminal, changing whitespace; redirect it instead.
+- Writing the size with extra text; `size.txt` should contain just the number.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: restored/haproxy.cfg is byte-identical to the blob named in the ticket
+  script: 's=$(sed -n ''s/^blob: //p'' TICKET.txt)
+
+    full=$(git rev-parse --verify "$s")
+
+    test "$(git cat-file -t "$full")" = blob
+
+    test "$(git hash-object restored/haproxy.cfg)" = "$full"
+
+    '
+- type: script_passes
+  description: restored/size.txt holds the blob's size in bytes
+  script: 's=$(sed -n ''s/^blob: //p'' TICKET.txt)
+
+    test "$(tr -d ''[:space:]'' < restored/size.txt)" = "$(git cat-file -s "$s")"
+
+    '
+- type: script_passes
+  description: Nothing was committed and tracked files are unchanged
+  script: 'test "$(git rev-list --count main)" = 4
+
+    git diff --quiet
+
+    git diff --cached --quiet'

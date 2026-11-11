@@ -4,50 +4,102 @@ level: level-201-pack-objects
 order: 201
 difficulty: expert
 xp: 540
-expected_time: 12m
+expected_time: 14m
 concepts:
-- '`git pack-objects`'
-- '`.git/objects/pack/`'
-common_mistakes:
-- Running commands related to `git pack-objects`, `.git/objects/pack/` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git pack-objects`,
-  `.git/objects/pack/``.
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git pack-objects
+- git prune-packed and git verify-pack
+- loose objects versus packs
+description: |
+  The `readings-archive` repo stores a monthly dataset that grew by a few hundred lines per commit, plus one big log fixture. Thirty commits later it consists of thousands of loose object files, which your backup tool handles very badly. The storage team does not want you to run `git gc` (it also prunes and repacks refs and has bitten them before); they want you to pack exactly the reachable objects with the plumbing commands, remove the now redundant loose files, and report the biggest object so they can decide whether to move the fixture to Git LFS.
+objective: |
+  1. Create a pack file in `.git/objects/pack/` containing every object reachable from all refs, using `git pack-objects` (feed it the output of `git rev-list --objects --all`).
+  2. Delete the loose copies with `git prune-packed`, so that `git count-objects -v` reports `count: 0`.
+  3. Write `biggest.txt` containing the SHA of the largest object in the pack (largest uncompressed size, as reported by `git verify-pack -v`).
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  `git fsck` must still pass, and do not run `git gc`.
 hints:
-- Start with the Git command related to ``git pack-objects`, `.git/objects/pack/``.
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git rev-list --objects --all | git pack-objects <base-name>` writes `<base-name>-<sha>.pack` and `.idx`.
+  Give it the base name `.git/objects/pack/pack`.'
+- A pack alone does not remove loose duplicates; `git prune-packed` does. `git count-objects -v` shows
+  what is left.
+- '`git verify-pack -v .git/objects/pack/pack-*.idx` lists every object with its type and sizes (third
+  column is the object size). Sort numerically on it.'
+guide: |
+  ## Count what you have
 
+  ```bash
+  git count-objects -v        # count: loose objects, in-pack: packed ones
+  ```
 
-  **Pack Files**
+  ## Pack the reachable set
 
+  ```bash
+  git rev-list --objects --all | git pack-objects .git/objects/pack/pack
+  ls .git/objects/pack/       # pack-<sha>.pack and pack-<sha>.idx
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  `pack-objects` reads object names (and optional path hints, which improve delta choices) from stdin and prints the pack's checksum.
 
-  '
+  ## Remove duplicates
+
+  ```bash
+  git prune-packed
+  git count-objects -v        # count: 0
+  ```
+
+  ## Find the biggest object
+
+  ```bash
+  git verify-pack -v .git/objects/pack/pack-*.idx \
+    | awk '$2=="blob" || $2=="tree" || $2=="commit" {print $3, $1}' | sort -n | tail -1
+  ```
+
+  The line shows `<size> <sha>`; the SHA goes into `biggest.txt`. Lines with extra columns are deltas: the dataset's many versions pack into small deltas.
+debrief: |
+  ## Loose versus packed
+
+  New objects are written one zlib-compressed file each. A pack stores many objects in one file and, crucially, stores similar objects as *deltas* against each other, so thirty revisions of a growing CSV cost little more than one. The `.idx` file is a sorted lookup table.
+
+  ## What `gc` adds
+
+  `git gc` runs `repack`, `prune-packed`, `prune`, `reflog expire` and `pack-refs`. Using the plumbing steps does only the first two and never deletes unreachable objects, which makes it safe in forensic situations.
+
+  ## Reading `verify-pack -v`
+
+  Each line is `SHA type size size-in-pack offset [depth base]`. Objects that have depth and base columns are stored as deltas. The statistics at the end show the delta chain lengths.
+
+  ## Related
+
+  - `git repack -a -d` is the porcelain for "pack everything and drop old packs".
+  - `git count-objects -vH` prints human readable sizes.
+  - `git cat-file --batch-all-objects --batch-check` lists all objects with sizes without needing a pack.
+common_mistakes:
+- Running `git gc`, which satisfies the checks but is what the storage team forbade.
+- Piping `git rev-list --all` (commits only) into `pack-objects`, which then fails to include trees and
+  blobs.
+- Creating the pack but skipping `git prune-packed`, so the loose files stay.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: A pack file exists and no loose objects are left
+  script: 'ls .git/objects/pack/*.pack >/dev/null
+
+    test "$(git count-objects -v | awk ''/^count:/ {print $2}'')" = 0
+
+    '
+- type: script_passes
+  description: Every reachable object is in a pack and the repository passes fsck
+  script: 'git fsck --no-dangling >/dev/null 2>&1
+
+    n=$(git rev-list --objects --all | wc -l | tr -d '' '')
+
+    test "$(git count-objects -v | awk ''/^in-pack:/ {print $2}'')" -ge "$n"
+
+    '
+- type: script_passes
+  description: biggest.txt names the largest object in the pack
+  script: 'big=$(git verify-pack -v .git/objects/pack/*.idx | awk ''$2=="blob" || $2=="tree" || $2=="commit"
+    {print $3, $1}'' | sort -n | tail -1 | cut -d'' '' -f2)
+
+    test -n "$big"
+
+    test "$(tr -d ''[:space:]'' < biggest.txt)" = "$big"'

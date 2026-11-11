@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -e
-
-cat > internals.txt <<'EOF'
-object=known
-EOF
-git add internals.txt
-git commit -m "docs: add report"
+t=$(sed -n 's/^tree: //p' RESTORE.txt)
+git ls-tree -r "$t"
+git read-tree --prefix=playbooks/ "$t"
+git checkout-index -a
+git commit -qm "Restore playbooks to the last known-good tree"

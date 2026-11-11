@@ -4,49 +4,97 @@ level: level-193-cat-file-tree
 order: 193
 difficulty: expert
 xp: 500
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`git cat-file -p <tree-hash>` \u2014 directory"
-common_mistakes:
-- "Running commands related to `git cat-file -p <tree-hash>` \u2014 directory without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ cat-file -p <tree-hash>` \u2014 directory`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git ls-tree and tree entries (modes)
+- git read-tree --prefix
+- restoring a directory from a tree SHA
+description: |
+  The Ansible playbook directory of a hosting company was removed by a bad cleanup commit, and it had been edited twice since the last known-good state. The ops lead has the tree SHA of `playbooks/` as it was when the last successful run happened (the second version), written in `RESTORE.txt`. The newest version before the deletion contains a broken `deploy.sh` that caused the outage, so simply reverting the cleanup commit would bring the bug back. You have a tree SHA and nothing else.
+objective: |
+  Bring back `playbooks/` exactly as the tree in `RESTORE.txt` describes (line `tree: <sha>`).
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. After your commit, `HEAD:playbooks` must be that very tree: identical SHA, therefore identical names, contents and modes (the executable `deploy.sh` and the symlink `latest.yml` included).
+  2. The files must also be on disk, and the working tree must be clean (ignoring the untracked `RESTORE.txt`).
+  3. Commit with a message starting `Restore playbooks`.
 hints:
-- "Start with the Git command related to ``git cat-file -p <tree-hash>` \u2014 directory`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git ls-tree -r <tree-sha>` lists the entries with their modes and blob SHAs; look at it before you
+  restore anything.'
+- '`git read-tree --prefix=playbooks/ <tree-sha>` loads a tree into the index under a directory name (the
+  index must not contain that path yet).'
+- Then `git checkout-index -a` or `git checkout -- playbooks` writes the files to disk, and `git commit`
+  records them. Check with `git rev-parse HEAD:playbooks`.
+guide: |
+  ## Read the tree
 
+  ```bash
+  t=$(sed -n 's/^tree: //p' RESTORE.txt)
+  git cat-file -p "$t"          # the top level of the directory
+  git ls-tree -r "$t"           # every file, with mode and blob SHA
+  ```
 
-  **Read a Tree Object**
+  Modes tell you more than names: `100755` executable, `100644` plain file, `120000` symlink, `040000` subtree.
 
+  ## Load it into the index
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git read-tree --prefix=playbooks/ "$t"
+  git checkout-index -a      # or: git checkout -- playbooks
+  ```
 
-  '
+  `read-tree --prefix` grafts the tree at a path without touching other entries.
+
+  ## Commit and verify
+
+  ```bash
+  git commit -m "Restore playbooks to the last known-good tree"
+  git rev-parse HEAD:playbooks      # must equal $t
+  ```
+
+  `git revert` of the cleanup commit would have restored the newer (broken) tree instead.
+debrief: |
+  ## Trees are directories
+
+  A tree object is a sorted list of `(mode, name, SHA)` entries. A directory's SHA changes whenever anything below it changes, which makes `HEAD:playbooks == <sha>` a complete, one-line integrity check of an entire directory.
+
+  ## Why not revert
+
+  The history contains three versions of the directory. A tree SHA identifies exactly one of them. Operations at the commit level (revert, checkout of a commit) are one step removed from the content; plumbing lets you address the content directly.
+
+  ## Modes survive
+
+  Because the new commit points to the same blobs and the same tree, executable bits and symlinks come back automatically. Copying files out of the object database by hand tends to lose both.
+
+  ## Related
+
+  - `git ls-tree -r -t`, `git cat-file -p <tree>`, `git read-tree -u` (also updates the working tree).
+  - `git checkout <commit> -- <path>` is the porcelain way when you do know a commit.
+common_mistakes:
+- Reverting the cleanup commit, which restores the newest, broken version of deploy.sh.
+- Recreating the files by pasting their text, losing the executable bit and the symlink.
+- Running `read-tree` without `--prefix` and replacing the whole index with the directory's contents.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
+- type: script_passes
+  description: HEAD:playbooks is exactly the tree named in RESTORE.txt
+  script: 't=$(sed -n ''s/^tree: //p'' RESTORE.txt)
+
+    test "$(git rev-parse HEAD:playbooks)" = "$t"
+
+    '
+- type: script_passes
+  description: The executable deploy script and the symlink are restored with their modes
+  script: 'git ls-tree -r HEAD playbooks | grep -q ''^100755 blob .*playbooks/deploy.sh$''
+
+    git ls-tree -r HEAD playbooks | grep -q ''^120000 blob .*playbooks/latest.yml$''
+
+    test -x playbooks/deploy.sh
+
+    test -L playbooks/latest.yml
+
+    '
 - type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+  text: Restore playbooks
+  description: The commit message starts with Restore playbooks
 - type: is_clean
-  description: Working tree is clean
+  ignore_untracked: true
+  description: Working tree and index are clean

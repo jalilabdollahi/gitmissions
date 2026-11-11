@@ -4,51 +4,100 @@ level: level-194-cat-file-commit
 order: 194
 difficulty: expert
 xp: 520
-expected_time: 12m
+expected_time: 14m
 concepts:
-- 'commit fields: tree'
-- parent
-- author
-common_mistakes:
-- 'Running commands related to commit fields: tree, parent, author without checking
-  `git status` first, which hides the actual repository state.'
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: 'This repository contains a small history designed to practice `commit
-  fields: tree, parent, author`.'
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- raw commit object fields
+- tree, parent, author, committer
+- merge commits and rewritten commits
+description: |
+  You are auditing the history of `tinyc`, a toy C compiler, for a license review. The reviewer needs four facts that porcelain commands hide unless you know where to look inside a commit object: the tree of the very first commit, the one merge commit, the *second* parent of that merge (the tip of the merged side branch), and the one commit on `main` that someone else re-applied, i.e. whose committer is not its author. Commit messages say nothing about any of this.
+objective: |
+  Create `forensics.txt` (untracked, in the repository root) with these four lines, all about the history of `main`:
 
+  - `root_tree=<tree SHA of the root commit>`
+  - `merge_commit=<SHA of the only merge commit>`
+  - `second_parent=<SHA of that merge's second parent>`
+  - `rewritten_commit=<SHA of the commit whose committer email differs from its author email>`
 
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  Use full 40-character SHAs.
 hints:
-- 'Start with the Git command related to `commit fields: tree, parent, author`.'
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git cat-file -p <commit>` prints the raw fields: `tree`, one or more `parent` lines, `author`, `committer`,
+  then the message.'
+- '`git rev-list --max-parents=0 main` finds the root, `git rev-list --merges main` finds merges.'
+- '`git log --format=''%H %ae %ce'' main` puts author and committer emails side by side; `awk ''$2 !=
+  $3''` keeps the odd one.'
+guide: |
+  ## Read a commit object
 
+  ```bash
+  git cat-file -p $(git rev-list --max-parents=0 main)
+  # tree <sha>
+  # author ... committer ...
+  ```
 
-  **Read a Commit Object**
+  The `tree` line is the answer for `root_tree`. A root commit has no `parent` line.
 
+  ## The merge and its parents
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  m=$(git rev-list --merges main)
+  git cat-file -p "$m"       # two parent lines: first = main, second = merged branch
+  git cat-file -p "$m" | awk '/^parent/{n++; if (n==2) print $2}'
+  ```
 
-  '
+  ## Author versus committer
+
+  ```bash
+  git log --format='%H %ae %ce' main | awk '$2 != $3 {print $1}'
+  ```
+
+  Cherry-picks, rebases and `git am` keep the original author but record the person who applied the commit as committer.
+
+  Write the four lines with `echo` or a `{ ...; } > forensics.txt` block.
+debrief: |
+  ## Inside a commit
+
+  A commit is a small text object: one `tree`, zero or more `parent`, an `author` and a `committer` (each with name, email, timestamp and zone), optionally a `gpgsig` and `encoding`, a blank line and the message. Everything else, branches, tags and the log, is built on top of those fields.
+
+  ## Two identities, two times
+
+  The author is who wrote the change, the committer who last applied it. Rebase, cherry-pick, `am` and `commit --amend` change the committer and its date but not the author. Comparing them quickly finds commits that were rewritten or imported from elsewhere.
+
+  ## Parent order matters
+
+  For a merge, the first parent is the branch you were on and the second is what you merged in. `git log --first-parent` and `git revert -m 1` rely on this order.
+
+  ## Related
+
+  - `git show --format=raw <commit>` prints the same fields.
+  - `git log --format=%P` lists parents, `git rev-parse <commit>^2` names the second parent directly.
+common_mistakes:
+- Using `git log --all`, which includes commits on side branches that are not part of `main`.
+- Confusing the merge commit with its parent, or taking the first parent instead of the second.
+- Comparing author and committer names instead of emails; the bot shares a first name with a human.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: root_tree is the tree of the root commit
+  script: 'r=$(git rev-list --max-parents=0 main)
+
+    grep -qx "root_tree=$(git rev-parse "$r^{tree}")" forensics.txt
+
+    '
+- type: script_passes
+  description: merge_commit and second_parent name the merge and its merged-branch tip
+  script: 'm=$(git rev-list --merges main)
+
+    test "$(printf ''%s\n'' "$m" | wc -l | tr -d '' '')" = 1
+
+    grep -qx "merge_commit=$m" forensics.txt
+
+    grep -qx "second_parent=$(git rev-parse "$m^2")" forensics.txt
+
+    '
+- type: script_passes
+  description: rewritten_commit is the commit whose committer differs from its author
+  script: 'w=$(git log --format=''%H %ae %ce'' main | awk ''$2 != $3 {print $1}'')
+
+    test "$(printf ''%s\n'' "$w" | wc -l | tr -d '' '')" = 1
+
+    grep -qx "rewritten_commit=$w" forensics.txt'

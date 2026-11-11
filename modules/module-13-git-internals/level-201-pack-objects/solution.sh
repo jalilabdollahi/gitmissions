@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > internals.txt <<'EOF'
-object=known
-EOF
-git add internals.txt
-git commit -m "docs: add report"
+git rev-list --objects --all | git pack-objects -q .git/objects/pack/pack
+git prune-packed
+git verify-pack -v .git/objects/pack/*.idx \
+  | awk '$2=="blob" || $2=="tree" || $2=="commit" {print $3, $1}' | sort -n | tail -1 | cut -d' ' -f2 > biggest.txt
