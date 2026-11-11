@@ -4,33 +4,81 @@ level: level-081-detached-with-changes
 order: 81
 difficulty: intermediate
 xp: 270
-expected_time: 8m
+expected_time: 9m
 concepts:
-- dirty index in detached state
-common_mistakes:
-- Running commands related to dirty index in detached state without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - uncommitted changes in detached HEAD
+  - git switch -c carries the index
+  - committing only staged changes
+repo_path: pawfinder
+description: |
+  You are on the Pawfinder pet-adoption site. You detached HEAD at the old tag `v0.9` to look at how the
+  schema looked back then, and while there you staged a change to `schema.sql` (a new `vaccinated` column) that
+  you realise is worth keeping. You also have an unrelated, unstaged scribble in `notes.txt`. `main` has since
+  changed `schema.sql`, so switching to it would refuse to overwrite your staged edit. Keep the schema
+  change as a proper commit, and leave the scribble alone.
+objective: |
+  - create a branch called `feature/vaccination-flag` from where you are now (your staged change comes along)
+  - commit only the staged `schema.sql` change with the message `Add vaccinated column to pets`
+  - the commit's parent must be the `v0.9` commit, and it must contain only `schema.sql`
+  - the unstaged edit to `notes.txt` must remain as an uncommitted modification
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows one staged file and one unstaged file. Creating a branch does not touch either."
+  - "`git switch -c <name>` keeps your index and working tree. `git commit` without `-a` commits only what is staged."
+  - "`git switch -c feature/vaccination-flag && git commit -m \"Add vaccinated column to pets\"`"
+guide: |
+  ## 1. See the split
+  ```bash
+  git status -sb
+  git diff --cached
+  git diff
+  ```
+  `schema.sql` is staged (index), `notes.txt` is modified but unstaged.
 
+  ## 2. Name your location
+  ```bash
+  git switch -c feature/vaccination-flag
+  ```
+  A new branch at the current commit is created. Staged and unstaged changes stay exactly as they are.
 
-  **Detached HEAD with Staged Changes**
+  ## 3. Commit only the index
+  ```bash
+  git commit -m "Add vaccinated column to pets"
+  git status -sb
+  ```
+  Without `-a`, the unstaged notes remain a plain modification.
+debrief: |
+  ## What happened
+  Uncommitted changes belong to the working tree and index, not to a branch. Creating a branch at HEAD
+  therefore carries them along unchanged, and the commit uses only the staged part of them.
 
+  ## Why not just switch to main
+  Git protects you: `git switch main` would overwrite `schema.sql` where it differs, so it refuses.
+  `git stash`, `git switch -c` or committing first are the safe ways out.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Detached HEAD tip
+  The old commit stays the parent of your new commit, so your change builds on the schema as it was
+  in v0.9. Merging or rebasing onto `main` later may need conflict resolution.
 
-  '
+  ## Related
+  - `git stash push` + `git stash pop` moves changes across branches.
+  - `git restore --staged <file>` unstages without losing edits.
+common_mistakes:
+  - "Using `git commit -am`, which also commits the unrelated notes.txt scribble."
+  - "Trying `git switch main` and then using `--force`, which discards the staged change."
+  - "Committing while still detached so the commit has no branch."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: feature/vaccination-flag
+    description: HEAD is on feature/vaccination-flag
+  - type: script_passes
+    script: test "$(git rev-parse HEAD~1)" = "$(git rev-parse v0.9^{commit})"
+    description: The commit sits directly on v0.9
+  - type: commit_message_equals
+    text: Add vaccinated column to pets
+    description: Commit message matches
+  - type: script_passes
+    script: test "$(git show --name-only --format= HEAD)" = schema.sql && grep -q vaccinated schema.sql
+    description: The commit contains only schema.sql with the new column
+  - type: script_passes
+    script: "! git diff --quiet -- notes.txt"
+    description: notes.txt is still modified and uncommitted

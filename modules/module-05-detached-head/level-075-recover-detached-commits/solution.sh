@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -e
-
-git branch rescue-detached
+git reflog | head -5
+git branch rescue/csv-export HEAD@{1}

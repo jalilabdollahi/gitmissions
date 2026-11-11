@@ -4,33 +4,81 @@ level: level-084-compare-detached-to-branch
 order: 84
 difficulty: intermediate
 xp: 250
-expected_time: 8m
+expected_time: 9m
 concepts:
-- '`git diff HEAD main` from detached state'
-common_mistakes:
-- Running commands related to `git diff HEAD main` from detached state without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - git diff between tag and branch
+  - git rev-list --count
+  - read-only comparison
+repo_path: pagecraft
+description: |
+  The Pagecraft CMS shipped `v5.0` and development continued on `main`. Support is looking at a customer who
+  still runs 5.0 and wants to know how far behind they are. You are currently sitting on the `v5.0` commit
+  in detached HEAD. Prepare a short comparison without leaving that spot, because support will
+  continue to use your working copy for reproduction.
+objective: |
+  - write the names of all files that differ between `v5.0` and `main` (added, changed or deleted) into `drift-files.txt`, one path per line
+  - write the number of commits that `main` has and `v5.0` does not into `ahead.txt`
+  - HEAD must still be detached at the `v5.0` commit when you are finished
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "You can compare two refs without checking either out: `git diff <a> <b>` and `git log <a>..<b>`."
+  - "`--name-only` limits the diff to file names. `git rev-list --count a..b` counts commits."
+  - "`git diff --name-only v5.0 main > drift-files.txt && git rev-list --count v5.0..main > ahead.txt`"
+guide: |
+  ## 1. Confirm your position
+  ```bash
+  git status
+  git describe --tags
+  ```
 
+  ## 2. Compare without moving
+  ```bash
+  git diff --stat v5.0 main
+  git log --oneline v5.0..main
+  ```
+  Both refs are just names here; your checkout stays at v5.0.
 
-  **Compare Detached to Branch**
+  ## 3. Save the answers
+  ```bash
+  git diff --name-only v5.0 main > drift-files.txt
+  git rev-list --count v5.0..main > ahead.txt
+  cat drift-files.txt ahead.txt
+  ```
+  `A..B` means "reachable from B but not from A".
 
+  ## 4. You are still detached
+  ```bash
+  git status -sb
+  ```
+debrief: |
+  ## What happened
+  `git diff` and `git log` take refs as arguments. You asked about `main` while HEAD stayed on the tag,
+  so nothing in the working tree changed. That makes the commands safe to run from a detached HEAD.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Two-dot vs three-dot
+  - `git log A..B`: commits in B not in A.
+  - `git diff A B` compares the two tips; `git diff A...B` compares B with the merge base, showing what B
+    added since the branches split. For a tag that is an ancestor of main both give the same files.
 
-  '
+  ## Real-world use
+  Release notes, "how outdated is this customer" reports and upgrade-risk estimates all start with
+  tag-to-branch comparisons. `--shortstat` and `--stat` add numbers.
+
+  ## Related
+  - `git shortlog v5.0..main` groups the new commits by author.
+  - `git diff --diff-filter=D --name-only v5.0 main` lists only deleted files.
+common_mistakes:
+  - "Checking out main to compare, which leaves the detached position the support team needs."
+  - "Using `git diff main` (working tree vs main), which also shows nothing about commit counts."
+  - "Writing `--stat` output with line counts into drift-files.txt instead of plain paths."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_detached
+    description: HEAD is still detached
+  - type: script_passes
+    script: test "$(git rev-parse HEAD)" = "$(git rev-parse v5.0^{commit})"
+    description: HEAD is still at v5.0
+  - type: script_passes
+    script: test "$(sed '/^$/d' drift-files.txt | sort)" = "$(git diff --name-only v5.0 main | sort)"
+    description: drift-files.txt lists the files that differ between v5.0 and main
+  - type: script_passes
+    script: test "$(tr -d ' \n' < ahead.txt)" = "$(git rev-list --count v5.0..main)"
+    description: ahead.txt has the number of commits main is ahead of v5.0

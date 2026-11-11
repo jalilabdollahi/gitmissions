@@ -4,33 +4,84 @@ level: level-073-look-around-safely
 order: 73
 difficulty: intermediate
 xp: 220
-expected_time: 8m
+expected_time: 9m
 concepts:
-- "read-only exploration \u2014 no commits"
-common_mistakes:
-- "Running commands related to read-only exploration \u2014 no commits without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - git switch --detach
+  - git show <tag>:<file>
+  - returning to a branch
+repo_path: cloudcast
+description: |
+  The Cloudcast weather widget has retry logic controlled by `MAX_RETRIES` in `settings.ini`. A support
+  ticket claims "the widget used to be more patient". You need the historical values for three releases
+  (`v1.0`, `v1.5` and `v2.0`) to confirm. Look at each release by checking it out like a customer's copy
+  (detached HEAD), but change nothing and leave the repo where you found it.
+objective: |
+  - check out each of the tags `v1.0`, `v1.5` and `v2.0` in turn (the reflog must show it) and read `MAX_RETRIES` from `settings.ini`
+  - write `retries.csv` with one line per tag in the form `tag,value` (for example `v9.9,7`)
+  - finish on branch `main` with a clean working tree (apart from `retries.csv`)
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "`git tag` lists the releases. Checking a tag out puts you in detached HEAD, which is fine for looking."
+  - "`git switch --detach v1.0`, read the file, repeat. Many commits touched the setting, so do not assume the value from the commit messages."
+  - "`git switch --detach v1.0 && grep ^MAX_RETRIES settings.ini`, and finally `git switch main`."
+guide: |
+  ## 1. Visit each release
+  ```bash
+  git switch --detach v1.0
+  grep '^MAX_RETRIES' settings.ini
+  git switch --detach v1.5
+  grep '^MAX_RETRIES' settings.ini
+  git switch --detach v2.0
+  grep '^MAX_RETRIES' settings.ini
+  ```
+  The file on disk changes each time, exactly like a customer's installation of that release.
 
+  ## 2. Write the answers
+  ```bash
+  printf 'v1.0,<n>\nv1.5,<n>\nv2.0,<n>\n' > retries.csv
+  ```
+  Replace `<n>` with what you saw.
 
-  **Look Around in Detached HEAD**
+  ## 3. Come home
+  ```bash
+  git switch main
+  git status
+  ```
+  Nothing was committed, so there is nothing to clean up.
+debrief: |
+  ## What happened
+  Each `git switch --detach <tag>` moved HEAD to the tagged commit and rewrote the working tree to match,
+  without touching any branch. Because you made no commits, switching away lost nothing.
 
+  ## Comparing with `git show`
+  `git show v1.5:settings.ini` prints one file as of a tag without moving anything. Use it for a quick
+  look, and use checkout when you need to run or build the old code.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Safe habits in detached HEAD
+  - Reading, building and running tests is fine.
+  - If you start editing and want to keep it, create a branch before leaving (`git switch -c`).
+  - `git switch -` flips back to where you came from.
 
-  '
+  ## Related
+  - `git describe` names a commit relative to the nearest tag.
+  - `git diff v1.0 v2.0 -- settings.ini` shows every change between releases at once.
+common_mistakes:
+  - "Guessing from commit subjects that the value only went down, when it was changed several times."
+  - "Forgetting to switch back to main, so the later work on main looks missing."
+  - "Editing files while detached and then losing track of the changes."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: main
+    description: HEAD is back on main
+  - type: script_passes
+    script: |
+      exp=$(for t in v1.0 v1.5 v2.0; do printf '%s,%s\n' "$t" "$(git show "$t:settings.ini" | sed -n 's/^MAX_RETRIES=//p')"; done | sort)
+      got=$(tr -d ' \r' < retries.csv | sed '/^$/d' | sort)
+      test "$exp" = "$got"
+    description: retries.csv has the right MAX_RETRIES for each release
+  - type: script_passes
+    script: |
+      for t in v1.0 v1.5 v2.0; do git reflog | grep -q "moving from .* to $t\$"; done
+    description: The reflog shows each tag was checked out
+  - type: is_clean
+    ignore_untracked: true
+    description: Working tree is clean

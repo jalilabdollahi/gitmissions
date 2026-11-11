@@ -1,29 +1,19 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main pingly
+cd pingly
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-v1
-EOF
-
-git add app.txt
-
-git commit -m "Initial scaffold"
-
-printf 'v2
-' > app.txt
-
-git add app.txt
-
-git commit -m "Second commit"
-
-git checkout HEAD~1
-
-printf 'dirty change
-' > dirty.txt
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+c() { git add -A && git commit -q -m "$1"; }
+printf 'rate: 100\n' > limits.yaml && c "Initial limits"
+git branch release/3.9
+printf 'channels: [email]\n' > channels.yaml && c "Add email channel"
+git switch -q -c release/4.0
+printf 'channels: [email, sms]\n' > channels.yaml && c "Add sms channel"
+printf 'channels: [email, sms, push]\n' > channels.yaml && c "Add push channel"
+git switch -q --detach HEAD~2
+printf 'rate: 9999\n' > limits.yaml

@@ -6,31 +6,84 @@ difficulty: intermediate
 xp: 220
 expected_time: 8m
 concepts:
-- "checkout a commit hash \u2014 HEAD points to commit"
-common_mistakes:
-- "Running commands related to checkout a commit hash \u2014 HEAD points to commit\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - detached HEAD
+  - git status
+  - git branch --contains
+repo_path: panfry
+description: |
+  You are working on Panfry, a recipe app. A colleague left your terminal inside a checkout of an old
+  commit and went home. Git says `HEAD detached` and nothing else is clear. Before you touch anything you
+  want to understand where HEAD actually is and which branches contain that commit, so that nothing you
+  do next can orphan work. Then you will go back to a normal branch.
+objective: |
+  - write the abbreviated hash (at least 7 characters) of the commit that HEAD points to right now into `detached-at.txt`
+  - write the names of every local branch that contains that commit into `contained-in.txt`, one per line
+  - then return to the `main` branch (HEAD attached, working tree clean apart from your two text files)
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "`git status` and `git log -1` both tell you the commit HEAD is on. Check them before you move anywhere."
+  - "`git branch --contains <commit>` lists the branches that include a commit. Do this while still detached, using `HEAD` as the commit."
+  - "`git rev-parse --short HEAD > detached-at.txt`, then `git for-each-ref --contains HEAD --format='%(refname:short)' refs/heads > contained-in.txt`, then `git switch main`."
+guide: |
+  ## 1. Read the situation
+  ```bash
+  git status
+  git log --oneline --graph --all
+  ```
+  `HEAD detached at <hash>` means HEAD holds a raw commit id instead of a branch name.
 
+  ## 2. Record the commit
+  ```bash
+  git rev-parse --short HEAD > detached-at.txt
+  ```
 
-  **What Is Detached HEAD?**
+  ## 3. Which branches already contain it?
+  ```bash
+  git for-each-ref --contains HEAD --format='%(refname:short)' refs/heads > contained-in.txt
+  cat contained-in.txt
+  ```
+  If at least one branch contains the commit, nothing is at risk when you leave.
 
+  ## 4. Go back
+  ```bash
+  git switch main
+  ```
+debrief: |
+  ## What happened
+  Normally HEAD contains the name of a branch, and the branch holds the commit id. In a detached state
+  HEAD stores the commit id directly. Moving on is safe when some branch or tag already reaches that
+  commit; new commits you would make while detached have no such protection.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Why check `--contains`
+  It answers "is this commit reachable from a name?". If the list were empty, leaving would orphan the
+  commit, and you would have to save it first with `git switch -c <name>`.
 
-  '
+  ## Reading the signs
+  - Shell prompts and `git status -sb` show `HEAD (no branch)` or `## HEAD (no branch)`.
+  - `git branch --show-current` prints nothing when detached.
+  - `git symbolic-ref HEAD` fails with "not a symbolic ref".
+
+  ## Related
+  - `git switch --detach <commit>` enters this state deliberately.
+  - `git switch -` goes back to the previous place.
+common_mistakes:
+  - "Running `git branch --contains` after switching to main, where HEAD no longer points at the commit you wanted."
+  - "Writing a branch name into `detached-at.txt` instead of a commit hash."
+  - "Making commits before understanding the state, which could leave them on no branch."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: main
+    description: HEAD is attached to main
+  - type: script_passes
+    script: |
+      want=$(git log --format=%H -1 --grep='Add allergen filter' main)
+      test "$(git rev-parse "$(cat detached-at.txt)^{commit}")" = "$want"
+    description: detached-at.txt holds the commit HEAD was on
+  - type: script_passes
+    script: |
+      want=$(git log --format=%H -1 --grep='Add allergen filter' main)
+      exp=$(git for-each-ref --contains "$want" --format='%(refname:short)' refs/heads | sort)
+      test -n "$exp" && test "$exp" = "$(sort contained-in.txt)"
+    description: contained-in.txt lists exactly the branches containing that commit
+  - type: is_clean
+    ignore_untracked: true
+    description: No tracked file was changed

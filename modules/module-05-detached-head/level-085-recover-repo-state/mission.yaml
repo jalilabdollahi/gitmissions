@@ -4,33 +4,109 @@ level: level-085-recover-repo-state
 order: 85
 difficulty: intermediate
 xp: 320
-expected_time: 8m
+expected_time: 15m
 concepts:
-- "detached + local changes + no branch \u2014 restore all"
-common_mistakes:
-- "Running commands related to detached + local changes + no branch \u2014 restore\
-  \ all without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - reflog recovery
+  - hotfix branch and annotated tag
+  - merging with a conflict
+repo_path: parcelo
+description: |
+  Parcelo, a courier tracking app, shipped `v2.4.0`. A delivery-time bug was fixed in detached HEAD from
+  that tag (two commits: round ETAs to the minute and a test). You then switched back to `main` and the
+  commits became orphans. Release management needs the full hotfix process: the work saved on a branch, a
+  release tag, and the fix merged into `main`. Meanwhile `main` changed a neighbouring line of `eta.py`,
+  so the merge will conflict, and both changes must be kept.
+objective: |
+  - recover both orphaned hotfix commits as a branch named `hotfix/2.4.1` (exactly 2 commits on top of `v2.4.0`)
+  - create an annotated tag `v2.4.1` on the tip of that branch
+  - merge `hotfix/2.4.1` into `main` with a merge commit (`--no-ff`); resolve the conflict in `eta.py` so it keeps both
+    `ETA_BUFFER_MIN = 15` and `ROUND_TO = 1`
+  - finish on `main` with a clean working tree and no conflict markers
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "The hotfix commits are only in `git reflog`. The line `checkout: moving from <hash> to main` gives the tip."
+  - "Branch first (`git branch hotfix/2.4.1 HEAD@{1}`), then `git tag -a v2.4.1 hotfix/2.4.1 -m ...`, then merge into main."
+  - "After `git merge --no-ff hotfix/2.4.1`, edit `eta.py` so both lines survive, `git add eta.py`, and `git commit --no-edit`."
+guide: |
+  ## 1. Recover
+  ```bash
+  git reflog -6
+  git branch hotfix/2.4.1 HEAD@{1}
+  git log --oneline v2.4.0..hotfix/2.4.1
+  ```
+  Two commits, both on top of the release tag.
 
+  ## 2. Tag the release
+  ```bash
+  git tag -a v2.4.1 hotfix/2.4.1 -m "Release 2.4.1"
+  git cat-file -t v2.4.1
+  ```
+  `tag` means annotated.
 
-  **Full Recovery Scenario**
+  ## 3. Merge into main
+  ```bash
+  git merge --no-ff hotfix/2.4.1 -m "Merge hotfix 2.4.1"
+  ```
+  Git reports a conflict in `eta.py`: main changed `ETA_BUFFER_MIN`, the hotfix changed the next line.
 
+  ## 4. Resolve keeping both
+  ```bash
+  cat eta.py                   # markers
+  # write the file as: ETA_BUFFER_MIN = 15 / ROUND_TO = 1
+  git add eta.py
+  git commit --no-edit
+  ```
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## 5. Check
+  ```bash
+  git log --oneline --graph -6
+  git status
+  ```
+debrief: |
+  ## What happened
+  You combined four skills: recovering orphans from the reflog, naming them with a branch, marking a
+  release with an annotated tag and merging with a manual conflict resolution. The conflict arose because
+  Git treats changes on adjacent lines as overlapping.
 
-  '
+  ## Order matters
+  Save first (branch), then tag, then merge. If the merge goes wrong, the branch and tag still hold the
+  hotfix intact, and `git merge --abort` returns you to a clean `main`.
+
+  ## Why annotated tags
+  Releases deserve annotated tags: they record who tagged, when and why, and `git describe` and
+  `git push --follow-tags` prefer them.
+
+  ## Real-world use
+  This is exactly how patch releases of older versions are built and then forward-ported to `main`.
+
+  ## Related
+  - `git cherry-pick` can port single hotfix commits instead of merging.
+  - `git merge --abort` bails out of a conflicted merge.
+  - `git log --merges` lists merge commits.
+common_mistakes:
+  - "Merging with a fast-forward or cherry-pick instead of the required merge commit."
+  - "Resolving the conflict by taking only one side, which drops either the buffer change or the rounding fix."
+  - "Tagging main instead of the tip of the hotfix branch."
+  - "Leaving conflict markers in `eta.py` and committing anyway."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --count v2.4.0..hotfix/2.4.1)" = 2 && git log --format=%s hotfix/2.4.1 | grep -q 'Round ETA'
+    description: hotfix/2.4.1 holds the two recovered commits above v2.4.0
+  - type: tag_is_annotated
+    tag: v2.4.1
+    description: v2.4.1 is an annotated tag
+  - type: script_passes
+    script: test "$(git rev-parse v2.4.1^{commit})" = "$(git rev-parse hotfix/2.4.1)"
+    description: v2.4.1 points to the tip of the hotfix branch
+  - type: script_passes
+    script: git merge-base --is-ancestor hotfix/2.4.1 main && test "$(git rev-list --merges --count main)" = 1
+    description: main contains the hotfix through a merge commit
+  - type: script_passes
+    script: grep -qx 'ETA_BUFFER_MIN = 15' eta.py && grep -qx 'ROUND_TO = 1' eta.py
+    description: eta.py keeps both the new buffer and the new rounding
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: is_clean
+    description: Working tree is clean

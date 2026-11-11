@@ -4,37 +4,87 @@ level: level-076-lost-detached-commit
 order: 76
 difficulty: intermediate
 xp: 300
-expected_time: 8m
+expected_time: 12m
 concepts:
-- '`git reflog` to find the orphaned hash'
-common_mistakes:
-- Running commands related to `git reflog` to find the orphaned hash without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A useful commit exists outside any branch, and you need to rescue it.
-objective: Create a branch named `rescue-detached` pointing at the detached commit.
+  - git reflog
+  - git cherry-pick
+  - picking one commit among several orphans
+repo_path: taxwise
+description: |
+  Taxwise generates invoices for a billing platform. Last week you tried three things in detached HEAD:
+  a flat-tax experiment, the real Dutch VAT rate (21%), and a rounding experiment. Each time you went back
+  to `main` afterwards, so none of them were ever saved on a branch. Finance now needs only the Dutch VAT
+  change in `main`, and nothing from the two experiments. Find the right orphan and bring only that one back.
+objective: |
+  - locate the orphaned commit that adds the Dutch VAT rate (21%) through the reflog
+  - apply it to `main` as a new commit on top (cherry-pick), so `invoice_tax.py` contains `VAT_NL = 0.21`
+  - `main` must NOT contain the flat-tax experiment (`experiments.py`) or the rounding experiment (`rounding.py`)
+  - finish on `main`, clean working tree; main will have 4 commits
 hints:
-- Use `git branch rescue-detached` while at the detached commit, or find it with `git
-  reflog` first.
-- After the branch exists, you can switch back if you want.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch rescue-detached\n \
-  \  ```"
-debrief: '## What Just Happened
+  - "`git log` shows nothing useful. `git reflog` lists every commit you made, with its message, even those on no branch."
+  - "Three `commit:` entries belong to the experiments. Pick the one whose message is about VAT and copy its hash from the first column."
+  - "`git cherry-pick <hash-of-VAT-commit>` while on main."
+guide: |
+  ## 1. Read the diary
+  ```bash
+  git reflog
+  git reflog | grep commit:
+  ```
+  You will see three commits that no branch contains. Only one concerns the Dutch VAT rate.
 
+  ## 2. Inspect before picking
+  ```bash
+  git show <hash> --stat
+  ```
+  Check that it touches `invoice_tax.py` and nothing else.
 
-  **Recover a Lost Detached Commit**
+  ## 3. Copy it onto main
+  ```bash
+  git cherry-pick <hash>
+  ```
+  A cherry-pick creates a new commit with the same change and message but a new parent.
 
+  ## 4. Verify
+  ```bash
+  git log --oneline
+  ls
+  ```
+  `experiments.py` and `rounding.py` must be absent.
+debrief: |
+  ## What happened
+  The three detached commits survived in the reflog. Instead of rescuing a whole line of history
+  (branching at the tip), you needed one commit out of three independent ones, so you copied it with
+  `cherry-pick`. The original orphan stays unreferenced and will vanish at the next gc, which is fine.
 
-  Detached commits become safe as soon as a branch or tag points to them.
+  ## Choosing the tool
+  - Everything from a tip: `git branch <name> <hash>`.
+  - One commit: `git cherry-pick <hash>`.
+  - A range: `git cherry-pick A..B`.
 
-  '
+  ## Finding commits without the reflog
+  `git fsck --lost-found` lists dangling commits and writes them to `.git/lost-found`. It also works
+  when the reflog entry has expired but the objects are still around.
+
+  ## Related
+  - `git show <hash>` and `git log -1 <hash>` work on unreferenced commits too.
+  - Cherry-pick may conflict; resolve and `git cherry-pick --continue`.
+common_mistakes:
+  - "Resetting main to the reflog tip of an experiment, which brings the wrong code along."
+  - "Cherry-picking the commit with the nearest timestamp instead of reading the messages."
+  - "Creating a branch at the VAT commit and merging it, which would also work but is not what the objective asks (a commit on main)."
 validators:
-- type: branch_exists
-  branch: rescue-detached
-  description: rescue-detached exists
-- type: reflog_contains
-  text: Detached experiment
-  description: Reflog still records the detached commit
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    script: git log --format=%s main | grep -q 'VAT 21%' && grep -q 'VAT_NL = 0.21' invoice_tax.py
+    description: main has the Dutch VAT commit and the rate in invoice_tax.py
+  - type: script_passes
+    script: "! git cat-file -e main:experiments.py && ! git cat-file -e main:rounding.py"
+    description: Neither experiment is on main
+  - type: commit_count_eq
+    count: 4
+    branch: main
+    description: main has 4 commits
+  - type: is_clean
+    description: Working tree is clean
