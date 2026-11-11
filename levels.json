@@ -338,7 +338,7 @@
   {
     "module": "module-03-merge-conflicts",
     "level": "level-043-conflict-in-deleted-file",
-    "name": "Conflict \u2014 Deleted vs Modified",
+    "name": "Conflict - Deleted vs Modified",
     "xp": 250,
     "difficulty": "intermediate",
     "order": 43
@@ -346,7 +346,7 @@
   {
     "module": "module-03-merge-conflicts",
     "level": "level-044-conflict-added-same-file",
-    "name": "Conflict \u2014 Both Added Same File",
+    "name": "Conflict - Both Added Same File",
     "xp": 240,
     "difficulty": "intermediate",
     "order": 44
