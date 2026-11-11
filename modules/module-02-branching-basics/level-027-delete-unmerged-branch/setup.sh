@@ -20,7 +20,6 @@ printf 'body { background: #0a0020; color: #39ff14; }\n' > theme.css
 d 2025-08-11T11:00:00; git commit -q -am "Neon green on black"
 printf 'body { background: #0a0020; color: #39ff14; text-shadow: 0 0 6px #39ff14; }\n' > theme.css
 d 2025-08-12T11:00:00; git commit -q -am "Add glow effect"
-git config gitmissions.neonTip "$(git rev-parse HEAD)"
 git switch -q main
 printf 'body { background: #fafafa; color: #222; }\nh1 { font-weight: 300; }\n' > theme.css
 git add . && d 2025-08-13T11:00:00; git commit -q -m "Lighter headings"

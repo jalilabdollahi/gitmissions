@@ -68,7 +68,7 @@ validators:
     description: experiment/neon-theme is deleted
   - type: script_passes
     script: |
-      tip=$(git config gitmissions.neonTip)
+      tip=$(git log -g --format=%H --grep='^Add glow effect$' HEAD | head -1)
       got=$(tr -d '[:space:]' < deleted-tip.txt)
       test "${#got}" -ge 7 && case "$tip" in "$got"*) true;; *) false;; esac
     description: deleted-tip.txt holds the abbreviated hash of the deleted branch's last commit
@@ -76,7 +76,12 @@ validators:
     branch: feature/contact-form
     description: feature/contact-form is untouched
   - type: script_passes
-    script: test "$(git log -1 --format=%s main)" = "Lighter headings" && test "$(git rev-list --count main)" = "2" && git cat-file -e "$(git config gitmissions.neonTip)"
+    script: |
+      tip=$(git log -g --format=%H --grep='^Add glow effect$' HEAD | head -1)
+      test -n "$tip"
+      test "$(git log -1 --format=%s main)" = "Lighter headings"
+      test "$(git rev-list --count main)" = "2"
+      ! git merge-base --is-ancestor "$tip" main
     description: main is unchanged and the neon commits were not merged
   - type: no_merge_commit
     description: No merge commit exists
