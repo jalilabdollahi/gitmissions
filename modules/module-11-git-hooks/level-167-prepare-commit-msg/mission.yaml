@@ -4,38 +4,113 @@ level: level-167-prepare-commit-msg
 order: 167
 difficulty: advanced
 xp: 340
-expected_time: 12m
+expected_time: 14m
 concepts:
-- '`prepare-commit-msg` auto-fills template'
-common_mistakes:
-- Running commands related to `prepare-commit-msg` auto-fills template without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices local and server-side Git hooks inside a sandbox.
-objective: Create an executable `pre-commit` hook that prints `hook ok`.
+  - prepare-commit-msg hook
+  - editing the message file
+  - deriving data from the branch name
+description: |
+  The reconciliation team's convention is that every commit message starts with the ticket key, e.g. `FIN-204: Round halves up`. The key
+  is already part of the branch name (`feature/FIN-204-rounding`), and typing it on every commit is the thing people forget. Instead of
+  *rejecting* bad messages (commit-msg), a `prepare-commit-msg` hook can **add** the key for them before the editor opens or
+  the `-m` message is recorded. You start on `feature/FIN-204-rounding`.
+objective: |
+  Create an executable `.git/hooks/prepare-commit-msg` that prepends `FIN-<number>: ` to the message when the current branch name contains a ticket key
+  like `FIN-204`. It must (a) leave messages unchanged on branches without a key (such as `main`), (b) not add the prefix a second time
+  when you amend (`git commit --amend --no-edit`), and (c) leave merge and squash messages alone.
 hints:
-- Hooks live in `.git/hooks/`.
-- Remember to make the file executable.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '#!/usr/bin/env bash\\\
-  necho hook ok\\n' > .git/hooks/pre-commit\n   ```\n\n2.\n   ```bash\n   chmod +x\
-  \ .git/hooks/pre-commit\n   ```"
-debrief: '## What Just Happened
+  - "`prepare-commit-msg` gets the message file as `$1` and the message source (`message`, `merge`, `squash`, `commit`, ...) as `$2`. The hook may rewrite the file."
+  - "Extract the key with `grep -oE 'FIN-[0-9]+'` from `git symbolic-ref --short HEAD`, and prepend it to line 1 with `sed -i.bak \"1s/^/FIN-204: /\" \"$1\"`."
+  - "Before inserting, check whether line 1 already starts with `FIN-204: ` (that happens on `--amend`), and skip when `$2` is `merge` or `squash`."
+guide: |
+  ## Let the hook type it for you
 
+  Start by finding the ticket in the branch name:
 
-  **Prepare Commit Message**
+  ```bash
+  git symbolic-ref --short HEAD | grep -oE 'FIN-[0-9]+'
+  ```
 
+  The message file is passed as `$1`; the hook edits it in place. Write it:
 
-  Hooks let you automate checks at key points in the Git workflow.
+  ```bash
+  cat > .git/hooks/prepare-commit-msg <<'HOOK'
+  #!/bin/sh
+  file="$1"; source="$2"
+  case "$source" in merge|squash) exit 0 ;; esac
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+  ticket=$(printf '%s' "$branch" | grep -oE 'FIN-[0-9]+' | head -1)
+  [ -n "$ticket" ] || exit 0
+  if ! head -1 "$file" | grep -q "^$ticket: "; then
+    sed -i.bak "1s/^/$ticket: /" "$file"
+    rm -f "$file.bak"
+  fi
+  HOOK
+  chmod +x .git/hooks/prepare-commit-msg
+  ```
 
-  '
+  Test:
+
+  ```bash
+  echo x >> recon/config.yaml
+  git commit -am "Round halves up"       # becomes "FIN-204: Round halves up"
+  git commit --amend --no-edit           # still only one prefix
+  git log -1 --format=%s
+  ```
+debrief: |
+  ## What you learned
+
+  `prepare-commit-msg` runs before the editor is shown, so unlike `commit-msg` it is the place to **generate or modify** a message. Its second
+  argument says where the message came from (`message` for `-m`/`-F`, `template`, `merge`, `squash`, or `commit` when
+  amending or using `-c`). Good hooks are *idempotent*: running twice gives the same result, which is why the amend case needs a guard.
+
+  ## Real-world use
+
+  Prepending ticket keys, adding a template with checklists, inserting `Co-authored-by` lines. Combined with a
+  `commit-msg` check, you get automation with a safety net.
+
+  ## Pitfalls
+
+  - `sed -i` differs between GNU and BSD; `-i.bak` plus `rm` works on both.
+  - When the editor opens, the message file contains comment lines; make sure line 1 is the one you expect.
+  - Detached HEAD has no branch; the hook should quietly do nothing.
+common_mistakes:
+  - "Adding the prefix on every commit regardless of the branch, so `main` gets `: message`."
+  - "No idempotence check, so `git commit --amend` produces `FIN-204: FIN-204: Round halves up`."
+  - "Using `commit-msg` instead, which runs after the editor and is meant to validate, not to edit."
+  - "Rewriting merge messages, which breaks `Merge branch ...` commits."
 validators:
-- type: hook_exists
-  name: pre-commit
-  description: pre-commit hook exists and is executable
-- type: hook_output_contains
-  name: pre-commit
-  text: hook ok
-  description: pre-commit hook prints the expected output
+  - type: hook_exists
+    name: prepare-commit-msg
+    description: an executable prepare-commit-msg hook exists
+  - type: script_passes
+    description: on a ticket branch the key is prepended, also once only after an amend
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf 'x\n' >> recon/config.yaml
+      git commit -q -am "Round halves up"
+      test "$(git log -1 --format=%s)" = "FIN-204: Round halves up"
+      git commit -q --amend --no-edit
+      test "$(git log -1 --format=%s)" = "FIN-204: Round halves up"
+      git switch -q -c feature/FIN-77-fees
+      printf 'y\n' >> recon/config.yaml
+      git commit -q -am "Charge the fee once"
+      test "$(git log -1 --format=%s)" = "FIN-77: Charge the fee once"
+  - type: script_passes
+    description: branches without a key and merge commits are left alone
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      git config user.name T; git config user.email t@example.dev
+      git switch -q main
+      printf 'z\n' >> recon/config.yaml
+      git commit -q -am "Plain commit on main"
+      test "$(git log -1 --format=%s)" = "Plain commit on main"
+      git switch -q -c feature/FIN-300-merge-me
+      printf 'm\n' > m.txt; git add -A; git commit -q -m "Add m"
+      git switch -q main
+      printf 'n\n' > n.txt; git add -A; git commit -q -m "Add n"
+      git merge -q --no-ff feature/FIN-300-merge-me
+      git log -1 --format=%s | grep -qx "Merge branch 'feature/FIN-300-merge-me'"
+

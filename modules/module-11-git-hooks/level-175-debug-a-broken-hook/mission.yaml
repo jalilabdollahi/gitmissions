@@ -4,51 +4,105 @@ level: level-175-debug-a-broken-hook
 order: 175
 difficulty: advanced
 xp: 380
-expected_time: 12m
+expected_time: 15m
 concepts:
-- "hook silently fails \u2014 diagnose and fix"
-common_mistakes:
-- "Running commands related to hook silently fails \u2014 diagnose and fix without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice `hook\
-  \ silently fails \u2014 diagnose and fix`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - debugging a hook step by step
+  - shebang, executable bit, arguments and logic
+  - git commit -s
+description: |
+  The audit-evidence toolkit requires a Developer Certificate of Origin sign-off on every commit: the message must contain a line
+  `Signed-off-by: Name <email>`, which `git commit -s` adds. A colleague wrote the `commit-msg` hook that enforces it, but she has just left
+  and the hook is a mess: commits are never checked. Debug it. There is more than one defect, and fixing one will reveal the next. Look at the
+  exact text of the file, its permissions, the arguments git passes to a `commit-msg` hook and the logic of the test.
+objective: |
+  Repair `.git/hooks/commit-msg` so that a commit **without** a valid `Signed-off-by: Name <email>` line is rejected (exit 1 and a message), and a commit made with `git commit -s`
+  is accepted. A line such as `Signed-off-by: nobody` (without an email address) is not valid. Keep the check line-based on the message file.
 hints:
-- "Start with the Git command related to `hook silently fails \u2014 diagnose and\
-  \ fix`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Make an unsigned commit and watch carefully for warnings. Then run `ls -l .git/hooks/commit-msg` and `head -1 .git/hooks/commit-msg`."
+  - "There are four problems: the interpreter in the first line, the permissions, which argument holds the message file, and whether the `grep` result is inverted."
+  - "Use `#!/bin/sh`, `chmod +x`, read the file from `$1` (git passes only one argument), and reject when the `grep` does **not** match: `if ! grep -q ...; then ... exit 1; fi`."
+guide: |
+  ## Debugging a hook layer by layer
 
+  Provoke the problem:
 
-  **Debug a Completely Broken Hook**
+  ```bash
+  echo x >> README.md
+  git commit -am "unsigned change"
+  ```
 
+  It succeeds, and the hint about a hook that is not executable may scroll by. Inspect:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  ls -l .git/hooks/commit-msg      # no x bit: git skips the hook
+  head -1 .git/hooks/commit-msg    # #!/usr/bin/enb sh : the interpreter does not exist
+  ```
 
-  '
+  Fix the first two, then run the commit again and read the new output. Layers three and four are in the body:
+
+  - `msgfile="$2"`: a `commit-msg` hook is called with **one** argument, so the file is `$1`. With `$2` empty, `grep` fails and the hook accepts everything.
+  - `if grep -q ...; then exit 1`: the test is inverted. It would reject the signed commits and accept the rest, once the argument is right.
+
+  The repaired script:
+
+  ```bash
+  #!/bin/sh
+  msgfile="$1"
+  if ! grep -q '^Signed-off-by: .* <.*@.*>$' "$msgfile"; then
+      echo "commit-msg: missing Signed-off-by trailer (use git commit -s)" >&2
+      exit 1
+  fi
+  exit 0
+  ```
+
+  Make it executable and test both `git commit -m "x"` (rejected) and `git commit -s -m "x"` (accepted).
+debrief: |
+  ## What you learned
+
+  A hook can fail to do its job in four independent ways, and each hides the next: it is not executable (silently skipped), the
+  interpreter in the `#!` line is wrong (git reports a "cannot exec" error and, for most hooks, aborts), it reads the wrong argument, or its logic is inverted or
+  returns the wrong status. A systematic approach: run the hook by hand with a sample message file (`sh -x .git/hooks/commit-msg msg.txt; echo $?`),
+  check `ls -l`, and test the accepting **and** the rejecting case.
+
+  ## Real-world use
+
+  Debugging hooks is mostly debugging shell: `set -x`, explicit exit codes, quoting, and avoiding assumptions about the environment. The DCO sign-off
+  (`Signed-off-by`) is used by the Linux kernel and many CNCF projects, enforced by hooks or bots.
+
+  ## Pitfalls
+
+  - Windows line endings in a hook produce `bad interpreter: /bin/sh^M`.
+  - A hook that always exits 0 is worse than none: people think they are protected.
+  - Test with `git commit -s -m ...` and without; `--amend` and merges also go through the hook.
+common_mistakes:
+  - "Fixing only the permissions: the hook now runs but still fails with 'bad interpreter' because of the wrong shebang."
+  - "Reading `$2` or `$0` instead of `$1`, so `grep` never sees the message."
+  - "Leaving the inverted test, which rejects correctly signed commits."
+  - "Loosening the regex so `Signed-off-by: nobody` passes."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: commit-msg
+    description: the commit-msg hook is executable
+  - type: script_passes
+    description: unsigned and malformed sign-offs are rejected
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      printf 'x\n' >> README.md; git add -A
+      must_fail git commit -q -m "Add a note"
+      must_fail git commit -q -m "Add a note" -m "Signed-off-by: nobody"
+      must_fail git commit -q -m "Add a note" -m "Signed-off-by: Ann <not-an-address>"
+  - type: script_passes
+    description: a commit made with git commit -s is accepted and carries the trailer
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf 'x\n' >> README.md; git add -A
+      git commit -q -s -m "Add a note"
+      git log -1 --format=%B | grep -q '^Signed-off-by: .* <.*@.*>$'
+  - type: script_passes
+    description: the hook is a valid script that uses the message file argument
+    script: |
+      head -1 .git/hooks/commit-msg | grep -Eq '^#!(/bin/sh|/bin/bash|/usr/bin/env (ba)?sh)$'
+      grep -q '\$1' .git/hooks/commit-msg

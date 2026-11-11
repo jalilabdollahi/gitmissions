@@ -4,50 +4,106 @@ level: level-172-shared-hooks-setup
 order: 172
 difficulty: advanced
 xp: 380
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`core.hooksPath` \u2014 team-wide hooks"
-common_mistakes:
-- "Running commands related to `core.hooksPath` \u2014 team-wide hooks without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``core.hooksPath`\
-  \ \u2014 team-wide hooks`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - core.hooksPath
+  - versioned hooks in .githooks
+  - install script for new clones
+description: |
+  The tariff-table service team has a rule: no new `FIXME` markers may be committed in Python code. Everyone has a local pre-commit hook
+  that enforces it, but because `.git/hooks` is not part of the repository, each person copies it by hand, new hires forget, and last week
+  a `FIXME` reached production. The tech lead wants the hooks to **travel with the repository**: stored in a normal folder, activated by one
+  command after cloning. Git can read hooks from any directory via the `core.hooksPath` setting.
+objective: |
+  1. Create `.githooks/pre-commit` that rejects commits which *add* a line containing `FIXME` to a Python file (and allows everything else, including this very hook, which of course mentions the word), and make it executable **in git** (mode 100755).
+  2. Create `scripts/install-hooks.sh` that activates the folder by running `git config core.hooksPath .githooks`.
+  3. Run the install script here, and **commit** both files so that a fresh clone gets them (commit message of your choice).
+  A fresh clone that runs the install script must reject a `FIXME` commit and accept a normal one.
 hints:
-- "Start with the Git command related to ``core.hooksPath` \u2014 team-wide hooks`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Git looks for hooks in `.git/hooks` unless `core.hooksPath` says otherwise. The new folder must be tracked, and the executable bit has to be stored in git."
+  - "The install script can be one line: `git config core.hooksPath .githooks`. Use `chmod +x` before `git add`; then check with `git ls-files -s`."
+  - "Check the staged diff of `*.py` files in the hook like before: `git diff --cached -U0 -- '*.py' | grep -E '^\\+[^+]' | grep -q FIXME` means reject. Then `git add .githooks scripts && git commit`."
+guide: |
+  ## Hooks that travel with the code
 
+  Create the versioned hook and the installer:
 
-  **Share Hooks via Repo**
+  ```bash
+  mkdir -p .githooks scripts
+  cat > .githooks/pre-commit <<'HOOK'
+  #!/bin/sh
+  if git diff --cached -U0 -- '*.py' | grep -E '^\+[^+]' | grep -q 'FIXME'; then
+    echo "pre-commit: remove the FIXME or open a ticket instead" >&2
+    exit 1
+  fi
+  exit 0
+  HOOK
+  chmod +x .githooks/pre-commit
 
+  cat > scripts/install-hooks.sh <<'SH'
+  #!/bin/sh
+  git config core.hooksPath .githooks
+  echo "hooks installed from .githooks"
+  SH
+  chmod +x scripts/install-hooks.sh
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  Activate it for yourself, then commit both files (the hook guards this very commit; it only inspects Python files, so it passes):
 
-  '
+  ```bash
+  sh scripts/install-hooks.sh
+  git add .githooks scripts
+  git commit -m "Share the team's hooks through the repository"
+  git ls-files -s .githooks scripts       # mode 100755
+  ```
+
+  Verify like a new teammate would: `git clone . /tmp/fresh && cd /tmp/fresh && sh scripts/install-hooks.sh`, then try to commit a `FIXME`.
+debrief: |
+  ## What you learned
+
+  `git config core.hooksPath <dir>` tells git where to find hooks, relative to the repository root. Because that directory is an
+  ordinary tracked folder, hooks are reviewed, versioned and updated with `git pull`. The one thing git cannot do is
+  switch the setting on during `git clone` (a security feature: cloning must never run code), so a one-time install step is needed. Git also
+  stores the executable bit, so commit scripts after `chmod +x`.
+
+  ## Real-world use
+
+  `core.hooksPath`-based setups are used by many projects, often wired to `make setup`, `npm prepare` or a developer onboarding script.
+  Tools like `husky` and `pre-commit` automate the same idea.
+
+  ## Pitfalls
+
+  - A global `core.hooksPath` in `~/.gitconfig` replaces `.git/hooks` entirely, so old local hooks silently stop running.
+  - If the hook loses its executable bit (e.g. checked out on a filesystem without modes) it is silently skipped.
+  - The hook can be disabled by anyone; keep CI as the real gate.
+common_mistakes:
+  - "Committing the hook without `chmod +x`, so teammates' clones contain a non-executable file that never runs."
+  - "Putting the hook into `.git/hooks`, which is not versioned and will not reach the clone."
+  - "Setting `core.hooksPath` only in your own repo and not providing the install script (or vice versa)."
+  - "Forgetting to commit: the files exist on disk but the clone does not have them."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: the hook and the installer are committed, with the executable bit stored in git
+    script: |
+      git ls-files -s .githooks/pre-commit | grep -q '^100755'
+      git ls-files -s scripts/install-hooks.sh | grep -q '^100755'
+      test -z "$(git status --porcelain .githooks scripts)"
+  - type: config_equals
+    key: core.hooksPath
+    value: .githooks
+    description: this repository uses .githooks as its hooks directory
+  - type: script_passes
+    description: a fresh clone that runs the install script rejects FIXME and accepts normal commits
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      git clone -q . "$t/c"; cd "$t/c"
+      sh scripts/install-hooks.sh >/dev/null
+      test "$(git config core.hooksPath)" = .githooks
+      printf '# FIXME handle zone C\n' >> tariffs/service.py
+      git add -A
+      if git commit -q -m "add fixme" >/dev/null 2>&1; then echo "FIXME was accepted" >&2; exit 1; fi
+      git reset -q --hard
+      printf '# TODO handle zone C\n' >> tariffs/service.py
+      git add -A
+      git commit -q -m "add todo"
+

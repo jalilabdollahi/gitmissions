@@ -6,48 +6,94 @@ difficulty: advanced
 xp: 340
 expected_time: 12m
 concepts:
-- "hook can't find command \u2014 fix PATH"
-common_mistakes:
-- "Running commands related to hook can't find command \u2014 fix PATH without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice `hook\
-  \ can't find command \u2014 fix PATH`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - post-merge hook
+  - hooks run with a different PATH
+  - locating repo tools with git rev-parse --show-toplevel
+description: |
+  The reporting job has a `post-merge` hook that re-syncs dependencies whenever a merge changes `requirements.lock`; the sync tool is
+  the repo's own script `tools/bin/depsync`. For the original author it works, because her shell profile puts `tools/bin` on the `PATH`. For a
+  colleague using an IDE, a cron job or a CI runner, the merge succeeds but the hook only complains `depsync: command not found`
+  and `.deps-synced` never appears. A hook cannot rely on your interactive shell's `PATH`; it has to locate the tool relative to
+  the repository, and not with a hard-coded absolute path, because everyone clones to a different location.
+objective: |
+  Fix `.git/hooks/post-merge` so that merging `deps-update` into `main` creates `.deps-synced` **even when git is run with a minimal `PATH`** (only
+  `/usr/bin:/bin` and git's own directory). Locate `tools/bin/depsync` through git or a path relative to the repository root, not through a
+  hard-coded absolute path. Merges that do not touch `requirements.lock` must still not run the sync.
 hints:
-- "Start with the Git command related to `hook can't find command \u2014 fix PATH`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Run `git merge --no-ff deps-update` yourself and read the hook output. Where does the `depsync` command come from, and who put it on your PATH?"
+  - "Hooks start in the top level of the working tree. You can call the tool by its path inside the repository, or ask git where the top is."
+  - "Replace `depsync requirements.lock` by `\"$(git rev-parse --show-toplevel)/tools/bin/depsync\" requirements.lock` (or `./tools/bin/depsync`)."
+guide: |
+  ## PATH is not inherited the way you think
 
+  Try the merge and read the hook's output:
 
-  **Fix Hook PATH Issue**
+  ```bash
+  git merge --no-ff deps-update -m "Merge deps-update"
+  ```
 
+  You will see `depsync: command not found` (the merge itself still succeeds, because `post-merge` cannot undo a merge). Undo
+  the merge to test again: `git reset --hard ORIG_HEAD`. Reproduce what an IDE or cron job sees, with a minimal environment:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  env -i PATH=/usr/bin:/bin:$(dirname "$(command -v git)") HOME="$HOME" git merge --no-ff deps-update -m "Merge deps-update"
+  ```
 
-  '
+  Fix the hook by addressing the tool through the repository instead of the `PATH`:
+
+  ```bash
+  sed -i.bak 's#^  depsync requirements.lock#  "$(git rev-parse --show-toplevel)/tools/bin/depsync" requirements.lock#' .git/hooks/post-merge
+  rm .git/hooks/post-merge.bak
+  ```
+
+  Reset, merge again and check `cat .deps-synced` (it reads `synced 3 packages`).
+debrief: |
+  ## What you learned
+
+  Hooks inherit the environment of whatever process runs git. In a terminal that is your profile's `PATH`, in an IDE, GUI client,
+  cron job or CI runner it is usually much shorter. A robust hook therefore uses absolute locations it can compute at runtime
+  (`git rev-parse --show-toplevel`, `git rev-parse --git-dir`) and standard system tools only. `post-merge` runs after a successful
+  merge (including `git pull`), receives a flag for squash merges and cannot abort anything.
+
+  ## Real-world use
+
+  Reinstalling dependencies after the lock file changes, regenerating code, rebuilding a search index. Teams ship such tools in the repository
+  (`tools/`, `scripts/`) so that the hook is reproducible on every machine.
+
+  ## Pitfalls
+
+  - A hard-coded `/home/anna/repo/tools/...` passes on one machine and fails on every other one.
+  - Test hooks with `env -i` to simulate a clean environment.
+  - Failing post-merge hooks print but do not stop the merge: failures are easy to miss, so make the message loud.
+common_mistakes:
+  - "Adding `tools/bin` to your own shell profile; that only fixes your terminal and not the IDE or CI."
+  - "Hard-coding the absolute path of your sandbox, which fails when the repository is cloned elsewhere."
+  - "Calling `depsync` unconditionally, which also runs it for merges that do not change the lock file."
+  - "Copying the tool into `.git/hooks`, where it cannot be updated through normal commits."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: post-merge
+    description: an executable post-merge hook exists
+  - type: script_passes
+    description: with a minimal PATH, merging the lock-file change creates .deps-synced
+    script: |
+      orig=$(pwd); t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      rm -f .deps-synced
+      gitdir=$(dirname "$(command -v git)")
+      env -i PATH="/usr/bin:/bin:$gitdir" HOME="$t" git -c user.name=T -c user.email=t@example.dev merge -q --no-ff deps-update -m "Merge deps-update" >/dev/null 2>&1
+      test "$(cat .deps-synced)" = "synced 3 packages"
+      if grep -qF "$orig" .git/hooks/post-merge; then echo "absolute path in hook" >&2; exit 1; fi
+  - type: script_passes
+    description: a merge without lock-file changes does not run the sync
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      rm -f .deps-synced
+      git switch -q -c docs
+      printf 'docs\n' > docs.txt; git add -A; git -c user.name=T -c user.email=t@example.dev commit -q -m "Add docs"
+      git switch -q main
+      printf 'more\n' >> README.md; git -c user.name=T -c user.email=t@example.dev commit -q -am "Update README"
+      gitdir=$(dirname "$(command -v git)")
+      env -i PATH="/usr/bin:/bin:$gitdir" HOME="$t" git -c user.name=T -c user.email=t@example.dev merge -q --no-ff docs -m "Merge docs" >/dev/null 2>&1
+      test ! -e .deps-synced

@@ -4,50 +4,117 @@ level: level-173-pre-receive-hook
 order: 173
 difficulty: advanced
 xp: 400
-expected_time: 12m
+expected_time: 15m
+repo_path: work
 concepts:
-- reject pushes server-side
-common_mistakes:
-- Running commands related to reject pushes server-side without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `reject
-  pushes server-side`.
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - pre-receive hook
+  - server-side enforcement
+  - reading "old new ref" lines on stdin
+description: |
+  The payment ledger lives on a shared bare repository, `../origin.git`, which you administer. Compliance requires that every commit
+  entering it was authored with a company address (`@acme-finance.com`), because auditors map author addresses to employees. Client-side
+  hooks cannot guarantee that, since anybody can skip or never install them. The server must check. A `pre-receive` hook runs once per
+  push on the server, receives one line `<old-sha> <new-sha> <ref>` per updated ref on stdin, and rejects the **whole push** with a non-zero exit.
+objective: |
+  Install an executable `pre-receive` hook in the bare repository `../origin.git/hooks/` that rejects any push containing a **new commit** whose author
+  email does not end in `@acme-finance.com`, and accepts pushes whose new commits are all company-authored. It must work for updates of existing
+  branches, for newly created branches and for deletions (which carry no new commits).
 hints:
-- Start with the Git command related to `reject pushes server-side`.
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "The hook belongs to the *server* repository: `../origin.git/hooks/pre-receive`. Client hooks in `work/.git/hooks` do nothing here."
+  - "Read lines with `while read old new ref`. For an update the new commits are `$old..$new`; for a new branch `$old` is forty zeros, so use `$new --not --all`."
+  - "`git log --format='%h %ae' <range>` lists authors' emails; reject (`exit 1`) if any does not end with `@acme-finance.com`. Skip lines whose `$new` is all zeros (deletions)."
+guide: |
+  ## Enforcement on the server
 
+  Look at the bare repository's hooks directory; it is the one that matters when you push:
 
-  **Server-Side: pre-receive**
+  ```bash
+  ls ../origin.git/hooks
+  ```
 
+  The three values per line are the old and new commit of the ref and its name. All zeros mean "does not exist". Write the hook:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  cat > ../origin.git/hooks/pre-receive <<'HOOK'
+  #!/bin/sh
+  zero=0000000000000000000000000000000000000000
+  while read old new ref; do
+    [ "$new" = "$zero" ] && continue
+    if [ "$old" = "$zero" ]; then range="$new --not --all"; else range="$old..$new"; fi
+    bad=$(git log --format='%h %ae' $range | grep -v '@acme-finance\.com$' || true)
+    if [ -n "$bad" ]; then
+      echo "pre-receive: rejected $ref, non-company author:" >&2
+      echo "$bad" | sed 's/^/  /' >&2
+      exit 1
+    fi
+  done
+  exit 0
+  HOOK
+  chmod +x ../origin.git/hooks/pre-receive
+  ```
 
-  '
+  Test from `work`: commit with `GIT_AUTHOR_EMAIL=me@gmail.com git commit ...` and push. You should read `remote: pre-receive: rejected refs/heads/main ...` and
+  `! [remote rejected]`. Nothing is stored on the server when the hook fails.
+debrief: |
+  ## What you learned
+
+  Server-side hooks are the only enforcement that clients cannot skip. `pre-receive` sees **all** ref updates of a push at once and decides
+  atomically: one non-zero exit rejects everything. New objects are in a quarantine area while it runs, so `git log old..new` works even though the refs have not
+  moved yet. For a new branch the old value is zeros, so you limit the range with `--not --all` to the commits that really are new.
+
+  ## Real-world use
+
+  Author checks, signed-commit requirements, blocking of large files or secrets, protecting branches on self-hosted git. Hosted platforms offer
+  similar rules through settings; GitLab and GitHub Enterprise allow custom pre-receive scripts.
+
+  ## Pitfalls
+
+  - A hook that only inspects `$new` (the tip) misses bad commits earlier in the push.
+  - Branch deletions have a new value of all zeros; `git log` on it errors out unless you skip it.
+  - Author email is self-declared; real identity needs signed commits or SSO-based checks.
+  - Hooks must be executable in the **bare** repo, and on hosted services you may not be able to install them at all.
+common_mistakes:
+  - "Installing the hook in `work/.git/hooks`, which is a client-side directory and never runs on push."
+  - "Checking only the tip commit, so a bad commit followed by a good one passes."
+  - "Using `$old..$new` for a new branch, where `$old` is all zeros, which makes git fail instead of validating."
+  - "Using `pre-push` or `post-receive`: the first is client-side, the second runs after the push has already been accepted."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: an executable pre-receive hook is installed in the bare repository
+    script: |
+      test -x ../origin.git/hooks/pre-receive
+  - type: script_passes
+    description: a push with a non-company author is rejected and the server is unchanged
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R ../origin.git "$t/o.git"
+      git clone -q "$t/o.git" "$t/w"; cd "$t/w"
+      before=$(git ls-remote origin refs/heads/main | cut -f1)
+      printf 'x\n' >> ledger.csv
+      GIT_AUTHOR_NAME=Eve GIT_AUTHOR_EMAIL=eve@gmail.com git commit -q -am "Sneaky entry"
+      if git push -q origin main >/dev/null 2>&1; then echo "bad push accepted" >&2; exit 1; fi
+      test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$before"
+      git reset -q --hard origin/main
+      printf 'y\n' >> ledger.csv
+      GIT_AUTHOR_EMAIL=ann@acme-finance.com git commit -q -am "Company entry"
+      printf 'z\n' >> ledger.csv
+      GIT_AUTHOR_EMAIL=eve@gmail.com git commit -q -am "Hidden in the middle"
+      printf 'w\n' >> ledger.csv
+      GIT_AUTHOR_EMAIL=ann@acme-finance.com git commit -q -am "Good tip"
+      if git push -q origin main >/dev/null 2>&1; then echo "push with a bad middle commit accepted" >&2; exit 1; fi
+      if git push -q origin HEAD:refs/heads/new-branch >/dev/null 2>&1; then echo "new branch with a bad commit accepted" >&2; exit 1; fi
+      test -z "$(git ls-remote origin refs/heads/new-branch)"
+  - type: script_passes
+    description: company-authored pushes, new branches without new commits and deletions are accepted
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R ../origin.git "$t/o.git"
+      git clone -q "$t/o.git" "$t/w"; cd "$t/w"
+      printf 'x\n' >> ledger.csv
+      GIT_AUTHOR_EMAIL=ann@acme-finance.com git commit -q -am "Company entry"
+      git push -q origin main
+      test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
+      git push -q origin HEAD:refs/heads/topic
+      git push -q origin :refs/heads/topic
+      test -z "$(git ls-remote origin refs/heads/topic)"
+

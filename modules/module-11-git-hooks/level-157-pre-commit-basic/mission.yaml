@@ -4,38 +4,101 @@ level: level-157-pre-commit-basic
 order: 157
 difficulty: advanced
 xp: 320
-expected_time: 12m
+expected_time: 10m
 concepts:
-- run a check before every commit
-common_mistakes:
-- Running commands related to run a check before every commit without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices local and server-side Git hooks inside a sandbox.
-objective: Create an executable `pre-commit` hook that prints `hook ok`.
+  - pre-commit hook
+  - blocking a commit with a non-zero exit
+  - git diff --cached --name-only
+description: |
+  The payment gateway client reads its API key from the environment. Developers keep the real values in local `*.env`
+  files such as `prod.env` or `config/live.env`, and last quarter one of them was pushed to a public mirror. The security lead
+  wants a hard stop at the source: git itself must refuse a commit that contains a file whose name ends in `.env`.
+  Example files such as `config/env.example` are fine.
+objective: |
+  Write an executable `.git/hooks/pre-commit` that **rejects** (exit status 1, with a message naming the file) any commit
+  in which a file ending in `.env` is staged, anywhere in the tree, including a file named just `.env`, and allows all other commits.
 hints:
-- Hooks live in `.git/hooks/`.
-- Remember to make the file executable.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '#!/usr/bin/env bash\\\
-  necho hook ok\\n' > .git/hooks/pre-commit\n   ```\n\n2.\n   ```bash\n   chmod +x\
-  \ .git/hooks/pre-commit\n   ```"
-debrief: '## What Just Happened
+  - "The hook decides with its exit status. You need the list of staged paths and a pattern match."
+  - "`git diff --cached --name-only` prints staged paths; `grep -E '\\.env$'` selects those that end in `.env`."
+  - "If grep finds something, print the names to stderr and `exit 1`; otherwise `exit 0`. Remember `chmod +x`."
+guide: |
+  ## A gatekeeper
 
+  Create the hook:
 
-  **Basic Pre-Commit Hook**
+  ```bash
+  cat > .git/hooks/pre-commit <<'HOOK'
+  #!/bin/sh
+  bad=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.env$' || true)
+  if [ -n "$bad" ]; then
+    echo "pre-commit: refusing to commit environment files:" >&2
+    echo "$bad" | sed 's/^/  /' >&2
+    exit 1
+  fi
+  exit 0
+  HOOK
+  chmod +x .git/hooks/pre-commit
+  ```
 
+  `|| true` keeps `grep` (which returns 1 when nothing matches) from being a problem if you later add `set -e`. Test both outcomes:
 
-  Hooks let you automate checks at key points in the Git workflow.
+  ```bash
+  echo KEY=abc > prod.env && git add -f prod.env
+  git commit -m "oops"          # rejected, names prod.env
+  git restore --staged prod.env && rm prod.env
+  ```
 
-  '
+  And a normal commit must still work.
+debrief: |
+  ## What you learned
+
+  A pre-commit hook gates a commit with its exit code. Everything it needs is in the index, so ask git
+  (`git diff --cached`) rather than looking at the working directory: the *staged* content is what will be committed.
+  Messages should go to stderr and say what to do next.
+
+  ## Real-world use
+
+  Secret scanners (gitleaks, detect-secrets) are pre-commit hooks with much better patterns. A hook is a first line of
+  defence; the same check should run on the server/CI too, because hooks can be bypassed.
+
+  ## Pitfalls
+
+  - `.gitignore` is the first defence against `.env` files; the hook protects against `git add -f` and a missing ignore rule.
+  - Name patterns miss secrets in other files; add content scanning for serious protection.
+  - Hooks are local and optional for each developer.
+common_mistakes:
+  - "Matching on `*.env*`, which also blocks the harmless `config/env.example`."
+  - "Only checking the repository root, so `config/live.env` slips through."
+  - "Printing the error but exiting 0, which lets the commit go through."
+  - "Forgetting to make the hook executable."
 validators:
-- type: hook_exists
-  name: pre-commit
-  description: pre-commit hook exists and is executable
-- type: hook_output_contains
-  name: pre-commit
-  text: hook ok
-  description: pre-commit hook prints the expected output
+  - type: hook_exists
+    name: pre-commit
+    description: an executable pre-commit hook exists
+  - type: script_passes
+    description: commits with .env files (root, nested or bare .env) are rejected and the file is named
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      printf 'KEY=1\n' > prod.env; git add -f prod.env
+      must_fail git commit -q -m "add prod env"
+      out=$(git commit -q -m "add prod env" 2>&1 || true)
+      printf '%s' "$out" | grep -q 'prod.env'
+      git reset -q; rm prod.env
+      printf 'KEY=2\n' > config/live.env; git add -f config/live.env
+      must_fail git commit -q -m "add live env"
+      git reset -q; rm config/live.env
+      printf 'KEY=3\n' > .env; git add -f .env
+      must_fail git commit -q -m "add dotenv"
+  - type: script_passes
+    description: ordinary commits, including config/env.example, still succeed
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf 'GATEWAY_TIMEOUT=30\n' >> config/env.example
+      printf 'TIMEOUT = 30\n' >> gateway/settings.py
+      git add -A
+      git commit -q -m "Document the gateway timeout"
+      test "$(git log -1 --format=%s)" = "Document the gateway timeout"
+

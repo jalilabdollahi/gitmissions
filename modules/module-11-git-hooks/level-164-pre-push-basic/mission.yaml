@@ -5,49 +5,101 @@ order: 164
 difficulty: advanced
 xp: 360
 expected_time: 12m
+repo_path: work
 concepts:
-- run tests before `git push`
-common_mistakes:
-- Running commands related to run tests before `git push` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `run tests
-  before `git push``.
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - pre-push hook
+  - running tests before publishing
+description: |
+  Twice this month somebody pushed a currency-converter change that broke the nightly build, because the quick smoke test
+  `./run_tests.sh` had not been run. The team wants the push itself to be the checkpoint: git should run the tests right before
+  sending anything to the server and refuse the push if they fail. That is what a `pre-push` hook is for. It runs after the remote
+  has been contacted but before any objects are sent, so nothing is published when it fails.
+objective: |
+  Create an executable `.git/hooks/pre-push` that runs `./run_tests.sh` from the repository root, lets the push continue
+  when it succeeds, and aborts the push (exit 1, with a message) when it fails. A push of a commit that breaks the test must leave
+  `origin` unchanged.
 hints:
-- Start with the Git command related to `run tests before `git push``.
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "The hook decides with its exit status, just like pre-commit. Run the test script and react to its status."
+  - "`if ! ./run_tests.sh; then ... exit 1; fi`. Hooks run from the top level of the working tree, so a relative path is fine."
+  - "Save the script as `.git/hooks/pre-push`, `chmod +x` it, then try breaking `RATE` in `converter.py`, committing and pushing."
+guide: |
+  ## Stop bad code at the door
 
+  Look at the test first. It is a one-liner that fails when the rate is wrong:
 
-  **Pre-Push Hook**
+  ```bash
+  ./run_tests.sh; echo $?
+  ```
 
+  Write the hook:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  cat > .git/hooks/pre-push <<'HOOK'
+  #!/bin/sh
+  echo "pre-push: running tests..."
+  if ! ./run_tests.sh; then
+    echo "pre-push: tests failed, push aborted" >&2
+    exit 1
+  fi
+  exit 0
+  HOOK
+  chmod +x .git/hooks/pre-push
+  ```
 
-  '
+  Try it on a deliberately broken change:
+
+  ```bash
+  sed -i.bak 's/1.08/1.80/' converter.py && rm converter.py.bak
+  git commit -am "Change rate"
+  git push                      # refused
+  ```
+
+  Fix the rate, commit, and the push goes through. Remember that the failed push did not send anything.
+debrief: |
+  ## What you learned
+
+  `pre-push` receives the remote name and URL as arguments and the refs to be updated on stdin; its exit status can veto the whole push. It is the
+  natural place for checks that are too slow for every commit (full test suite, build) but should pass before sharing work. Since it
+  runs *before* data is transferred, a failure leaves the remote exactly as it was.
+
+  ## Real-world use
+
+  Many teams keep `pre-commit` light (format, lint) and put tests into `pre-push`. CI remains the authoritative check, because developers can skip hooks.
+
+  ## Pitfalls
+
+  - `git push --no-verify` skips the hook; it is meant for emergencies.
+  - A slow pre-push hook makes people push less often or skip it; keep it under about a minute.
+  - Hooks run in the repository root, but relying on `$PATH` tools that exist only on your machine is fragile.
+common_mistakes:
+  - "Naming the hook `pre-commit`, which runs at the wrong time (before each commit and not at push)."
+  - "Running the tests but ignoring their exit code, so failures never abort the push."
+  - "Calling `./run_tests.sh` with a path that only works from a subdirectory."
+  - "Forgetting `chmod +x`."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: pre-push
+    description: an executable pre-push hook exists
+  - type: script_passes
+    description: a push that breaks the tests is refused and the remote does not change
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      git init -q --bare -b main "$t/o.git"; git remote set-url origin "$t/o.git"
+      git push -q origin main
+      before=$(git ls-remote origin refs/heads/main | cut -f1)
+      sed -i.bak 's/RATE = 1.08/RATE = 1.80/' converter.py && rm converter.py.bak
+      git commit -q -am "Change the rate"
+      if git push -q origin main >/dev/null 2>&1; then echo "push should have failed" >&2; exit 1; fi
+      test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$before"
+  - type: script_passes
+    description: once the tests pass again, the push succeeds
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      git init -q --bare -b main "$t/o.git"; git remote set-url origin "$t/o.git"
+      printf '\n# euro to dollar\n' >> converter.py
+      git commit -q -am "Comment the converter"
+      git push -q origin main
+      test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
+
