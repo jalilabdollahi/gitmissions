@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import json
-import readline  # noqa: F401
+import os
 import re
+import shlex
 import subprocess
-import threading
 import time
 from pathlib import Path
 
 import yaml
 from rich.prompt import Prompt
 
+try:
+    import readline
+except ImportError:  # pragma: no cover - readline is missing on some platforms
+    readline = None
+
 from engine.certificate import generate_certificate, render_certificate, save_certificate
 from engine.player import prompt_player_name
-from engine.reset import prepare_level
+from engine.reset import LevelSetupError, prepare_level
 from engine.ui import (
     console,
     render_sandbox_path,
@@ -42,6 +47,7 @@ PROGRESS_FILE = REPO_ROOT / "progress.json"
 LEVELS_REGISTRY = REPO_ROOT / "levels.json"
 MODULES_DIR = REPO_ROOT / "modules"
 HISTORY_FILE = REPO_ROOT / ".gitmissions_history"
+WATCH_INTERVAL = 3
 
 COMMAND_ALIASES = {
     "1": "check",
@@ -56,9 +62,8 @@ COMMAND_ALIASES = {
     "9": "help",
     "g": "handbook",
     "gitguide": "handbook",
-    "guide git": "handbook",
-    "handbook": "handbook",
     "q": "quit",
+    "exit": "quit",
 }
 
 GITMISSIONS_COMMANDS = frozenset({
@@ -66,63 +71,57 @@ GITMISSIONS_COMMANDS = frozenset({
     "reset", "skip", "status", "help", "quit",
 })
 
+# Characters that make a line a compound shell command rather than a plain `cd`.
+_SHELL_OPERATORS = re.compile(r"&&|\|\||[;|&<>`$(]")
+
+
+# --------------------------------------------------------------------------- progress
+
 
 def default_progress() -> dict:
     return {
         "player_name": None,
         "total_xp": 0,
         "completed_levels": [],
+        "skipped_levels": [],
         "current_module": "module-01-foundations",
         "current_level": "level-001-init-your-first-repo",
         "module_certificates": [],
         "time_per_level": {},
-        "level_start_time": None,
         "hint_state": {},
     }
 
 
 def load_progress() -> dict:
+    progress = default_progress()
     if not PROGRESS_FILE.exists():
-        return default_progress()
-    return json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+        return progress
+    try:
+        saved = json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(saved, dict):
+            raise ValueError("progress.json is not an object")
+    except (OSError, ValueError) as exc:
+        backup = PROGRESS_FILE.with_name("progress.json.corrupt")
+        PROGRESS_FILE.replace(backup)
+        show_error(f"progress.json could not be read ({exc}); it was moved to {backup.name}. Starting fresh.")
+        return progress
+    saved.pop("level_start_time", None)
+    progress.update(saved)
+    return progress
 
 
 def save_progress(progress: dict) -> None:
-    PROGRESS_FILE.write_text(json.dumps(progress, indent=2), encoding="utf-8")
-
-
-def setup_history() -> None:
-    try:
-        readline.read_history_file(str(HISTORY_FILE))
-    except FileNotFoundError:
-        HISTORY_FILE.touch()
-    except OSError:
-        return
-
-    readline.set_history_length(500)
-    try:
-        readline.parse_and_bind("set editing-mode emacs")
-        readline.parse_and_bind('"\\e[A": previous-history')
-        readline.parse_and_bind('"\\e[B": next-history')
-    except OSError:
-        pass
-
-
-def append_history(command: str) -> None:
-    if not command.strip():
-        return
-    try:
-        if readline.get_current_history_length() == 0 or readline.get_history_item(readline.get_current_history_length()) != command:
-            readline.add_history(command)
-        readline.write_history_file(str(HISTORY_FILE))
-    except OSError:
-        pass
+    """Write progress atomically so an interrupted save never corrupts it."""
+    tmp = PROGRESS_FILE.with_name(PROGRESS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(progress, indent=2), encoding="utf-8")
+    os.replace(tmp, PROGRESS_FILE)
 
 
 def load_registry() -> list[dict]:
     if not LEVELS_REGISTRY.exists():
         return []
-    return json.loads(LEVELS_REGISTRY.read_text(encoding="utf-8"))
+    registry = json.loads(LEVELS_REGISTRY.read_text(encoding="utf-8"))
+    return sorted(registry, key=lambda item: item["order"])
 
 
 def load_mission(module: str, level: str) -> dict:
@@ -131,13 +130,17 @@ def load_mission(module: str, level: str) -> dict:
 
 
 def resolve_current_level(progress: dict, registry: list[dict]) -> dict | None:
+    """First level neither completed nor skipped; once those run out, revisit skipped levels."""
     completed = set(progress.get("completed_levels", []))
-    for item in registry:
-        if item["level"] not in completed:
-            progress["current_module"] = item["module"]
-            progress["current_level"] = item["level"]
-            return item
-    return None
+    skipped = set(progress.get("skipped_levels", []))
+    candidates = [item for item in registry if item["level"] not in completed]
+    entry = next((item for item in candidates if item["level"] not in skipped), None)
+    if entry is None and candidates:
+        entry = candidates[0]
+    if entry is not None:
+        progress["current_module"] = entry["module"]
+        progress["current_level"] = entry["level"]
+    return entry
 
 
 def format_duration(seconds: float) -> str:
@@ -146,207 +149,279 @@ def format_duration(seconds: float) -> str:
     return f"{minutes}m {secs}s"
 
 
-def run_watch_mode(sandbox: Path, validators: list[dict], stop_event: threading.Event) -> None:
-    while not stop_event.is_set():
-        results = validate_all(sandbox, validators)
-        show_watch_tick(all(item["passed"] for item in results))
-        if stop_event.wait(3):
-            break
+def _module_levels(module_name: str, registry: list[dict]) -> list[dict]:
+    return [item for item in registry if item["module"] == module_name]
 
 
-def _module_completed(module_name: str, completed_levels: set[str], registry: list[dict]) -> bool:
-    module_levels = [item["level"] for item in registry if item["module"] == module_name]
-    return bool(module_levels) and all(level in completed_levels for level in module_levels)
+def _complete_level(progress: dict, registry: list[dict], entry: dict, elapsed: float) -> None:
+    completed = set(progress.get("completed_levels", []))
+    if entry["level"] not in completed:
+        completed.add(entry["level"])
+        progress["total_xp"] = progress.get("total_xp", 0) + entry["xp"]
+    progress["completed_levels"] = sorted(completed)
+    progress["skipped_levels"] = [lvl for lvl in progress.get("skipped_levels", []) if lvl != entry["level"]]
+    progress.setdefault("time_per_level", {})[entry["level"]] = int(elapsed)
+
+    module = entry["module"]
+    levels = _module_levels(module, registry)
+    if levels and all(item["level"] in completed for item in levels) and module not in progress.get("module_certificates", []):
+        progress.setdefault("module_certificates", []).append(module)
+        player = progress.get("player_name") or "Player"
+        xp = sum(item["xp"] for item in levels)
+        render_certificate(module, player, xp)
+        save_certificate(REPO_ROOT, module, generate_certificate(module, player, xp))
+        show_module_completion(module, xp, player)
 
 
-def _module_xp(module_name: str, registry: list[dict]) -> int:
-    return sum(item["xp"] for item in registry if item["module"] == module_name)
+def _skip_level(progress: dict, entry: dict) -> None:
+    skipped = progress.setdefault("skipped_levels", [])
+    if entry["level"] in skipped:
+        skipped.remove(entry["level"])  # move to the back of the revisit queue
+    skipped.append(entry["level"])
+
+
+# --------------------------------------------------------------------------- shell helpers
+
+
+def setup_history() -> None:
+    if readline is None:
+        return
+    try:
+        readline.read_history_file(str(HISTORY_FILE))
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return
+    readline.set_history_length(500)
+
+
+def append_history() -> None:
+    """Persist the history readline already recorded for the last prompt."""
+    if readline is None:
+        return
+    try:
+        readline.write_history_file(str(HISTORY_FILE))
+    except OSError:
+        pass
 
 
 def _effective_repo_path(sandbox: Path, mission: dict) -> Path:
-    repo_path = mission.get("repo_path", ".")
-    return (sandbox / repo_path).resolve()
+    return (sandbox / mission.get("repo_path", ".")).resolve()
 
 
-def _advance_after_success(progress: dict, registry: list[dict], current_entry: dict) -> dict | None:
-    completed = set(progress.get("completed_levels", []))
-    if current_entry["level"] not in completed:
-        completed.add(current_entry["level"])
-        progress["completed_levels"] = sorted(completed)
-        progress["total_xp"] = progress.get("total_xp", 0) + current_entry["xp"]
-
-    module = current_entry["module"]
-    if _module_completed(module, completed, registry) and module not in progress.get("module_certificates", []):
-        progress.setdefault("module_certificates", []).append(module)
-        xp = _module_xp(module, registry)
-        render_certificate(module, progress.get("player_name") or "Player", xp)
-        save_certificate(REPO_ROOT, module, generate_certificate(module, progress.get("player_name") or "Player", xp))
-        show_module_completion(module, xp, progress.get("player_name") or "Player")
-
-    return resolve_current_level(progress, registry)
+def _is_plain_cd(raw: str) -> bool:
+    return (raw == "cd" or raw.startswith(("cd ", "cd\t"))) and not _SHELL_OPERATORS.search(raw)
 
 
 def _handle_cd(raw: str, state: dict) -> None:
-    """Handle `cd` as a virtual directory change within the sandbox."""
-    parts = raw.split(None, 1)
-    if len(parts) == 1 or parts[1] in ("~", ""):
-        state["cwd"] = state["sandbox"]
+    """Handle `cd` virtually, since each shell command runs in its own process."""
+    try:
+        parts = shlex.split(raw)
+    except ValueError as exc:
+        show_error(f"cd: {exc}")
         return
-    target = parts[1]
-    new_path = (state["cwd"] / target).resolve()
+    target = parts[1] if len(parts) > 1 else "~"
+    if target == "-":
+        state["cwd"], state["prev_cwd"] = state.get("prev_cwd", state["cwd"]), state["cwd"]
+        return
+    if target == "~" or target.startswith("~/"):
+        new_path = (state["repo_path"] / target[2:]).resolve()
+    else:
+        new_path = (state["cwd"] / os.path.expanduser(target)).resolve()
     if new_path.is_dir():
+        state["prev_cwd"] = state["cwd"]
         state["cwd"] = new_path
     else:
-        console.print(f"[red]cd: {target}: No such file or directory[/red]")
+        show_error(f"cd: {target}: No such file or directory")
 
 
 def _run_shell(raw: str, cwd: Path) -> None:
-    """Run an arbitrary shell command in the sandbox directory."""
-    subprocess.run(raw, shell=True, cwd=str(cwd), check=False)
+    """Run a player command with bash in the sandbox directory, using the player's own git config."""
+    if not cwd.is_dir():
+        show_error(f"Current directory {cwd} no longer exists; use `cd ~` or `reset`.")
+        return
+    try:
+        subprocess.run(["bash", "-c", raw], cwd=str(cwd), check=False)
+    except KeyboardInterrupt:
+        console.print()
 
 
 def _cwd_display(state: dict) -> str:
-    """Return a short cwd label relative to the sandbox root."""
     try:
-        rel = state["cwd"].relative_to(state["sandbox"])
+        rel = state["cwd"].relative_to(state["repo_path"])
         return f"~/{rel}" if str(rel) != "." else "~"
     except ValueError:
         return str(state["cwd"])
-
-
-def _clear_screen() -> None:
-    console.clear()
-
-
-def _show_handbook() -> None:
-    handbook_path = REPO_ROOT / "GIT_GUIDE.md"
-    show_guide(handbook_path.read_text(encoding="utf-8"))
 
 
 def _maybe_collect_heredoc(raw: str) -> str:
     match = re.search(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1\s*$", raw)
     if not match:
         return raw
-
     terminator = match.group(2)
+    strip_tabs = "<<-" in raw[match.start():match.start() + 3]
     lines = [raw]
     while True:
-        next_line = Prompt.ask("[dim]...[/dim]", default="")
+        next_line = input("... ")
         lines.append(next_line)
-        if next_line == terminator:
+        if (next_line.lstrip("\t") if strip_tabs else next_line) == terminator:
             break
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------- level lifecycle
+
+
+def _start_level(state: dict) -> None:
+    """(Re)build the sandbox for the current entry and print the briefing."""
+    entry = state["entry"]
+    state["level_ready"] = False
+    try:
+        sandbox = prepare_level(entry["module"], entry["level"], state["level_dir"])
+    except LevelSetupError as exc:
+        show_error(f"Could not set up this level: {exc}")
+        show_info("Try `reset`, or `skip` to move on. Please report this level as a bug.")
+        return
+    state["sandbox"] = sandbox
+    state["repo_path"] = _effective_repo_path(sandbox, state["mission"])
+    state["cwd"] = state["repo_path"]
+    state["prev_cwd"] = state["repo_path"]
+    state["level_started_at"] = time.time()
+    state["level_completed"] = False
+    state["level_ready"] = True
+
+    show_progress_summary(state["progress"], state["registry"], state["mission"]["name"])
+    render_sandbox_path(str(state["repo_path"]))
+    show_mission_briefing(state["mission"], entry["order"], len(state["registry"]), str(state["repo_path"]))
+
+
+def _run_check(state: dict, results: list[dict] | None = None) -> None:
+    if not state.get("level_ready"):
+        show_error("This level's sandbox is not ready. Use `reset` or `skip`.")
+        return
+    if results is None:
+        results = validate_all(state["repo_path"], state["mission"]["validators"])
+    show_check_results(results)
+    if not all(item["passed"] for item in results):
+        return
+
+    elapsed = time.time() - state["level_started_at"]
+    progress, registry, entry = state["progress"], state["registry"], state["entry"]
+    console.clear()
+    _complete_level(progress, registry, entry, elapsed)
+    next_entry = resolve_current_level(progress, registry)
+    save_progress(progress)
+    show_victory(state["mission"]["name"], entry["xp"], format_duration(elapsed), next_entry["name"] if next_entry else None)
+    show_debrief(state["mission"].get("debrief", "No debrief available yet."), state["mission"].get("common_mistakes", []))
+    state["level_completed"] = True
+    try:
+        Prompt.ask("\n[dim]Press Enter to continue to the next level[/dim]", default="")
+    except (KeyboardInterrupt, EOFError):
+        console.print()
+    state["advance"] = True
+
+
+def _run_watch(state: dict) -> None:
+    if not state.get("level_ready"):
+        show_error("This level's sandbox is not ready. Use `reset` or `skip`.")
+        return
+    show_info(f"Watching the repo every {WATCH_INTERVAL}s. Work in another terminal; press Ctrl+C to stop.")
+    try:
+        while True:
+            results = validate_all(state["repo_path"], state["mission"]["validators"])
+            passed = all(item["passed"] for item in results)
+            show_watch_tick(passed, sum(item["passed"] for item in results), len(results))
+            if passed:
+                console.print()
+                _run_check(state, results)
+                return
+            time.sleep(WATCH_INTERVAL)
+    except KeyboardInterrupt:
+        console.print()
+        show_info("Watch mode stopped.")
+
+
 def dispatch(cmd: str, state: dict) -> bool:
     """Handle a resolved gitmissions command. Returns False to quit."""
+    mission, progress, entry = state["mission"], state["progress"], state["entry"]
     if cmd == "check":
-        results = validate_all(state["repo_path"], state["mission"]["validators"])
-        show_check_results(results)
-        if all(item["passed"] for item in results):
-            elapsed = time.time() - state["level_started_at"]
-            next_entry = _advance_after_success(state["progress"], state["registry"], state["entry"])
-            next_name = next_entry["name"] if next_entry else None
-            _clear_screen()
-            show_victory(state["mission"]["name"], state["entry"]["xp"], format_duration(elapsed), next_name)
-            show_debrief(
-                state["mission"].get("debrief", "No debrief available yet."),
-                state["mission"].get("common_mistakes", []),
-            )
-            Prompt.ask("\n[dim]Press Enter to continue to the next level[/dim]", default="")
-            save_progress(state["progress"])
-            state["level_completed"] = True
-            state["advance"] = True
-        return True
-    if cmd == "watch":
-        stop_event = threading.Event()
-        worker = threading.Thread(
-            target=run_watch_mode,
-            args=(state["repo_path"], state["mission"]["validators"], stop_event),
-            daemon=True,
-        )
-        worker.start()
-        Prompt.ask("\n[dim]Press Enter to stop watch mode[/dim]", default="")
-        stop_event.set()
-        worker.join(timeout=1)
-        print()
-        return True
-    if cmd == "hint":
-        hints = state["mission"].get("hints", [])
-        index = state["progress"].setdefault("hint_state", {}).get(state["entry"]["level"], 0)
+        _run_check(state)
+    elif cmd == "watch":
+        _run_watch(state)
+    elif cmd == "hint":
+        hints = mission.get("hints", [])
+        index = progress.setdefault("hint_state", {}).get(entry["level"], 0)
         if index >= len(hints):
             show_all_hints_used(len(hints))
-            show_solution((state["level_dir"] / "solution.sh").read_text(encoding="utf-8"))
         else:
             show_hint(hints[index], index + 1, len(hints))
-            state["progress"]["hint_state"][state["entry"]["level"]] = index + 1
-            save_progress(state["progress"])
-        return True
-    if cmd == "solution":
+            progress["hint_state"][entry["level"]] = index + 1
+            save_progress(progress)
+    elif cmd == "solution":
         show_solution((state["level_dir"] / "solution.sh").read_text(encoding="utf-8"))
-        return True
-    if cmd == "guide":
-        show_guide(state["mission"].get("guide", "No guide available."))
-        return True
-    if cmd == "handbook":
-        _show_handbook()
-        return True
-    if cmd == "debrief":
-        if not state.get("level_completed"):
-            show_info("The debrief unlocks after you complete the level.")
+    elif cmd == "guide":
+        show_guide(mission.get("guide", "No guide available."))
+    elif cmd == "handbook":
+        show_guide((REPO_ROOT / "GIT_GUIDE.md").read_text(encoding="utf-8"))
+    elif cmd == "debrief":
+        if state.get("level_completed") or entry["level"] in progress.get("completed_levels", []):
+            show_debrief(mission.get("debrief", "No debrief available yet."), mission.get("common_mistakes", []))
         else:
-            show_debrief(
-                state["mission"].get("debrief", "No debrief available yet."),
-                state["mission"].get("common_mistakes", []),
-            )
-        return True
-    if cmd == "reset":
-        _clear_screen()
+            show_info("The debrief unlocks after you complete the level.")
+    elif cmd == "reset":
+        console.clear()
         show_info("Resetting level sandbox…")
-        sandbox = prepare_level(state["entry"]["module"], state["entry"]["level"], state["level_dir"])
-        state["sandbox"] = sandbox
-        state["cwd"] = _effective_repo_path(sandbox, state["mission"])
-        state["repo_path"] = state["cwd"]
-        state["level_started_at"] = time.time()
-        state["level_completed"] = False
-        render_sandbox_path(str(state["repo_path"]))
-        show_progress_summary(state["progress"], state["registry"], state["mission"]["name"])
-        show_mission_briefing(state["mission"], state["entry"]["order"], len(state["registry"]), str(state["repo_path"]))
-        return True
-    if cmd == "skip":
-        next_entry = resolve_current_level(state["progress"], state["registry"])
-        if next_entry and next_entry["level"] == state["entry"]["level"]:
-            state["progress"].setdefault("completed_levels", [])
-            state["progress"]["completed_levels"].append(state["entry"]["level"])
-        save_progress(state["progress"])
+        _start_level(state)
+    elif cmd == "skip":
+        _skip_level(progress, entry)
+        save_progress(progress)
+        show_info("Level skipped (no XP). Skipped levels come back after you finish the rest.")
         state["advance"] = True
-        return True
-    if cmd == "status":
-        show_status(state["progress"], state["registry"])
-        return True
-    if cmd == "help":
+    elif cmd == "status":
+        show_status(progress, state["registry"])
+    elif cmd == "help":
         show_help()
-        return True
-    if cmd == "quit":
-        save_progress(state["progress"])
+    elif cmd == "quit":
+        save_progress(progress)
         return False
-    show_error(f"Unknown command '{cmd}'. Type 'help' or press 9.")
     return True
+
+
+# --------------------------------------------------------------------------- main loop
+
+
+def _read_command(state: dict) -> str | None:
+    """Prompt for one command. Returns None when the player wants to quit (Ctrl+D)."""
+    show_menu_bar()
+    try:
+        raw = console.input(f"[cyan]gitmissions[/cyan] [dim]{_cwd_display(state)}[/dim] [yellow]❯[/yellow] ").strip()
+        if raw:
+            raw = _maybe_collect_heredoc(raw)
+    except KeyboardInterrupt:
+        console.print()
+        show_info("Type `q` to save and quit.")
+        return ""
+    except EOFError:
+        console.print()
+        return None
+    if raw:
+        append_history()
+    return raw
 
 
 def main() -> None:
     setup_history()
     registry = load_registry()
+    if not registry:
+        show_error("levels.json is missing or empty. Run ./install.sh first.")
+        return
     progress = load_progress()
-    prompt_player_name(progress)
+    try:
+        prompt_player_name(progress)
+    except (KeyboardInterrupt, EOFError):
+        console.print()
+        return
     save_progress(progress)
-
-    _clear_screen()
-    show_welcome(
-        progress.get("player_name") or "Player",
-        progress.get("total_xp", 0),
-        progress.get("current_module", ""),
-    )
 
     while True:
         entry = resolve_current_level(progress, registry)
@@ -354,64 +429,41 @@ def main() -> None:
             show_info("All missions are complete. Excellent work.")
             break
 
+        console.clear()
+        show_welcome(progress.get("player_name") or "Player", progress.get("total_xp", 0), entry["module"])
         level_dir = MODULES_DIR / entry["module"] / entry["level"]
-        mission = load_mission(entry["module"], entry["level"])
-        sandbox = prepare_level(entry["module"], entry["level"], level_dir)
-        repo_path = _effective_repo_path(sandbox, mission)
-
-        _clear_screen()
-        show_welcome(
-            progress.get("player_name") or "Player",
-            progress.get("total_xp", 0),
-            progress.get("current_module", ""),
-        )
-        show_progress_summary(progress, registry, mission["name"])
-        render_sandbox_path(str(repo_path))
-        show_mission_briefing(mission, entry["order"], len(registry), str(repo_path))
-
         state = {
             "advance": False,
             "entry": entry,
             "level_dir": level_dir,
-            "mission": mission,
+            "mission": load_mission(entry["module"], entry["level"]),
             "progress": progress,
             "registry": registry,
-            "sandbox": sandbox,
-            "repo_path": repo_path,
-            "cwd": repo_path,
+            "sandbox": None,
+            "repo_path": level_dir,
+            "cwd": level_dir,
             "level_started_at": time.time(),
             "level_completed": False,
+            "level_ready": False,
         }
+        _start_level(state)
 
-        while True:
-            show_menu_bar()
-            cwd_label = _cwd_display(state)
-            raw = Prompt.ask(
-                f"[cyan]gitmissions[/cyan] [dim]{cwd_label}[/dim] [yellow]❯[/yellow]"
-            ).strip()
+        while not state["advance"]:
+            raw = _read_command(state)
+            if raw is None:
+                save_progress(progress)
+                return
             if not raw:
                 continue
-            raw = _maybe_collect_heredoc(raw)
-            append_history(raw)
-
-            # cd is a shell builtin — handle it virtually
-            cmd_lower = raw.lower()
-            if cmd_lower == "cd" or cmd_lower.startswith("cd ") or cmd_lower.startswith("cd\t"):
+            if _is_plain_cd(raw):
                 _handle_cd(raw, state)
                 continue
-
-            # Resolve gitmissions aliases
-            resolved = COMMAND_ALIASES.get(cmd_lower, cmd_lower)
-
+            resolved = COMMAND_ALIASES.get(raw.lower(), raw.lower())
             if resolved in GITMISSIONS_COMMANDS:
                 if not dispatch(resolved, state):
                     return
             else:
-                # Run as a shell command in the current sandbox directory
                 _run_shell(raw, state["cwd"])
-
-            if state["advance"]:
-                break
 
 
 if __name__ == "__main__":
