@@ -98,7 +98,7 @@ but `export` and aliases do not carry over between commands. Your own git config
 | 3 | Merge Conflicts | 20 | Intermediate | conflict markers, strategies, resolution |
 | 4 | Remote Operations | 15 | Intermediate | clone, fetch, pull, push, diverged history |
 | 5 | Detached HEAD | 15 | Intermediate | detached state, recovery, branch from commit |
-| 6 | Rebase | 20 | Int/Advanced | rebase, interactive rebase, rebase conflicts |
+| 6 | Rebase | 20 | Intermediate | rebase, interactive rebase, rebase conflicts |
 | 7 | Stash | 10 | Intermediate | stash, pop, apply, stash branch |
 | 8 | History & Reflog | 15 | Advanced | log, reflog, recovering lost commits |
 | 9 | Reset & Revert | 15 | Advanced | soft/mixed/hard reset, revert, cherry-pick |
@@ -126,6 +126,7 @@ gitmissions/
 │   ├── certificate.py          ← Module completion certificates
 │   ├── player.py               ← Player state helpers
 │   ├── reset.py                ← Level reset + sandbox setup
+│   ├── sandbox.gitconfig       ← Git config the engine uses for setup, solutions and validators
 │   └── validator.py            ← Git repo validation helpers
 ├── docs/
 │   └── LEVEL_AUTHORING.md      ← How to write a level (format, rules, validators)
