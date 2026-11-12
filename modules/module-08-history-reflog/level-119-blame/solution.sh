@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > blame.txt <<'EOF'
-line1=Alice
-EOF
-git add blame.txt
-git commit -m "docs: add report"
+line='/^OVERDRAFT_FEE_CENTS/'
+git blame -w -L "$line,+1" --porcelain parser/fees.py | head -1 | cut -d' ' -f1 > culprit.txt
+git log -1 --format=%an "$(cat culprit.txt)" > author.txt

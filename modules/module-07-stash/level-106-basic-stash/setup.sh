@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main tablewise
+cd tablewise
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-printf 'work in progress
-' > app.txt
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf 'export const book = (t) => t;\n' > reservations.js
+printf 'Reservaton confirmed\n' > labels.txt
+printf 'let waitlist = [];\n' > waitlist.js
+git add . && git commit -q -m "Reservation basics"
+printf 'let waitlist = [];\nwaitlist.promote = () => null; // WIP: promote guests\n' > waitlist.js

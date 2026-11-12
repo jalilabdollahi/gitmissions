@@ -4,43 +4,82 @@ level: level-019-commit-with-body
 order: 19
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 7m
 concepts:
-- multi-line commit messages
-- blank line
-common_mistakes:
-- Running commands related to multi-line commit messages, blank line without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A documentation update is ready, but the commit needs both a subject
-  and a body.
-objective: 'Commit `CHANGELOG.md` with the subject `docs: add changelog` and a body
-  line containing `Explains the first release`.'
+  - multi-line commit messages
+  - subject, blank line, body
+  - issue references
+description: |
+  Wen's tea-timer app has a bug (issue #42): a green-tea countdown starts at 149 seconds instead of 150,
+  because of floating-point arithmetic. The fix is one line and is already staged, but the maintainers expect
+  more than a one-liner: a short subject, a blank line, then a body explaining why, and a reference to the issue.
+objective: |
+  Commit the staged fix with this message layout:
+  subject `Round brew times to whole seconds` (first line), then an empty line, then a body that mentions
+  the phrase `floating point` and contains a final line `Fixes #42`. Every body line must be at most 72
+  characters long. The repository must then have exactly two commits.
 hints:
-- Start with the Git command related to `multi-line commit messages, blank line`.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git add CHANGELOG.md\n   ```\n\
-  \n2.\n   ```bash\n   git commit -m \"docs: add changelog\" -m \"Explains the first\
-  \ release\"\n   ```"
-debrief: '## What Just Happened
+  - A commit message has a subject (first line), an empty second line, then free-form body text. Git treats the first paragraph as the subject.
+  - "Passing `-m` twice creates two paragraphs: subject and body. Without `-m`, `git commit` opens your editor."
+  - 'Run `git commit -m "Round brew times to whole seconds" -m "<body>"`; the body can contain real newlines inside the quotes.'
+guide: |
+  ## 1. Check what is staged
+  ```bash
+  git diff --staged
+  ```
 
+  ## 2. Write subject and body in one command
+  ```bash
+  git commit -m "Round brew times to whole seconds" -m "Multiplying minutes by 60.0 produced floating point noise
+  such as 149.99999999999997 seconds.
 
-  **Commit with Subject and Body**
+  Fixes #42"
+  ```
+  Each `-m` becomes a new paragraph separated by a blank line. Newlines inside the quotes are kept.
 
+  ## 3. Check the result
+  ```bash
+  git log -1
+  ```
+  Verify the subject, the blank line and that no line is wider than 72 characters.
+debrief: |
+  ## What happened
+  Git stores the whole message as text. By convention the first line is a summary (about 50 characters), then
+  a blank line, then an explanation wrapped at about 72 characters. Tools such as `git log --oneline`, GitHub and
+  email patches use the subject alone.
 
-  This level focused on multi-line commit messages, blank line.
+  ## Why it matters
+  The subject says **what** changed, the body says **why**. Future readers (including you) can understand a
+  decision years later without opening the code. Trailers like `Fixes #42` also let trackers close issues
+  automatically.
 
-  '
+  ## Related
+  - `git commit` without `-m` opens `$EDITOR` for longer messages.
+  - `git log --format=%B -1` prints the raw message; `git interpret-trailers` handles trailers.
+  - `git config commit.template` provides a message skeleton.
+
+  ## Pitfalls
+  - No blank line after the subject makes tools treat the body as part of the subject.
+  - Long lines are not wrapped for you.
+common_mistakes:
+  - Putting everything in one `-m` paragraph, so there is no separate body.
+  - Forgetting the blank line between subject and body.
+  - Writing body lines longer than 72 characters.
 validators:
-- type: commit_message_contains
-  text: 'docs: add changelog'
-  description: Commit subject is correct
-- type: commit_message_contains
-  text: Explains the first release
-  description: Commit body contains the explanation
-- type: is_clean
-  description: Working tree is clean
+  - type: commit_count_eq
+    count: 2
+    description: Exactly one new commit
+  - type: script_passes
+    script: test "$(git log -1 --format=%s)" = "Round brew times to whole seconds"
+    description: The subject is "Round brew times to whole seconds"
+  - type: script_passes
+    script: test -z "$(git log -1 --format=%B | sed -n 2p)" && test -n "$(git log -1 --format=%b)"
+    description: A blank line separates the subject from a non-empty body
+  - type: script_passes
+    script: "git log -1 --format=%b | tr '\\n' ' ' | grep -qi 'floating point' && git log -1 --format=%b | grep -v '^$' | tail -1 | grep -qx 'Fixes #42'"
+    description: 'The body mentions "floating point" and ends with "Fixes #42"'
+  - type: script_passes
+    script: test "$(git log -1 --format=%b | awk '{ if (length($0) > m) m = length($0) } END { print m+0 }')" -le 72
+    description: No body line is longer than 72 characters
+  - type: is_clean
+    description: Working tree is clean

@@ -6,48 +6,97 @@ difficulty: advanced
 xp: 340
 expected_time: 12m
 concepts:
-- pre-commit rejects `console.log` / `pdb.set_trace()`
-common_mistakes:
-- Running commands related to pre-commit rejects `console.log` / `pdb.set_trace()`
-  without checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `pre-commit
-  rejects `console.log` / `pdb.set_trace()``.
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - inspecting added lines with git diff --cached -U0
+  - pre-commit policy on content
+description: |
+  Quant developers keep forgetting `breakpoint()` and `pdb.set_trace()` in the options-pricing model, and one of them hung a nightly
+  valuation job waiting for input. The team wants git to reject any commit that **adds** a debugger call to a Python file. The
+  file already contains an old `breakpoint()` that nobody has had time to remove, so a naive "grep the file" hook would block
+  every future commit touching `pricing/blackscholes.py`, and the team would uninstall it within a day.
+objective: |
+  Write an executable `.git/hooks/pre-commit` that exits 1 when the staged diff of a `*.py` file **adds** a line containing
+  `breakpoint()`, `pdb.set_trace` or `import pdb`. Commits that only touch other lines of a file that already has the legacy
+  `breakpoint()`, and debugger words in non-Python files, must still pass.
 hints:
-- Start with the Git command related to `pre-commit rejects `console.log` / `pdb.set_trace()``.
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Check the *diff*, not the file. A diff only contains the lines the commit changes, and added lines start with `+`."
+  - "`git diff --cached -U0 -- '*.py'` prints only changed lines. Ignore the `+++ file` header lines when you match."
+  - "Pipe `git diff --cached -U0 -- '*.py'` into `grep -E '^\\+[^+]'`, then into `grep -Eq 'breakpoint\\(\\)|pdb\\.set_trace|import pdb'`."
+guide: |
+  ## Only what the commit adds
 
+  See what a one-line change looks like to the hook:
 
-  **Block debug Statements**
+  ```bash
+  echo "# tweak" >> pricing/blackscholes.py
+  git add pricing/blackscholes.py
+  git diff --cached -U0
+  ```
 
+  `-U0` removes context lines, so the legacy `breakpoint()` is absent. Added lines begin with a single `+`, the file header
+  begins with `+++`; the regex `^\+[^+]` keeps only real additions. Combine:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  cat > .git/hooks/pre-commit <<'HOOK'
+  #!/bin/sh
+  if git diff --cached -U0 --diff-filter=ACM -- '*.py' \
+     | grep -E '^\+[^+]' \
+     | grep -Eq 'breakpoint\(\)|pdb\.set_trace|import pdb'; then
+    echo "pre-commit: debugger statement found in staged Python changes" >&2
+    exit 1
+  fi
+  exit 0
+  HOOK
+  chmod +x .git/hooks/pre-commit
+  ```
 
-  '
+  Test by adding `breakpoint()` on a new line and also by committing the harmless comment line.
+debrief: |
+  ## What you learned
+
+  Policies on *content* should look at the staged **diff**, so only new violations are reported and legacy code does not
+  freeze the team. `git diff --cached -U0` is the standard input for such hooks, and a `--` pathspec limits it to the
+  relevant files.
+
+  ## Real-world use
+
+  "No new `console.log`, `TODO`, `print` or debugger statements" is a classic. Ratchet-style checks like this let you introduce
+  a rule without first cleaning up the whole codebase.
+
+  ## Pitfalls
+
+  - Removing the legacy line is allowed and not flagged, since removed lines start with `-`.
+  - Pattern matches in strings or comments are false positives; a real linter parses the code.
+  - Remember the `+++` header, a line such as `+++ b/pricing/import_pdb_helper.py` could match your pattern otherwise.
+common_mistakes:
+  - "Using `grep breakpoint pricing/blackscholes.py`, which fails every commit as long as the legacy line exists."
+  - "Matching context lines or removed lines, so deleting the legacy `breakpoint()` is blocked."
+  - "Applying the rule to every file type: the notes mention `pdb` in Markdown legitimately."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: pre-commit
+    description: an executable pre-commit hook exists
+  - type: script_passes
+    description: adding breakpoint(), pdb.set_trace or import pdb is rejected
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      for line in '    breakpoint()' '    import pdb; pdb.set_trace()' 'import pdb'; do
+        printf '%s\n' "$line" >> pricing/blackscholes.py
+        git add pricing/blackscholes.py
+        must_fail git commit -q -m "debug"
+        git reset -q --hard
+      done
+  - type: script_passes
+    description: unrelated edits, new Python files and Markdown notes are accepted despite the legacy breakpoint
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf '# vega is next\n' >> pricing/blackscholes.py
+      git add -A; git commit -q -m "Comment"
+      printf 'Use breakpoint() only locally.\n' >> NOTES.md
+      printf 'def vega(s, k):\n    return 0\n' > pricing/vega.py
+      git add -A; git commit -q -m "Add vega stub and notes"
+      sed -i.bak '/breakpoint/d' pricing/blackscholes.py && rm pricing/blackscholes.py.bak
+      git add -A; git commit -q -m "Remove the legacy breakpoint"
+

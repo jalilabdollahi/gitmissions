@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > advanced-report.txt <<'EOF'
-done=1
-EOF
-git add advanced-report.txt
-git commit -m "docs: add report"
+mkdir -p ../transfer
+git bundle create ../transfer/full.bundle --all
+git bundle create ../transfer/delta.bundle v1.0..main

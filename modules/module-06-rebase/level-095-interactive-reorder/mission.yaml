@@ -4,40 +4,87 @@ level: level-095-interactive-reorder
 order: 95
 difficulty: intermediate
 xp: 300
-expected_time: 12m
+expected_time: 11m
 concepts:
-- drag-and-drop via rebase -i
-common_mistakes:
-- Running commands related to drag-and-drop via rebase -i without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Two feature commits are in the wrong order.
-objective: Rewrite `feature/rebase` so the latest commit message becomes `Second step`.
+  - reordering commits
+  - interactive rebase
+  - commits that build independently
+repo_path: profilr
+description: |
+  The Profilr user-profile service gets avatar uploads. On `feature/avatars` you committed the endpoint first
+  (`Add avatar upload endpoint`, which writes to the `avatars` table), then the database migration that
+  creates that table, then thumbnails. A reviewer checked out the endpoint commit alone and it
+  crashed because the table did not exist yet. Every commit should work on its own, so the migration has to come first.
+objective: |
+  - reorder the commits of `feature/avatars` so the order from oldest to newest is: `Create avatars table migration`, `Add avatar upload endpoint`, `Add avatar thumbnails`
+  - no commit may be lost or altered, and every commit that contains `api/avatar.py` must also contain `db/002_avatars.sql`
+  - finish on `feature/avatars` with no rebase in progress
 hints:
-- Interactive rebase is one option.
-- Any valid method is fine if the final order matches the objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git reset --hard HEAD~2\n   ```\n\n3.\n   ```bash\n\
-  \   printf 'one\n' > one.txt\n   ```\n\n4.\n   ```bash\n   git add one.txt\n   ```\n\
-  \n5.\n   ```bash\n   git commit -m \"First step\"\n   ```\n\n6.\n   ```bash\n  \
-  \ printf 'two\n' > two.txt\n   ```\n\n7.\n   ```bash\n   git add two.txt\n   ```\n\
-  \n8.\n   ```bash\n   git commit -m \"Second step\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --reverse main..feature/avatars` shows the current order: endpoint, migration, thumbnails."
+  - "Interactive rebase lets you move todo lines. The list is oldest first, so swap the first two lines."
+  - "`git rebase -i main`, move the `Create avatars table migration` line above the `Add avatar upload endpoint` line."
+guide: |
+  ## 1. Current order
+  ```bash
+  git log --oneline --reverse main..feature/avatars
+  ```
 
+  ## 2. Open the todo
+  ```bash
+  git rebase -i main
+  ```
+  ```
+  pick aaa Add avatar upload endpoint
+  pick bbb Create avatars table migration
+  pick ccc Add avatar thumbnails
+  ```
 
-  **Reorder Commits**
+  ## 3. Swap the first two lines
+  ```
+  pick bbb Create avatars table migration
+  pick aaa Add avatar upload endpoint
+  pick ccc Add avatar thumbnails
+  ```
+  Save and close. The commits touch different files, so there is nothing to resolve.
 
+  ## 4. Verify each commit
+  ```bash
+  git show --stat HEAD~2 HEAD~1 HEAD
+  ```
+debrief: |
+  ## What happened
+  The interactive todo is simply an ordered replay script. Moving a line changes the order in which commits
+  are replayed. Since the commits modify different files, they apply in any order without conflicts.
 
-  Reordering commits is another form of history surgery that can make a change set
-  easier to understand.
+  ## Why order matters
+  A history where every commit builds and passes tests allows `git bisect` to work and reverts to be
+  safe. A migration should precede the code that depends on it.
 
-  '
+  ## When reordering conflicts
+  If two commits touch the same lines, swapping them produces conflicts that you resolve like any rebase
+  conflict. Moving a commit across dependent changes is where history editing gets risky.
+
+  ## Related
+  - `git rebase -i --exec "make test"` checks every rewritten commit (see the exec level).
+  - `git cherry-pick` can rebuild the order by hand.
+common_mistakes:
+  - "Reading the todo list newest-first and swapping the wrong pair."
+  - "Deleting a line to move it and forgetting to paste it back, which drops the commit."
+  - "Putting the migration after the thumbnails, which still leaves the endpoint commit before it."
 validators:
-- type: commit_message_contains
-  text: Second step
-  description: Latest commit is 'Second step'
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/avatars
+    description: HEAD is on feature/avatars
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/avatars | tr '\n' '|')" = "Create avatars table migration|Add avatar upload endpoint|Add avatar thumbnails|"
+    description: The commits are in the dependency-friendly order
+  - type: script_passes
+    script: |
+      for c in $(git rev-list main..feature/avatars); do
+        if git cat-file -e "$c:api/avatar.py" 2>/dev/null; then git cat-file -e "$c:db/002_avatars.sql"; fi
+      done
+    description: Every commit with the endpoint also has the migration
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && test -f api/thumbs.py"
+    description: No rebase in progress and no work was lost

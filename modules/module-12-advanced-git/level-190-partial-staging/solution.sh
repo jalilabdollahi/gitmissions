@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > advanced-report.txt <<'EOF'
-done=1
-EOF
-git add advanced-report.txt
-git commit -m "docs: add report"
+printf 's\nn\ny\nn\nn\n' | git add -p payroll.py
+git commit -qm "fix: round net pay to cents"
+printf 'n\ny\ny\n' | git add -p payroll.py
+git commit -qm "refactor: rename fmt_row to format_row"

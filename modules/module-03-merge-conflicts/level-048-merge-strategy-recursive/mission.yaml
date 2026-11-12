@@ -1,4 +1,4 @@
-name: 'Merge Strategy: Recursive Subtree'
+name: "Merge Strategy: Recursive Subtree"
 module: module-03-merge-conflicts
 level: level-048-merge-strategy-recursive
 order: 48
@@ -6,42 +6,78 @@ difficulty: intermediate
 xp: 260
 expected_time: 10m
 concepts:
-- '`-Xours`'
-- '`-Xtheirs` options'
-common_mistakes:
-- Running commands related to `-Xours`, `-Xtheirs` options without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Two branches disagree completely, and you want Git to prefer one side
-  during the merge.
-objective: Merge `feature/merge` into `main` using a recursive strategy option that
-  prefers our side.
+  - git merge -X theirs / -X ours
+  - favouring one side only in conflicting hunks
+  - difference from -s ours
+description: |
+  The Harbour Brass Band edits its festival setlist in a CSV. On `main`, Gus made River Song longer (6 minutes)
+  and the encore longer. On the branch `acoustic-night`, Pia changed the same River Song row to an acoustic
+  version and shortened Slow Dance. The River Song row conflicts. The band leader has decided that for
+  any conflicting row the acoustic branch has priority, but Gus's encore change and Pia's Slow Dance change are
+  both wanted too, and nobody wants to edit markers by hand.
+objective: |
+  Merge `acoustic-night` into `main` in a single command that resolves conflicting hunks in favour of
+  `acoustic-night` automatically while still combining the non-conflicting changes of both branches.
+  The result must have `2,River Song (acoustic),4`, `4,Slow Dance,3` and `6,Encore Blues,9` in `setlist.csv`,
+  a merge commit, no markers and a clean working tree.
 hints:
-- Start from `main`.
-- Use `git merge -Xours feature/merge`.
-- Finish with a clean working tree.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git merge -Xours feature/merge\n   ```"
-debrief: '## What Just Happened
+  - "Run `git diff main...acoustic-night` and `git diff acoustic-night...main`: only the River Song row is changed on both sides."
+  - "`git merge -X theirs <branch>` (strategy option) merges normally but, for hunks that conflict, takes the incoming branch's text."
+  - "`git merge -X theirs acoustic-night -m \"Merge acoustic-night\"`; then check the three rows in `setlist.csv`."
+guide: |
+  ## 1. Understand who changed what
+  ```bash
+  git diff main...acoustic-night
+  git diff acoustic-night...main
+  ```
+  Rows 2 and 4 on the branch, rows 2 and 6 on `main`. Only row 2 overlaps.
 
+  ## 2. Merge with an option
+  ```bash
+  git merge -X theirs acoustic-night -m "Merge acoustic-night, preferring its River Song"
+  ```
+  Git merges rows 4 and 6 normally and, for the conflicting row 2, prefers "theirs".
 
-  **Merge Strategy: Recursive Subtree**
+  ## 3. Verify
+  ```bash
+  cat setlist.csv
+  ```
+  Row 2 acoustic (4 min), row 4 shortened, row 6 extended.
+debrief: |
+  ## What happened
+  `-X theirs` is an option of the default merge strategy. It does not discard the other side's file or the
+  current branch's other edits; it only changes how overlapping edits are resolved. Unlike `-s ours`, which ignores a
+  whole branch, `-X` is selective.
 
+  ## Why it matters
+  When one side is authoritative for conflicts (generated files, a vendor update, a decision from the leader),
+  `-X` saves manual work. The trade-off is that it hides the conflict from you: you must still review the result.
 
-  Merge strategies and strategy options let you encode a high-level preference instead
-  of hand-editing every conflict.
+  ## Related
+  - `-X ours` is the mirror image.
+  - `git merge -s recursive -X theirs` is the long form; modern Git uses `ort` as the default engine with the same options.
+  - Check with `git diff HEAD^1 HEAD` and `git diff HEAD^2 HEAD` what each side contributed.
 
-  '
+  ## Pitfalls
+  - It resolves conflicts silently, so wrong decisions are not flagged.
+  - It decides per hunk, so a file can end up as a mixture of both sides.
+common_mistakes:
+  - Using `-s ours`, which keeps `main`'s extended River Song and drops Pia's Slow Dance change.
+  - Using `-X ours`, which keeps the wrong River Song row.
+  - Running `git checkout --theirs setlist.csv`, which takes the whole file and loses Gus's encore change.
 validators:
-- type: file_content_equals
-  path: app.txt
-  text: main-side
-  description: main's version won
-- type: merge_commit_exists
-  branch: HEAD
-  description: A merge commit exists
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor acoustic-night HEAD
+    description: HEAD merges acoustic-night
+  - type: script_passes
+    script: grep -qx '2,River Song (acoustic),4' setlist.csv && ! grep -q 'extended' setlist.csv
+    description: The conflicting River Song row is the acoustic one
+  - type: script_passes
+    script: grep -qx '4,Slow Dance,3' setlist.csv && grep -qx '6,Encore Blues,9' setlist.csv
+    description: Both non-conflicting changes were merged
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

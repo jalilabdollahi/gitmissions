@@ -6,43 +6,74 @@ difficulty: beginner
 xp: 100
 expected_time: 5m
 concepts:
-- '`git restore --staged`'
-common_mistakes:
-- Running commands related to `git restore --staged` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Two files are staged, but only one should be committed.
-objective: 'Unstage `debug.log`, then commit only `app.txt` with the message `fix:
-  commit app only`.'
+  - git restore --staged
+  - the index vs the working tree
+description: |
+  Ravi keeps his dotfiles in a public repository. He added a shell alias to `.zshrc`, and then, out of habit,
+  ran `git add .`. That also staged `secrets.env`, a new file holding his GitHub token. He has not committed yet,
+  and he still needs the token file on disk for his scripts; it simply must never end up in the repository.
+objective: |
+  Remove `secrets.env` from the staging area while keeping the file and its contents on disk.
+  The `.zshrc` change must stay staged, and you must not create a commit.
 hints:
-- Start with the Git command related to ``git restore --staged``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git restore --staged debug.log\n\
-  \   ```\n\n2.\n   ```bash\n   git commit -m \"fix: commit app only\"\n   ```\n\n\
-  3.\n   ```bash\n   rm -f debug.log\n   ```\n\n4.\n   ```bash\n   git restore --staged\
-  \ debug.log >/dev/null 2>&1 || true\n   ```"
-debrief: '## What Just Happened
+  - "`git status` lists what is staged. Spot the file that should not be there."
+  - Moving a file out of the index, without touching your copy on disk, is a job for `git restore --staged`.
+  - "`git restore --staged secrets.env`, then check with `git status --short`: `.zshrc` should show `M ` and secrets.env `??`."
+guide: |
+  ## 1. Check what is about to be committed
+  ```bash
+  git status
+  ```
+  Both `.zshrc` (modified) and `secrets.env` (new file) are under "Changes to be committed".
 
+  ## 2. Unstage only the secret
+  ```bash
+  git restore --staged secrets.env
+  ```
+  This resets the index entry for that path to match `HEAD`. For a brand-new file, that means
+  "not in the index", so it becomes untracked again.
 
-  **Unstage a File**
+  ## 3. Confirm
+  ```bash
+  git status --short
+  ```
+  Expect `M  .zshrc` and `?? secrets.env`. The token is still in your folder.
+debrief: |
+  ## What happened
+  `git restore --staged <file>` copies the version in `HEAD` back into the index. The working tree
+  was never touched, so the content of `secrets.env` is intact; Git just stopped planning to commit it.
 
+  ## Why it matters
+  Unstaging is the safe "undo" for `git add`. Catching a secret before the commit is far better than
+  after: once a token reaches a public history you have to revoke it, even if you delete it later.
 
-  This level focused on `git restore --staged`.
+  ## Related
+  - Older Git: `git reset HEAD <file>` does the same thing.
+  - `git restore <file>` (without `--staged`) discards working-tree changes; that is destructive.
+  - Add secrets to `.gitignore` (covered later in this module) so `git add .` never grabs them.
 
-  '
+  ## Pitfalls
+  - `git rm --cached` is for tracked files and records a deletion; it is not the tool for this case.
+  - Do not delete the file to "unstage" it: you would lose the token you still need.
+common_mistakes:
+  - Running `git restore secrets.env`, which fails or discards content instead of unstaging.
+  - Unstaging everything with `git restore --staged .`, which also removes the legitimate `.zshrc` change.
+  - Committing first and planning to remove the file afterwards.
 validators:
-- type: commit_message_contains
-  text: 'fix: commit app only'
-  description: Latest commit message is correct
-- type: script_passes
-  description: Only app.txt changed in the latest commit
-  script: test "$(git diff --name-only HEAD~1 HEAD)" = "app.txt"
-- type: file_not_exists
-  path: debug.log
-  description: debug.log is gone from the working tree
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test "$(git diff --cached --name-only)" = ".zshrc"
+    description: Only .zshrc is staged
+  - type: file_content_contains
+    path: secrets.env
+    text: GITHUB_TOKEN=ghp_7Hq2xLm91ZkPzE4wVbN0
+    description: secrets.env still exists with its content
+  - type: file_not_tracked
+    path: secrets.env
+    description: secrets.env is not in the index
+  - type: commit_count_eq
+    count: 1
+    description: No new commit was created
+  - type: file_content_contains
+    path: .zshrc
+    text: alias gs=
+    description: The .zshrc edit is still in the working tree

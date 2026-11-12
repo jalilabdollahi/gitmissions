@@ -1,35 +1,19 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main snapgrid
+cd snapgrid
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-value=base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-git checkout -b feature/rebase
-
-printf 'feature
-' > feature.txt
-
-git add feature.txt
-
-git commit -m "Feature change"
-
-git checkout main
-
-printf 'main branch
-' > main.txt
-
-git add main.txt
-
-git commit -m "Main change"
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+c() { git add -A && git commit -q -m "$1"; }
+printf '<div class="grid"></div>\n' > grid.html && c "Create gallery grid"
+git switch -q -c feature/captions
+printf 'photo.caption = ""\n' > caption.js && c "Add caption field"
+printf 'render(photo.caption)\n' > render_captions.js && c "Render captions under photos"
+git switch -q main
+printf 'cache = {}\n' > thumbs.js && c "Add thumbnail cache"
+printf 'loading = "lazy"\n' > lazy.js && c "Lazy-load images"
+git switch -q feature/captions

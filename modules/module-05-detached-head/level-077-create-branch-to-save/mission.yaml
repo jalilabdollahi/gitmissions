@@ -4,37 +4,86 @@ level: level-077-create-branch-to-save
 order: 77
 difficulty: intermediate
 xp: 260
-expected_time: 8m
+expected_time: 9m
 concepts:
-- '`git switch -c <name>` from detached state'
-common_mistakes:
-- Running commands related to `git switch -c <name>` from detached state without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A useful commit exists outside any branch, and you need to rescue it.
-objective: Create a branch named `rescue-detached` pointing at the detached commit.
+  - git switch -c from detached HEAD
+  - saving work before leaving
+  - fast-forward merge
+repo_path: refundly
+description: |
+  Refundly processes marketplace refunds. Release 2.7.0 has a rounding bug (refunds of half a cent go
+  the wrong way). You detached HEAD at `v2.7.0`, wrote the fix and a test as two commits, and they are
+  right now only reachable through HEAD. The long-lived maintenance branch `release/2.7` still points
+  at the old 2.7.0 commit. Do not switch away from this state until the work is saved.
+objective: |
+  - give your two commits a branch called `fix/refund-rounding` (HEAD must be attached to a branch afterwards)
+  - fast-forward `release/2.7` to the fix so it contains both commits (no merge commit)
+  - finish with `release/2.7` checked out
+  - `main` must not change
 hints:
-- Use `git branch rescue-detached` while at the detached commit, or find it with `git
-  reflog` first.
-- After the branch exists, you can switch back if you want.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch rescue-detached\n \
-  \  ```"
-debrief: '## What Just Happened
+  - "`git status` says HEAD detached. Name the work first: creating a branch from here keeps both commits."
+  - "`git switch -c <name>` creates the branch at HEAD. Then `git switch release/2.7` and merge with `--ff-only`."
+  - "`git switch -c fix/refund-rounding && git switch release/2.7 && git merge --ff-only fix/refund-rounding`"
+guide: |
+  ## 1. Look before you leap
+  ```bash
+  git status
+  git log --oneline --graph --all -6
+  ```
+  Your two commits sit on `v2.7.0`; the branch `release/2.7` is one step behind them.
 
+  ## 2. Save the commits under a name
+  ```bash
+  git switch -c fix/refund-rounding
+  ```
+  HEAD is now attached to the new branch, pointing at the same commit.
 
-  **Create Branch to Save Work**
+  ## 3. Move the maintenance branch forward
+  ```bash
+  git switch release/2.7
+  git merge --ff-only fix/refund-rounding
+  ```
+  `release/2.7` is an ancestor of the fix, so Git just moves the pointer.
 
+  ## 4. Check
+  ```bash
+  git log --oneline -3
+  ```
+debrief: |
+  ## What happened
+  Creating a branch at a detached HEAD is the cheapest way to make commits permanent: it adds a name
+  and moves nothing. After that, fast-forwarding another branch to it is a plain pointer update, since
+  the fix was built directly on top of `release/2.7`'s tip.
 
-  Detached commits become safe as soon as a branch or tag points to them.
+  ## Why `--ff-only`
+  It makes the intent explicit and fails loudly instead of creating a merge commit if release
+  and fix ever diverge.
 
-  '
+  ## Habit
+  When `git status` says "HEAD detached" and `git log` shows commits that no branch contains,
+  save first, think later: `git switch -c <name>` costs nothing.
+
+  ## Related
+  - `git branch <name>` creates a branch but stays detached.
+  - `git tag v2.7.1` can mark the release after the merge.
+common_mistakes:
+  - "Switching to release/2.7 straight away, which orphans the two commits and shows a warning."
+  - "Using `git branch fix/refund-rounding` and staying detached, then continuing to commit."
+  - "Merging without `--ff-only` and getting an unnecessary merge commit."
 validators:
-- type: branch_exists
-  branch: rescue-detached
-  description: rescue-detached exists
-- type: reflog_contains
-  text: Detached experiment
-  description: Reflog still records the detached commit
+  - type: is_on_branch
+    branch: release/2.7
+    description: HEAD is on release/2.7
+  - type: script_passes
+    script: test "$(git rev-list --count v2.7.0..fix/refund-rounding)" = 2
+    description: fix/refund-rounding holds both new commits on top of v2.7.0
+  - type: refs_equal
+    left: release/2.7
+    right: fix/refund-rounding
+    description: release/2.7 was fast-forwarded to the fix
+  - type: no_merge_commit
+    branch: release/2.7
+    description: No merge commit was created
+  - type: script_passes
+    script: test "$(git log -1 --format=%s main)" = "Add partial refund API"
+    description: main has not moved

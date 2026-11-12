@@ -1,5 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-git switch main
-git merge -s ours feature/merge
+git merge -s ours legacy-import -m "Merge legacy-import: recorded, content superseded by main"

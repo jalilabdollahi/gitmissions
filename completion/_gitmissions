@@ -13,6 +13,7 @@ _gitmissions() {
     'skip:Skip current level'
     'status:Show progress'
     'help:Show help'
+    'handbook:Open the Git handbook'
     'quit:Save and exit'
   )
   _describe 'command' commands

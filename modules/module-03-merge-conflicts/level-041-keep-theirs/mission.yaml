@@ -6,43 +6,78 @@ difficulty: intermediate
 xp: 220
 expected_time: 10m
 concepts:
-- resolve by always keeping incoming
-common_mistakes:
-- Running commands related to resolve by always keeping incoming without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep the incoming version, and complete
-  the merge.
+  - git checkout --theirs <file>
+  - choosing a side per file
+description: |
+  A tourist-information app has German UI strings in `lang/de.json`. Liam shortened some strings with machine
+  translation on `main`, while Eva, a native speaker, reviewed all of them on `german-review`. Eva's text is the
+  authoritative translation, so wherever the two differ her file should win. Unfortunately her branch also pointed
+  `app.ini` to a staging API server for testing, which must not reach production: for that file `main`'s version
+  is the correct one. Both files conflict.
+objective: |
+  Merge `german-review` into `main`. Resolve `lang/de.json` by taking Eva's complete file and `app.ini` by keeping
+  the version from `main`. The merge must be committed, there must be no markers, and `git status` must be clean.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` lists two conflicted files, and they need opposite decisions."
+  - "During a merge, `ours` is the branch you are on and `theirs` is the branch you are merging in. `git checkout --ours|--theirs <file>` picks a whole file from one side."
+  - "`git checkout --theirs lang/de.json`, `git checkout --ours app.ini`, then `git add` both files and `git commit`."
+guide: |
+  ## 1. Merge
+  ```bash
+  git merge german-review
+  git status
+  ```
+  `lang/de.json` and `app.ini` are both "both modified".
 
+  ## 2. Decide per file
+  - `lang/de.json`: the reviewer is authoritative, so take theirs.
+  - `app.ini`: production configuration lives on `main`, so keep ours.
+  ```bash
+  git checkout --theirs lang/de.json
+  git checkout --ours app.ini
+  ```
 
-  **Keep Their Version**
+  ## 3. Verify and commit
+  ```bash
+  grep staging app.ini        # should print nothing
+  git add lang/de.json app.ini
+  git commit -m "Merge german-review: native strings, production API"
+  ```
+debrief: |
+  ## What happened
+  For each conflicted path Git holds three stages in the index: 1 = base, 2 = ours, 3 = theirs. The checkout options
+  copy stage 2 or stage 3 into the working tree. You chose a different side for each file, so the result contains
+  Eva's translation but none of her testing configuration.
 
+  ## Why it matters
+  Often the question is not "which lines" but "who is authoritative for this file". A branch can contain both
+  desired content and unwanted side effects, which is why reviewing the commit's other changes matters.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Related
+  - `git show :2:app.ini` and `git show :3:app.ini` print each stage without touching the working tree.
+  - `git merge -X theirs` favours theirs only inside conflicted hunks (see a later mission).
+  - A follow-up commit on `german-review` should revert the staging URL so this does not recur.
 
-  '
+  ## Pitfalls
+  - Swapping `--ours` and `--theirs`: it is easy to confuse them, check the file afterwards.
+  - During a rebase the meaning is reversed.
+common_mistakes:
+  - Taking `--theirs` for both files and shipping the staging API URL.
+  - Taking `--ours` for both files and losing the native-speaker translation.
+  - Not running `git add` after the checkout, so the files stay unmerged.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor german-review HEAD
+    description: HEAD merges german-review
+  - type: script_passes
+    script: test "$(git show HEAD:lang/de.json)" = "$(git show german-review:lang/de.json)"
+    description: lang/de.json is exactly Eva's version
+  - type: script_passes
+    script: git diff --quiet HEAD^1 HEAD -- app.ini && grep -q 'https://api.tours.example/v2' app.ini
+    description: app.ini is exactly the version from main (production API)
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

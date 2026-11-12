@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
 set -e
-
-git reset --hard HEAD~2
-printf 'one
-' > one.txt
-git add one.txt
-git commit -m "First step"
-printf 'two
-' > two.txt
-git add two.txt
-git commit -m "Second step"
+# swap the first two todo lines
+GIT_SEQUENCE_EDITOR="sed -i.bak -e '1{h;d;}' -e '2{G;}'" git rebase -i main

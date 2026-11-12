@@ -4,51 +4,93 @@ level: level-171-bypass-a-hook
 order: 171
 difficulty: advanced
 xp: 320
-expected_time: 12m
+expected_time: 8m
 concepts:
-- "`git commit --no-verify` \u2014 when and why"
-common_mistakes:
-- "Running commands related to `git commit --no-verify` \u2014 when and why without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ commit --no-verify` \u2014 when and why`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git commit --no-verify
+  - when bypassing a hook is legitimate
+  - leaving the hook in place
+description: |
+  It is 17 December and the payroll repo is under a change freeze, enforced by a `pre-commit` hook that rejects every commit while the
+  `FREEZE` file exists. Then finance discovers that tax `bracket3` in `payroll.conf` is 18 instead of the legislated 21 percent: the
+  December payroll run tomorrow morning would underpay withholding for 400 employees. The freeze owner has approved an
+  emergency exception **in writing**. The hook must stay in place and the freeze must stay active for everybody else; you need to get this one
+  commit through, knowingly, and label it as an emergency.
+objective: |
+  Change `bracket3` to `21` in `payroll.conf` and commit it with a message that starts with `EMERGENCY:`, using the option that skips the pre-commit hook for this single
+  commit. Do **not** edit, delete or disable the hook, and do not remove `FREEZE`: afterwards a normal commit must still be refused.
 hints:
-- "Start with the Git command related to ``git commit --no-verify` \u2014 when and\
-  \ why`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "First try a normal commit to see the hook refuse it. Then look at the options of `git commit` for a way to skip hooks once."
+  - "`git commit --no-verify` (short: `-n`) skips the `pre-commit` and `commit-msg` hooks for that one commit only."
+  - "Edit `payroll.conf`, then `git commit --no-verify -am \"EMERGENCY: correct bracket3 to 21 for the December run\"`."
+guide: |
+  ## A deliberate bypass
 
+  Make the change and see the freeze in action:
 
-  **Bypass a Hook**
+  ```bash
+  sed -i.bak 's/^bracket3=18/bracket3=21/' payroll.conf && rm payroll.conf.bak
+  git commit -am "EMERGENCY: correct bracket3 to 21 for the December run"
+  ```
 
+  The hook rejects it: `pre-commit: Payroll freeze until 2025-12-31; commits are blocked`. You have the written exception, so skip
+  the hook explicitly, just this once:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git commit --no-verify -am "EMERGENCY: correct bracket3 to 21 for the December run"
+  git log --oneline -3
+  ```
 
-  '
+  Check that the guard is still alive:
+
+  ```bash
+  echo test >> README.md && git commit -am "should fail"
+  git restore README.md
+  ```
+
+  The explicit prefix in the message is what lets reviewers find emergency exceptions later (`git log --grep=EMERGENCY`).
+debrief: |
+  ## What you learned
+
+  `--no-verify` makes git skip `pre-commit` and `commit-msg` for one invocation (and `pre-push` for a push). Hooks are
+  conveniences and guard rails, not security boundaries: whoever owns the clone can bypass them. That is exactly why legitimate emergencies
+  stay possible, and why strict policies must **also** be enforced server-side.
+
+  ## Real-world use
+
+  Hotfixes during a freeze, committing a work-in-progress snapshot on a private branch, or working around a hook that
+  is broken. The key is to leave a trail (a clear message, a ticket) and to leave the hook intact for everyone else.
+
+  ## Pitfalls
+
+  - Deleting or editing the hook "just for now" is easy to forget and silently disables the policy for all later commits.
+  - `--no-verify` does not skip `post-commit` or `prepare-commit-msg`.
+  - A habit of bypassing means the hook is too slow or too strict; fix the hook instead.
+common_mistakes:
+  - "Removing the `FREEZE` file or editing the hook so the commit passes, which changes the policy for everyone."
+  - "Temporarily renaming `.git/hooks/pre-commit` and forgetting to rename it back."
+  - "Forgetting the `EMERGENCY:` prefix, so the exception is invisible in the log."
+  - "Editing the wrong bracket (bracket2 or bracket4), or committing the README as well."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: the emergency commit exists and sets bracket3=21
+    script: |
+      git log -1 --format=%s | grep -q '^EMERGENCY:'
+      grep -qx 'bracket3=21' payroll.conf
+      grep -qx 'bracket1=10' payroll.conf
+      grep -qx 'bracket4=30' payroll.conf
+      test "$(git show --name-only --format= HEAD)" = "payroll.conf"
+      test "$(git rev-list --count HEAD)" = 3
+  - type: script_passes
+    description: the hook and the freeze are untouched
+    script: |
+      test -x .git/hooks/pre-commit
+      test "$(git hash-object .git/hooks/pre-commit)" = "$(cat .git/gm-hook-sum)"
+      git ls-files --error-unmatch FREEZE >/dev/null
+  - type: script_passes
+    description: a normal commit is still refused by the hook
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf 'x\n' >> README.md
+      if git commit -q -am "should be blocked" >/dev/null 2>&1; then echo "hook no longer blocks" >&2; exit 1; fi
+

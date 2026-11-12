@@ -4,33 +4,95 @@ level: level-183-submodule-clone
 order: 183
 difficulty: expert
 xp: 440
-expected_time: 14m
+expected_time: 15m
 concepts:
-- '`git clone --recurse-submodules`'
-common_mistakes:
-- Running commands related to `git clone --recurse-submodules` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: An external repository should be linked into this repo as a submodule.
-objective: Add `./lib.git` as a submodule at `vendor/lib`.
+- git submodule update --init --recursive
+- nested submodules
+- submodule.recurse
+repo_path: studio
+description: |
+  You joined the audio team of a game studio. Your `studio` checkout was made with a plain `git clone`, so `engine/physics` and `engine/audio` are empty directories and the build fails immediately. To make it worse, `engine/audio` has a submodule of its own, `codecs/ogg`, that the audio mixer needs. The studio uses relative URLs for all submodules and your colleagues keep forgetting to run the submodule commands after `git pull`.
+objective: |
+  Make the checkout buildable and keep it that way.
+
+  1. Initialise and fetch all submodules recursively, including the nested `engine/audio/codecs/ogg`. Each submodule must end up at the commit recorded by its parent.
+  2. Set `submodule.recurse` to `true` in this repository's local config so pulls and checkouts keep submodules in sync.
+
+  Local-path submodule clones are blocked by default in modern Git, so use `git -c protocol.file.allow=always ...` for the update. `git submodule status --recursive` must show no leading `-` or `+`.
 hints:
-- Git needs a separate repository to point at.
-- Use `git submodule add`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git -c protocol.file.allow=always\
-  \ submodule add ./lib.git vendor/lib\n   ```"
-debrief: '## What Just Happened
+- Empty submodule directories mean they are registered but not initialised. `git submodule status` shows
+  a leading `-` for them.
+- One command both initialises and clones, and has a flag for the nested level.
+- '`git -c protocol.file.allow=always submodule update --init --recursive`, then `git config submodule.recurse
+  true`.'
+guide: |
+  ## Diagnose
 
+  ```bash
+  git submodule status --recursive
+  # -3f2c...  engine/audio       <- leading minus: not initialised
+  ```
 
-  **Clone with Submodules**
+  Only the top level is listed until it is initialised, because nested submodules are discovered after their parent is cloned.
 
+  ## Fix
 
-  Submodules pin one repository inside another at a specific commit.
+  ```bash
+  git -c protocol.file.allow=always submodule update --init --recursive
+  git submodule status --recursive      # three entries, no - or +
+  ```
 
-  '
+  `--init` registers and clones, `--recursive` repeats the process inside every submodule.
+
+  ## Make it stick
+
+  ```bash
+  git config submodule.recurse true
+  ```
+
+  With this setting `git pull`, `git checkout` and `git switch` update submodules too. For fresh clones the equivalent is `git clone --recurse-submodules <url>`.
+debrief: |
+  ## Why the folders were empty
+
+  `git clone` copies only the superproject. Submodules are separate repositories; Git records them but fetches them on request.
+
+  ## Status characters
+
+  `-` not initialised, `+` checked out at a different commit than recorded, `U` merge conflict, a space means fine.
+
+  ## Nested levels
+
+  A submodule is a full repository with its own `.gitmodules`. Without `--recursive`, `engine/audio/codecs/ogg` stays empty and the audio code fails to link.
+
+  ## Related
+
+  - `git clone --recurse-submodules` (add `-j8` to parallelise).
+  - `git submodule foreach --recursive 'git status -s'`.
+  - `git config submodule.recurse true` covers checkout, pull and reset, but not `git fetch` by default (`fetch.recurseSubmodules`).
+common_mistakes:
+- Running `git submodule update` without `--init`, which silently does nothing for an uninitialised submodule.
+- Forgetting `--recursive` so that `codecs/ogg` stays empty.
+- Running the update, but never setting `submodule.recurse`, so the next pull leaves submodules behind.
 validators:
-- type: submodule_exists
-  path: vendor/lib
-  description: vendor/lib is registered as a submodule
+- type: script_passes
+  description: Physics, audio and the nested ogg codec are all checked out
+  script: 'test -f engine/physics/solver.c
+
+    test -f engine/audio/mixer.c
+
+    test -f engine/audio/codecs/ogg/decode.c
+
+    '
+- type: script_passes
+  description: Every submodule is initialised at its recorded commit
+  script: 'test "$(git submodule status --recursive | wc -l | tr -d '' '')" = 3
+
+    ! git submodule status --recursive | grep -q ''^[-+U]''
+
+    '
+- type: config_equals
+  key: submodule.recurse
+  value: 'true'
+  description: submodule.recurse is true
+- type: is_clean
+  description: Working tree is clean

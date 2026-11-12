@@ -4,43 +4,83 @@ level: level-034-copy-file-from-branch
 order: 34
 difficulty: beginner
 xp: 160
-expected_time: 6m
+expected_time: 8m
 concepts:
-- '`git checkout <branch> -- <file>`'
-common_mistakes:
-- Running commands related to `git checkout <branch> -- <file>` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A file exists only on a feature branch, and you need it on `main` without
-  merging the whole branch.
-objective: 'Copy `release.md` from `feature/docs` into `main` and commit it with `docs:
-  copy release notes`.'
+  - git restore --source=<branch> -- <file>
+  - git checkout <branch> -- <file>
+  - taking one file without merging
+description: |
+  Camille's travel blog has a `staging` branch where she tests new settings and writes drafts. The new site title,
+  timezone and page size in `_config.yml` are ready, but the staging branch also holds two unfinished post drafts
+  which must not go public. A normal merge of `staging` would publish them. Camille wants only that one file on `main`.
+objective: |
+  While on `main`, bring the version of `_config.yml` from `staging` into `main` and commit it with the message
+  `Take site config from staging`. That commit must change only `_config.yml`. No draft files may appear on `main`
+  and there must be no merge commit. `main` ends clean.
 hints:
-- Stay on `main`.
-- Use `git checkout feature/docs -- release.md`.
-- Commit the copied file.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git checkout feature/docs -- release.md\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: copy release notes\"\n   ```"
-debrief: '## What Just Happened
+  - "`git diff main staging --stat` shows everything that differs. You only want one of those files."
+  - "You can check out a single path from another branch: `git restore --source=<branch> -- <path>` (or `git checkout <branch> -- <path>`). It stages or writes the file in your working tree."
+  - "`git restore --source=staging -- _config.yml`, then `git add _config.yml` and `git commit -m \"Take site config from staging\"`."
+guide: |
+  ## 1. Compare
+  ```bash
+  git diff main staging --stat
+  ```
+  `_config.yml` and two drafts differ.
 
+  ## 2. Fetch just the file
+  ```bash
+  git restore --source=staging -- _config.yml
+  git status --short
+  ```
+  The file in your working tree is now the staging version. (`git checkout staging -- _config.yml` does the same and
+  also stages it.)
 
-  **Copy File from Another Branch**
+  ## 3. Commit
+  ```bash
+  git add _config.yml
+  git commit -m "Take site config from staging"
+  ```
+  The commit has one parent (`main`), so it is an ordinary commit, not a merge.
+debrief: |
+  ## What happened
+  `git restore --source=<tree-ish> -- <path>` writes the content of a path from another commit or branch into
+  your working tree. You then commit it like any other edit. Nothing from `staging`'s history was imported; only that
+  file's content.
 
+  ## Why it matters
+  A merge takes everything a branch contains. When you need one file, one configuration or an old version of a script,
+  restoring from a branch gives surgical control.
 
-  Checking out a file from another branch is a precise alternative to a full merge.
+  ## Related
+  - `git checkout <branch> -- <path>` is the classic spelling (it also stages).
+  - `git show <branch>:<path>` prints the file without touching anything.
+  - `git cherry-pick` takes a whole commit instead of a file.
 
-  '
+  ## Pitfalls
+  - The file is overwritten without asking; uncommitted edits to it are lost.
+  - History does not record where the content came from, so say it in the commit message.
+common_mistakes:
+  - Merging `staging`, which brings both unfinished drafts to `main`.
+  - Copying the file by hand from a text editor (it works but is error-prone and may not match exactly).
+  - Restoring it from the wrong branch or forgetting to commit.
 validators:
-- type: file_content_contains
-  path: release.md
-  text: Release notes
-  description: release.md was copied
-- type: commit_message_contains
-  text: 'docs: copy release notes'
-  description: Commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    script: test "$(git show HEAD:_config.yml)" = "$(git show staging:_config.yml)"
+    description: _config.yml on main equals the staging version
+  - type: commit_message_equals
+    text: Take site config from staging
+    description: Latest commit message is "Take site config from staging"
+  - type: script_passes
+    script: test "$(git show --name-only --format= HEAD)" = "_config.yml" && test "$(git rev-list --count main)" = "3"
+    description: The new commit changes only _config.yml
+  - type: script_passes
+    script: '! test -e _posts/draft-azores.md && ! test -e _posts/draft-madeira.md'
+    description: No draft posts reached main
+  - type: no_merge_commit
+    description: No merge commit exists
+  - type: is_clean
+    description: Working tree is clean

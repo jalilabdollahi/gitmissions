@@ -6,41 +6,105 @@ difficulty: expert
 xp: 620
 expected_time: 18m
 concepts:
-- feature branch rebased onto stale commit
-common_mistakes:
-- Running commands related to feature branch rebased onto stale commit without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- git rebase --onto
+- fixing a wrong upstream
+- force-with-lease and tracking branches
+repo_path: work
+description: |
+  In the API-gateway repo you rebased `feature/rate-limit` onto the wrong branch: you typed `git rebase experiment/new-router` instead of `git rebase main`. Your three rate-limit commits now sit behind four unfinished router-experiment commits, and the branch was force-pushed, so the open pull request shows seven commits and the experiment's half-written router files. On top of that, `main` has moved on (a hotfix landed upstream), and your branch's upstream is still set to the experiment branch, which makes every `git push` and `git status` confusing.
+objective: |
+  Repair the branch.
+
+  1. `feature/rate-limit` must contain exactly your three rate-limit commits directly on top of the current `origin/main`, with no router commit among them and nothing outside `limits/` changed relative to main.
+  2. Publish the corrected branch to `origin/feature/rate-limit` (overwrite with `--force-with-lease`). The branch `experiment/new-router`, locally and on origin, must stay exactly as it is.
+  3. Make `origin/feature/rate-limit` the upstream of the local branch (`git rev-parse --abbrev-ref feature/rate-limit@{upstream}`).
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git log --oneline --graph main origin/main experiment/new-router feature/rate-limit` shows the shape.
+  The three commits to keep are the ones above `experiment/new-router`.'
+- '`git rebase --onto <new-base> <old-base> <branch>` replays only the commits after `<old-base>`. Here
+  the new base is `origin/main` and the old base is the experiment branch.'
+- '`git push --force-with-lease origin feature/rate-limit`, then `git branch --set-upstream-to=origin/feature/rate-limit`.'
+guide: |
+  ## See the damage
 
+  ```bash
+  git log --oneline --graph --all
+  git branch -vv                       # feature/rate-limit tracks origin/experiment/new-router
+  git diff --stat origin/main feature/rate-limit
+  ```
 
-  **Rebased onto Wrong Branch**
+  ## Transplant the three commits
 
+  ```bash
+  git fetch origin
+  git rebase --onto origin/main experiment/new-router feature/rate-limit
+  git log --oneline origin/main..HEAD      # three commits, no router
+  git diff --name-only origin/main HEAD    # only limits/...
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  Read it as "take the commits that are in `feature/rate-limit` but not in `experiment/new-router` and put them on `origin/main`."
 
-  '
+  ## Publish and fix the tracking
+
+  ```bash
+  git push --force-with-lease origin feature/rate-limit
+  git branch --set-upstream-to=origin/feature/rate-limit
+  git status -sb
+  ```
+debrief: |
+  ## Three-argument rebase
+
+  `git rebase <upstream>` means "everything in my branch that is not in `<upstream>`" onto `<upstream>`. With `--onto` you separate the two roles: *which commits* (`old-base..branch`) and *where to* (`new-base`). It is the tool for dependent branches, for moving a branch to a different parent, and for cutting a middle piece out of a stack.
+
+  ## Why it went wrong
+
+  Rebasing onto the experiment made all its commits ancestors of the branch, so the PR included them. The reflog entry `rebase (finish)` and `ORIG_HEAD` still show the previous tip if you need to start again.
+
+  ## Tracking
+
+  `@{upstream}` is stored in `branch.<name>.remote` and `branch.<name>.merge`. A wrong upstream makes `git pull` merge the wrong branch, so check `git branch -vv` after every rebase-and-push session.
+
+  ## Related
+
+  - `git range-diff` verifies that the rebased commits are unchanged in content.
+  - `git rebase --update-refs` moves other branches that point into the rebased stack.
+common_mistakes:
+- Rebasing onto `main` with plain `git rebase main`, which still drags in the four experiment commits.
+- Rebasing onto the local `main`, which is stale; the target is `origin/main` with the hotfix.
+- Using `git push --force`, or pushing to the experiment branch by accident because of the wrong upstream.
 validators:
+- type: script_passes
+  description: feature/rate-limit is exactly the three rate-limit commits on top of origin/main
+  script: 'test "$(git merge-base origin/main feature/rate-limit)" = "$(git rev-parse origin/main)"
+
+    test "$(git log --reverse --format=%s origin/main..feature/rate-limit)" = "limits: token bucket
+
+    limits: per-key quotas
+
+    limits: 429 with Retry-After"
+
+    test -z "$(git diff --name-only origin/main feature/rate-limit | grep -v ''^limits/'')"
+
+    '
+- type: script_passes
+  description: origin/feature/rate-limit equals the corrected local branch
+  script: 'test "$(git --git-dir=../origin.git rev-parse feature/rate-limit)" = "$(git rev-parse feature/rate-limit)"
+
+    '
+- type: script_passes
+  description: experiment/new-router is untouched locally and on origin
+  script: 'test "$(git rev-list --count origin/main..experiment/new-router)" = 4
+
+    test "$(git --git-dir=../origin.git rev-parse experiment/new-router)" = "$(git rev-parse experiment/new-router)"
+
+    git log --format=%s experiment/new-router | grep -q ''router: parse path templates''
+
+    '
+- type: script_passes
+  description: The upstream of feature/rate-limit is origin/feature/rate-limit
+  script: 'test "$(git rev-parse --abbrev-ref feature/rate-limit@{upstream})" = "origin/feature/rate-limit"
+
+    '
 - type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
-- type: is_clean
-  description: Working tree is clean
+  branch: feature/rate-limit
+  description: HEAD is on feature/rate-limit

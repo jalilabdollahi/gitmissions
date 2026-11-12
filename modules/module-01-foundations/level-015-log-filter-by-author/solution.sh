@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
 set -e
-
-cat > author-report.txt <<'EOF'
-matches=2
-EOF
-git add author-report.txt
-git commit -m "docs: add report"
+# --author matches the author field only (not the committer).
+git log --author="Marta Kowalski" --format=%s > kowalski-commits.txt

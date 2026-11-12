@@ -1,37 +1,42 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main
 git config user.name "Player"
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
 
-cat > app.txt <<'EOF'
-value=base
+d() { export GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1"; }
+who() { export GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$1@cycleclub.example" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$1@cycleclub.example"; }
+
+cat > changelog.md <<'EOF'
+# Cycle Club app changelog
+
+## Unreleased
+- Fix crash when the route list is empty
 EOF
+who zoe; git add . && d 2025-10-01T09:00:00; git commit -q -m "Changelog"
 
-git add app.txt
+git switch -q -c release-prep
+who yann
+cat > changelog.md <<'EOF'
+# Cycle Club app changelog
 
-git commit -m "Base commit"
+## Unreleased
+- Fix crash when the route list is empty
+- Add elevation profile to routes
+EOF
+d 2025-10-03T09:00:00; git commit -q -am "Changelog: elevation profile"
 
-git checkout -b feature/merge
+git switch -q main
+who zoe
+cat > changelog.md <<'EOF'
+# Cycle Club app changelog
 
-printf 'value=feature
-' > app.txt
-
-git add app.txt
-
-git commit -m "Feature change"
-
-git checkout main
-
-printf 'value=main
-' > app.txt
-
-git add app.txt
-
-git commit -m "Main change"
-
-git merge feature/merge --no-edit || true
+## Unreleased
+- Fix crash when the route list is empty
+- Show ride distance in miles or kilometres
+EOF
+d 2025-10-04T09:00:00; git commit -q -am "Changelog: distance units"

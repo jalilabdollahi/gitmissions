@@ -4,35 +4,90 @@ level: level-137-revert-a-merge
 order: 137
 difficulty: advanced
 xp: 360
-expected_time: 10m
+expected_time: 9m
 concepts:
-- '`git revert -m 1 <merge-hash>`'
-common_mistakes:
-- Running commands related to `git revert -m 1 <merge-hash>` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A commit introduced a bad change that should be undone safely.
-objective: Revert the latest commit so `bad.txt` disappears from the working tree.
+  - git revert -m
+  - undoing a merge commit
+description: |
+  The pricing page redesign was merged into `main` and deployed, and the new stylesheet broke checkout buttons on
+  mobile. Marketing wants the old look back immediately, but the redesign must be easy to re-introduce later. A new FAQ
+  page was published after the merge and has to stay live. Because `main` is shared you cannot reset it.
+objective: |
+  Undo the **merge** of `redesign` by adding a revert commit on top of `main`: `theme.css` and `cards.css` disappear
+  and `pricing.html` is back to its pre-redesign form (including the later annual billing note), while `faq.html`
+  stays. The merge commit and the redesign commits must remain in history.
 hints:
-- Use `git revert` to create a new inverse commit.
-- Keep the repo clean when you finish.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git revert --no-edit HEAD\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "A merge commit has two parents, so git cannot know which side to keep when reverting it."
+  - "`git revert` needs `-m <number>` to name the parent that is the 'mainline' you want to return to. Check the order of parents in `git show`."
+  - "`git revert -m 1 <merge-hash>`: parent 1 is the branch you merged into (main)."
+guide: |
+  ## Reverting a merge
 
+  Find the merge commit:
 
-  **Revert a Merge Commit**
+  ```bash
+  git log --oneline --graph
+  git show --no-patch --format='%h %p' <merge>
+  ```
 
+  The first parent listed is the `main` side. Try the naive revert and see git refuse:
 
-  Revert is the safe undo tool for history that may already be shared.
+  ```bash
+  git revert <merge>        # error: commit is a merge but no -m option was given
+  ```
 
-  '
+  Tell git to treat parent 1 as the mainline, so the revert undoes everything that the *other* side brought in:
+
+  ```bash
+  git revert -m 1 <merge>
+  ```
+
+  Verify that the redesign is gone and the FAQ page survives:
+
+  ```bash
+  ls
+  cat pricing.html
+  ```
+debrief: |
+  ## What you learned
+
+  A merge commit's diff depends on which parent you compare to. `-m 1` says "go back to the state of the
+  first parent", which removes the feature branch's changes while keeping everything else that happened
+  on `main` since. The result is a normal commit that you can push without force.
+
+  ## Real-world use
+
+  Pulling a bad feature out of a release train. **Important afterwards:** git now believes the branch's commits
+  are already merged. If you later want the redesign back, merge it again only after *reverting the revert*
+  (`git revert <revert-commit>`), or the changes will not be re-applied.
+
+  ## Pitfalls
+
+  - Choosing `-m 2` would revert to the redesign side and wipe out main's own work.
+  - Fast-forward merges have no merge commit to revert; you revert each commit individually.
+  - Fixing the feature on the same branch and merging again fails to bring back the old commits (see the note above).
+common_mistakes:
+  - "Running `git revert <merge>` without `-m`, which stops with an error about the merge having two parents."
+  - "Using `-m 2`, which reverts to the redesign branch's side and removes the annual billing note."
+  - "Resetting `main` to the commit before the merge, which also drops the FAQ page and rewrites shared history."
 validators:
-- type: file_not_exists
-  path: bad.txt
-  description: bad.txt was reverted away
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: a revert commit sits on top of the old tip and the merge is still in history
+    script: |
+      test "$(git rev-parse HEAD~1)" = "$(cat .git/gm-tip)"
+      git log -1 --format=%s | grep -q '^Revert'
+      test "$(git log --merges --format=%H | wc -l | tr -d ' ')" = 1
+  - type: script_passes
+    description: the redesign files are gone and pricing.html equals its pre-merge form
+    script: |
+      m=$(git log --merges --format=%H -1)
+      test ! -e theme.css
+      test ! -e cards.css
+      git diff --quiet "$m^1" HEAD -- pricing.html index.html
+      ! grep -q 'class="v2"' pricing.html
+  - type: script_passes
+    description: the FAQ page published after the merge is still there
+    script: |
+      grep -q 'Can I cancel anytime' faq.html
+      grep -q 'Billed annually' pricing.html
+

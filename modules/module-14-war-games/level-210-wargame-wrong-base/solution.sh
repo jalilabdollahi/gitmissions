@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-git merge --abort || true
-git switch main || git switch -c main
-printf 'recovered
-' > rescue.txt
-git add rescue.txt
-git commit -m "fix: war game recovery"
+git fetch -q origin
+git rebase -q --onto origin/main experiment/new-router feature/rate-limit
+git push -q --force-with-lease origin feature/rate-limit
+git branch -q --set-upstream-to=origin/feature/rate-limit

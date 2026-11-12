@@ -4,40 +4,90 @@ level: level-102-golden-rule-of-rebase
 order: 102
 difficulty: intermediate
 xp: 320
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "never rebase published commits \u2014 why"
-common_mistakes:
-- "Running commands related to never rebase published commits \u2014 why without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - golden rule of rebase
+  - recovering from rewriting shared history
+  - merging into a shared branch
+repo_path: couponly
+description: |
+  `feature/coupon-engine` in Couponly is a shared branch: you pushed two commits and your colleague Priya added a
+  third (`Add coupon usage limits`). `main` has moved on too, so to stay current you ran `git rebase origin/main`
+  on your copy of the branch, which rewrote your two commits. Now `git push` is rejected, and the hosting service
+  suggests `--force`, which would delete Priya's commit's parent history and force her to untangle her clone.
+  Follow the golden rule instead: undo your rewrite and bring `main` into the branch by merging.
+objective: |
+  - discard your rewritten local commits and align `feature/coupon-engine` with `origin/feature/coupon-engine` (Priya's commit included)
+  - merge `origin/main` into it with a merge commit (no rebase, no force)
+  - push, so the remote branch equals your local branch, has exactly one merge commit, still contains each original commit once and includes main's latest commit
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "`git status` says your branch and origin/feature/coupon-engine have diverged. `git log --graph --all` shows your rewritten copies next to the originals."
+  - "Put the branch back to the remote state with `git reset --hard origin/feature/coupon-engine` (your rewrite is worth nothing). Then merge `origin/main` and push normally."
+  - "`git reset --hard origin/feature/coupon-engine && git merge --no-edit origin/main && git push`"
+guide: |
+  ## 1. Diagnose
+  ```bash
+  git fetch
+  git status -sb
+  git log --oneline --graph --all
+  ```
+  Your branch has two rewritten commits; the remote has the originals plus Priya's.
 
+  ## 2. Undo the rewrite
+  ```bash
+  git reset --hard origin/feature/coupon-engine
+  ```
+  The branch now equals the shared one. Nothing valuable is lost: the rewritten copies had the same changes.
 
-  **Golden Rule of Rebase**
+  ## 3. Update with a merge instead
+  ```bash
+  git merge --no-edit origin/main
+  ```
+  A merge commit adds main's changes without altering any existing commit.
 
+  ## 4. Push normally
+  ```bash
+  git push
+  ```
+  It is a fast-forward for the server, so no force is needed.
+debrief: |
+  ## What happened
+  Rebase replaced your published commits with new ones. The server's branch and yours then pointed
+  at unrelated versions of the same work, and Priya's commit sat on the old version. Resetting restored the shared history,
+  and merging brought `main` in the safe way.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## The golden rule
+  Never rebase commits that exist outside your repository. Once other people base work on them,
+  rewriting forces everyone to repair their clones.
 
-  '
+  ## If you must rewrite shared history
+  Agree with the team first, push with `--force-with-lease`, and tell collaborators to `git fetch` and
+  `git rebase --onto` or reset their local branches.
+
+  ## Related
+  - `git reflog` has your pre-reset commits if you ever need them.
+  - `git merge --no-ff` keeps a visible merge bubble for the update.
+common_mistakes:
+  - "Force-pushing the rebased branch, which orphans Priya's commit and breaks her clone."
+  - "Running `git pull` (merge) while still on the rewritten branch, duplicating the two commits."
+  - "Merging main without first resetting, so the old and rewritten commits both remain."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: |
+      test "$(git --git-dir=../origin.git rev-parse refs/heads/feature/coupon-engine)" = "$(git rev-parse feature/coupon-engine)"
+    description: The remote branch equals your local branch
+  - type: script_passes
+    script: |
+      g=../origin.git
+      test "$(git --git-dir=$g log --format=%s refs/heads/feature/coupon-engine | grep -c 'Add coupon engine')" = 1
+      git --git-dir=$g log --format=%s refs/heads/feature/coupon-engine | grep -qx 'Add coupon usage limits'
+    description: The original commits exist once and Priya's commit survived
+  - type: script_passes
+    script: |
+      g=../origin.git
+      test "$(git --git-dir=$g rev-list --merges --count refs/heads/feature/coupon-engine)" = 1
+      git --git-dir=$g merge-base --is-ancestor "$(git --git-dir=$g rev-parse refs/heads/main)" refs/heads/feature/coupon-engine
+    description: One merge commit brought main into the branch
+  - type: is_on_branch
+    branch: feature/coupon-engine
+    description: HEAD is on feature/coupon-engine

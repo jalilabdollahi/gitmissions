@@ -6,33 +6,79 @@ difficulty: beginner
 xp: 120
 expected_time: 6m
 concepts:
-- '`git switch`'
-- '`git checkout`'
-common_mistakes:
-- Running commands related to `git switch`, `git checkout` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This sandbox starts from a simple `main` branch with one commit.
-objective: Switch from `main` to `feature/ui`.
+  - git switch <branch>
+  - working tree follows the branch
+  - committing on the right branch
+description: |
+  Alba is building a multilingual visitor guide for the Museum of Clocks. Each translation lives on its own
+  branch: `translation-fr` and `translation-es` already exist, and each holds that language's welcome text.
+  She is on `main` right now, which only has the English guide. The Spanish translator has just sent the opening
+  hours, which must be added on the Spanish branch, not on `main`.
+objective: |
+  Switch to `translation-es` and create `es/horarios.txt` (any Spanish text, at least one line) there.
+  Commit it with the message `Add Spanish opening hours`. When you are done you must be on `translation-es`,
+  with one more commit than before on that branch; `main` and `translation-fr` stay untouched.
 hints:
-- Start with the Git command related to ``git switch`, `git checkout``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/ui\n   ```"
-debrief: '## What Just Happened
+  - "`git branch` shows which branches exist and where you are. Watch how `ls` changes when you change branch."
+  - "`git switch <branch>` moves HEAD to another branch and updates your files to match."
+  - "`git switch translation-es`, create `es/horarios.txt`, then `git add es/horarios.txt` and `git commit -m \"Add Spanish opening hours\"`."
+guide: |
+  ## 1. See where you are
+  ```bash
+  git branch
+  ls
+  ```
+  You are on `main`: there is only an `en/` folder.
 
+  ## 2. Switch
+  ```bash
+  git switch translation-es
+  ls
+  ```
+  A new `es/` folder appeared. Git replaced the files in your working tree with the snapshot of that branch.
 
-  **Switch to a Branch**
+  ## 3. Work and commit
+  ```bash
+  printf 'Museo de los Relojes\nAbierto de martes a domingo\n' > es/horarios.txt
+  git add es/horarios.txt
+  git commit -m "Add Spanish opening hours"
+  ```
+  The commit extends `translation-es` only.
+debrief: |
+  ## What happened
+  `git switch` moved `HEAD` to point at `translation-es` and rewrote your working directory to match that branch's latest
+  commit. When you committed, only that branch pointer moved forward; `main` and `translation-fr` did not.
 
+  ## Why it matters
+  Branches let several lines of work exist side by side. The most common beginner error is working on the wrong
+  branch, so check `git branch` (or your prompt) before committing.
 
-  Branches are lightweight references to commits, which makes them cheap to create
-  and remove.
+  ## Related
+  - `git checkout <branch>` is the older, multi-purpose equivalent.
+  - `git switch -` returns to the previous branch.
+  - `git status` always names the current branch in its first line.
 
-  '
+  ## Pitfalls
+  - Uncommitted changes can block a switch when the target branch changes the same files.
+  - `git switch` refuses to create branches unless you pass `-c`.
+common_mistakes:
+  - Creating the file while still on `main` and committing it there.
+  - Typing `git switch es`, which is not a branch name (the branch is `translation-es`).
+  - Forgetting `git add` on the new file, so the commit is empty or fails.
 validators:
-- type: is_on_branch
-  branch: feature/ui
-  description: HEAD is on feature/ui
+  - type: is_on_branch
+    branch: translation-es
+    description: You are on translation-es
+  - type: commit_message_equals
+    text: Add Spanish opening hours
+    description: Latest commit message is "Add Spanish opening hours"
+  - type: script_passes
+    script: test "$(git rev-list --count main..translation-es)" = "2" && test -s es/horarios.txt && git cat-file -e translation-es:es/horarios.txt
+    description: translation-es contains the new es/horarios.txt file
+  - type: commit_count_eq
+    count: 1
+    branch: main
+    description: main is unchanged
+  - type: script_passes
+    script: test "$(git rev-list --count translation-fr)" = "2" && ! git cat-file -e translation-fr:es/horarios.txt 2>/dev/null
+    description: translation-fr is unchanged

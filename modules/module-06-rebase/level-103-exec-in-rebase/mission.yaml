@@ -4,40 +4,98 @@ level: level-103-exec-in-rebase
 order: 103
 difficulty: intermediate
 xp: 340
-expected_time: 12m
+expected_time: 15m
 concepts:
-- '`exec` command in interactive rebase'
-common_mistakes:
-- Running commands related to `exec` command in interactive rebase without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - git rebase --exec
+  - testing every commit
+  - moving a fix into the commit that broke
+repo_path: billwise
+description: |
+  The Billwise subscription-billing library has a branch `feature/proration` with five commits. CI only runs on the tip,
+  which passes, but the release manager insists that every commit must pass `sh test.sh` so that `git bisect`
+  stays useful. You suspect one of the commits in the middle breaks the proration maths, and a later
+  one-line commit repairs it. Use Git to run the test suite against each commit, find the guilty ones, and
+  rewrite the branch so that all commits pass.
+objective: |
+  - find out which commits fail `sh test.sh` (use `git rebase -i --exec "sh test.sh" main` and abort afterwards if you like)
+  - rewrite `feature/proration` so that every commit on top of `main` passes `sh test.sh` when checked out on its own
+  - keep the commits `Add proration calculator`, `Parametrize billing days`, `Document proration` and `Add yearly plan` (the standalone repair commit may be folded away)
+  - stay on `feature/proration` with no rebase in progress
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "`git rebase -i --exec \"sh test.sh\" main` runs the tests after replaying each commit and stops at the first failure. Abort with `git rebase --abort`."
+  - "The break comes in with `Parametrize billing days` and is repaired by `Fix default billing days`. Fold the repair into the broken commit with `fixup`, which means moving its todo line up too."
+  - "Todo order: `pick Add proration calculator`, `pick Parametrize billing days`, `fixup Fix default billing days`, `pick Document proration`, `pick Add yearly plan`."
+guide: |
+  ## 1. Detect with --exec
+  ```bash
+  git rebase -i --exec "sh test.sh" main
+  ```
+  Save the todo as is. Git replays a commit, runs the test, and stops with an error on the first failing commit.
+  ```bash
+  git status
+  git rebase --abort
+  ```
 
+  ## 2. Understand the break
+  `git log -p main..feature/proration -- prorate.sh` shows the default of 31 days introduced in one commit
+  and corrected in a later one.
 
-  **Run Tests During Rebase**
+  ## 3. Move the repair up and fold it
+  ```bash
+  git rebase -i main
+  ```
+  Reorder so the repair follows the broken commit and mark it `fixup`:
+  ```
+  pick  Add proration calculator
+  pick  Parametrize billing days
+  fixup Fix default billing days
+  pick  Document proration
+  pick  Add yearly plan
+  ```
 
+  ## 4. Verify again
+  ```bash
+  git rebase -i --exec "sh test.sh" main   # save todo unchanged; it should finish silently
+  ```
+debrief: |
+  ## What happened
+  `--exec` inserts an `exec <command>` line after every commit in the todo. If the command fails, the rebase
+  stops there, so you learn exactly which commits are broken. The fix was to bring the repair next to the
+  bug and fold them together, because the two commits touch the same line.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## Why every commit should pass
+  `git bisect`, `git revert` and cherry-picks assume that each commit is a consistent state. A history with
+  temporarily broken commits wastes hours when somebody bisects it later.
 
-  '
+  ## CI integration
+  Teams run `git rebase --exec "make test" origin/main` (or `git rebase -x`) before opening a pull request.
+  `git bisect run` automates the opposite direction.
+
+  ## Related
+  - `-x` is the short form of `--exec`.
+  - `git commit --fixup` + `--autosquash` prepares the fold automatically (see the next level).
+common_mistakes:
+  - "Fixing the tip only, which leaves the middle commits broken."
+  - "Dropping `Parametrize billing days` entirely, which removes a commit the objective asks to keep."
+  - "Putting the repair before the broken commit, so the fold target does not exist yet."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/proration
+    description: HEAD is on feature/proration
+  - type: script_passes
+    script: |
+      for c in $(git rev-list main..feature/proration); do
+        t=$(mktemp -d)
+        git archive "$c" | tar -x -C "$t"
+        (cd "$t" && sh test.sh)
+        rm -rf "${t:?}"
+      done
+    description: Every commit on the branch passes sh test.sh
+  - type: script_passes
+    script: |
+      s=$(git log --format=%s main..feature/proration)
+      echo "$s" | grep -qx 'Add proration calculator' && echo "$s" | grep -qx 'Parametrize billing days' && echo "$s" | grep -qx 'Document proration' && echo "$s" | grep -qx 'Add yearly plan'
+    description: The four feature commits are still there
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && test -f plans.sh && test -f README.md"
+    description: No rebase in progress and nothing was lost

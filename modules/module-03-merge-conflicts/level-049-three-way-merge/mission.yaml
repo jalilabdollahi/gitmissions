@@ -6,45 +6,74 @@ difficulty: intermediate
 xp: 260
 expected_time: 10m
 concepts:
-- base
-- ours
-- "theirs \u2014 the model"
-common_mistakes:
-- "Running commands related to base, ours, theirs \u2014 the model without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - merge base
+  - git merge-base
+  - base, ours, theirs
+  - three-dot diff
+description: |
+  Elin's choir repository has two lines of work: `main` (rehearsal logistics) and `spring-concert` (new pieces and the
+  concert date). Before merging, she wants to understand what Git will compare. A three-way merge takes
+  three snapshots: the **base** (the last commit both branches share), **ours** and **theirs**. The result depends on
+  what each side changed *since the base*, not on how the two tips differ from each other. She asks you to find the
+  base and to list what the other branch changed since then.
+objective: |
+  Do not merge. Create `merge-base.txt` with the full hash of the merge base of `main` and `spring-concert`, and
+  `spring-changes.txt` with the names of the files that were changed on `spring-concert` since that base, one per
+  line, sorted alphabetically. Files that only `main` changed since the base must not be listed. The history
+  and the branches must stay untouched.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows where the two lines split. The split commit is the common ancestor."
+  - "`git merge-base <a> <b>` prints the best common ancestor. For the file list you need a diff against that base, not against the tip of `main`."
+  - "`git diff --name-only main...spring-concert` (three dots) compares `spring-concert` with the merge base; or `git diff --name-only <base> spring-concert`."
+guide: |
+  ## 1. See the shape
+  ```bash
+  git log --oneline --graph --all
+  ```
+  The branches left each other at "Move rehearsals to hall B".
 
+  ## 2. Ask Git for the base
+  ```bash
+  git merge-base main spring-concert > merge-base.txt
+  ```
 
-  **Understanding Three-Way Merge**
+  ## 3. What did the other side change since the base?
+  ```bash
+  git diff --name-only $(cat merge-base.txt) spring-concert | sort > spring-changes.txt
+  ```
+  or in one go: `git diff --name-only main...spring-concert`. Compare with the two-dot form `main..spring-concert`:
+  that would also list the files only `main` changed (as reverted changes), which is the wrong question.
+debrief: |
+  ## What happened
+  For every file Git asks: did ours change it since the base? did theirs? If only one side did, take that side;
+  if both did, merge line by line; if both changed the same lines differently, conflict. That is the whole
+  three-way merge algorithm, and the merge base is what makes it possible.
 
+  ## Why it matters
+  Knowing the base explains surprises: why a "reverted" line comes back, why a file is not part of a merge even
+  though it differs between two tips, and what `git diff A...B` means.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Related
+  - `git diff A..B` compares the tips; `git diff A...B` compares B with the merge base.
+  - `git merge-base --is-ancestor A B` tests ancestry.
+  - `git log --left-right --oneline A...B` lists the commits unique to each side.
 
-  '
+  ## Pitfalls
+  - With criss-cross histories there can be several merge bases.
+  - Not a conflict in the diff sense: two tips can differ in a file that Git will not touch during a merge.
+common_mistakes:
+  - Using `git diff --name-only main spring-concert`, which also lists `notes.md` and `schedule.txt` (changed only on `main`).
+  - Writing the abbreviated hash or the hash of a branch tip instead of the merge base.
+  - Actually merging the branches to "see what happens", which changes the history.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(tr -d '[:space:]' < merge-base.txt)" = "$(git merge-base main spring-concert)"
+    description: merge-base.txt contains the full hash of the merge base
+  - type: script_passes
+    script: test "$(sort spring-changes.txt)" = "$(git diff --name-only main...spring-concert | sort)" && test "$(wc -l < spring-changes.txt | tr -d ' ')" = "2"
+    description: spring-changes.txt lists exactly the files spring-concert changed since the base
+  - type: no_merge_commit
+    description: No merge was made
+  - type: script_passes
+    script: test "$(git rev-list --count main)" = "5" && test "$(git rev-list --count spring-concert)" = "5"
+    description: Both branches are unchanged

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -e
-
-git merge --abort || true
-git switch main || git switch -c main
-printf 'recovered
-' > rescue.txt
-git add rescue.txt
-git commit -m "fix: war game recovery"
+git bisect start
+git bisect bad HEAD
+git bisect good "$(git rev-list --max-parents=0 HEAD)"
+git bisect run sh -c './test.sh || ./test.sh'
+git tag regression-origin refs/bisect/bad
+git bisect reset

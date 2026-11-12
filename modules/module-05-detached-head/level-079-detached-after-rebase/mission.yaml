@@ -4,33 +4,81 @@ level: level-079-detached-after-rebase
 order: 79
 difficulty: intermediate
 xp: 270
-expected_time: 8m
+expected_time: 10m
 concepts:
-- understanding when ops leave you detached
-common_mistakes:
-- Running commands related to understanding when ops leave you detached without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - accidental detached HEAD
+  - git switch -c
+  - pushing a new local branch
+repo_path: flagpole
+description: |
+  In the Flagpole feature-flag service, the team keeps a shared `staging` branch on the server. You wanted to
+  edit it, ran `git checkout origin/staging` (a remote-tracking branch, not a local one), and committed
+  "Enable checkout-v2 flag in staging". Git now refuses `git push` with "You are not currently on a branch".
+  The commit exists only on your detached HEAD. Get it onto a proper local `staging` branch and publish it.
+objective: |
+  - create a local branch `staging` at your current commit and switch to it (HEAD must be attached)
+  - push so that `origin/staging` includes your commit (it is a fast-forward of the remote branch)
+  - local `staging` must track `origin/staging`
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows `HEAD detached at ...`. `origin/staging` is a read-only bookmark; you cannot commit onto it."
+  - "Create the branch right where you are: `git switch -c staging`. Do not use plain `git switch staging`: that would check out the remote's older commit and leave yours behind."
+  - "`git switch -c staging && git push -u origin staging`"
+guide: |
+  ## 1. Diagnose
+  ```bash
+  git status
+  git log --oneline --graph --all -5
+  git push      # fails: not on a branch
+  ```
+  The graph shows your commit one step ahead of `origin/staging`.
 
+  ## 2. Create the local branch at HEAD
+  ```bash
+  git switch -c staging
+  ```
+  Now HEAD is attached to `staging`, and your commit is on it.
 
-  **Detached HEAD After Failed Op**
+  ## 3. Publish and link
+  ```bash
+  git push -u origin staging
+  ```
+  The remote branch moves forward by one commit, and `-u` sets the upstream.
 
+  ## 4. Verify
+  ```bash
+  git status -sb
+  git branch -vv
+  ```
+debrief: |
+  ## What happened
+  `origin/staging` is a remote-tracking ref. Checking it out detaches HEAD, because Git will not let you
+  advance a ref it manages for the remote. A new local branch gives your commit a name that you may push.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## The right way next time
+  `git switch staging` (without `origin/`) creates a local branch that tracks the remote one, and is
+  attached from the start. A newer Git warns about this trap in the detach advice text.
 
-  '
+  ## Why the order matters
+  Creating the branch first and pushing second preserves your commit. Had you switched away before
+  naming it, the commit would be orphaned (the reflog could still bring it back).
+
+  ## Related
+  - `git push origin HEAD:staging` pushes a detached HEAD directly, if you want a one-off push.
+  - `git branch -vv` shows which local branches track which remote ones.
+common_mistakes:
+  - "Running `git switch staging`, which moves to the older remote commit and orphans yours."
+  - "Pushing with `git push origin HEAD:staging` and forgetting to create a local branch."
+  - "Creating the branch with `git branch staging origin/staging`, which points at the old tip instead of your commit."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: staging
+    description: HEAD is attached to staging
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git log -1 --format=%s refs/heads/staging)" = "Enable checkout-v2 flag in staging"
+    description: origin/staging contains your commit
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/staging)" = "$(git rev-parse staging)"
+    description: Local staging equals the remote branch
+  - type: script_passes
+    script: test "$(git rev-parse --abbrev-ref staging@{upstream})" = origin/staging
+    description: staging tracks origin/staging

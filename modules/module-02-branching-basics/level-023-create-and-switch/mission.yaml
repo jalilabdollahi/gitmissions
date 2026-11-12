@@ -6,36 +6,87 @@ difficulty: beginner
 xp: 120
 expected_time: 6m
 concepts:
-- '`git switch -c` / `git checkout -b`'
-common_mistakes:
-- Running commands related to `git switch -c` / `git checkout -b` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This sandbox starts from a simple `main` branch with one commit.
-objective: Create and switch to `feature/docs`.
+  - git switch -c
+  - git checkout -b
+  - moving uncommitted work to a new branch
+description: |
+  Oskar runs a bicycle workshop and keeps the price list in Git. Without thinking, he started typing the winter
+  discount prices straight into `prices.csv` while on `main`. The change is not committed. The shop's rule is that
+  seasonal changes live on their own branch and only reach `main` after the owner approves them.
+objective: |
+  Create a branch named `winter-prices`, switch to it in one command, and commit the discounted `prices.csv`
+  there with the message `Winter discount on workshop prices`. `main` must keep exactly its original commit and the
+  original prices, and the working tree must be clean afterwards.
 hints:
-- Start with the Git command related to ``git switch -c` / `git checkout -b``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch -c feature/docs\n \
-  \  ```"
-debrief: '## What Just Happened
+  - "`git status` shows the uncommitted edit on `main`. Uncommitted changes are not owned by a branch; they come along when you switch."
+  - "One command creates a branch and switches to it: `git switch -c <name>` (or `git checkout -b <name>`)."
+  - "`git switch -c winter-prices`, then `git add prices.csv` and `git commit -m \"Winter discount on workshop prices\"`."
+guide: |
+  ## 1. Notice the edit
+  ```bash
+  git status
+  git diff
+  ```
+  `prices.csv` is modified on `main`.
 
+  ## 2. Create and switch
+  ```bash
+  git switch -c winter-prices
+  ```
+  The new branch starts at the current commit, and your uncommitted edit stays in the working tree.
 
-  **Create and Switch**
+  ## 3. Commit on the new branch
+  ```bash
+  git add prices.csv
+  git commit -m "Winter discount on workshop prices"
+  ```
 
+  ## 4. Verify
+  ```bash
+  git log --oneline --all --graph
+  git switch main && cat prices.csv
+  ```
+  `main` still has the old prices. (Switch back to `winter-prices` afterwards.)
+debrief: |
+  ## What happened
+  `git switch -c` = `git branch` + `git switch`. The new branch pointed at the same commit as `main`,
+  so Git could switch without touching your modified file. The commit then advanced only `winter-prices`.
 
-  Branches are lightweight references to commits, which makes them cheap to create
-  and remove.
+  ## Why it matters
+  This is the standard way to rescue work that started on the wrong branch, as long as you have not
+  committed yet. If you already committed, you would create the branch at that point and reset `main` instead.
 
-  '
+  ## Related
+  - `git checkout -b <name>` is the older spelling.
+  - `git switch -c <name> <start-point>` starts from another commit or branch.
+  - `git stash` is an alternative when you need to move the edit to a branch that already exists.
+
+  ## Pitfalls
+  - If `main` had already moved, remember that the new branch starts where you currently are.
+  - End the mission on `winter-prices`; switching back to `main` leaves the validators unsatisfied.
+common_mistakes:
+  - Committing the change on `main` and creating the branch afterwards, so `main` has the discount commit.
+  - Running `git branch winter-prices` only, which does not switch.
+  - Switching to `main` at the end to "check" and leaving it there.
 validators:
-- type: branch_exists
-  branch: feature/docs
-  description: feature/docs exists
-- type: is_on_branch
-  branch: feature/docs
-  description: HEAD is on feature/docs
+  - type: is_on_branch
+    branch: winter-prices
+    description: You are on winter-prices
+  - type: commit_message_equals
+    text: Winter discount on workshop prices
+    description: Latest commit message is "Winter discount on workshop prices"
+  - type: ahead_of
+    branch: winter-prices
+    other: main
+    count: 1
+    behind: 0
+    description: winter-prices is exactly one commit ahead of main
+  - type: script_passes
+    script: git show main:prices.csv | grep -q 'Full service,65' && test "$(git rev-list --count main)" = "1"
+    description: main still has the original prices and one commit
+  - type: file_content_contains
+    path: prices.csv
+    text: Full service,55
+    description: The discounted prices are in the working tree
+  - type: is_clean
+    description: Working tree is clean

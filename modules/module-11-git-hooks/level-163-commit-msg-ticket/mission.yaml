@@ -6,48 +6,109 @@ difficulty: advanced
 xp: 360
 expected_time: 12m
 concepts:
-- '`commit-msg` enforces JIRA-style prefix'
-common_mistakes:
-- Running commands related to `commit-msg` enforces JIRA-style prefix without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``commit-msg`
-  enforces JIRA-style prefix`.
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - commit-msg with context
+  - reading the current branch inside a hook
+  - ticket traceability
+description: |
+  Every change to the audit-trail service has to be traceable to a ticket for the regulator. The convention: the subject starts with
+  the Jira key in square brackets, `[FIN-1234] Add retention check`, where the number has 3 to 5 digits. Housekeeping without
+  a ticket is allowed only on branches named `chore/...`, using the marker `[NOTICKET]`. A `[NOTICKET]` commit on any other branch is a
+  policy violation. Merge commits made by git are exempt. Your hook therefore needs to know both the message and the current branch.
+objective: |
+  Write an executable `.git/hooks/commit-msg` that accepts a message only if its first line is `[FIN-nnn..nnnnn] text` (3 to 5 digits, text required)
+  or, on a branch whose name starts with `chore/`, `[NOTICKET] text`. Subjects beginning with `Merge ` are always accepted. Everything else
+  is rejected with exit status 1 and a message explaining the rule.
 hints:
-- Start with the Git command related to ``commit-msg` enforces JIRA-style prefix`.
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Besides the message file (`$1`), a hook can run git commands. Which command tells you the current branch name?"
+  - "`git symbolic-ref --short HEAD` prints the branch. Match the ticket with `grep -Eq '^\\[FIN-[0-9]{3,5}\\] .+'`."
+  - "Check `[FIN-...]` first (valid anywhere), then `[NOTICKET]` only inside a `case \"$branch\" in chore/*)`, otherwise print the rule and `exit 1`."
+guide: |
+  ## Message plus context
 
+  A commit-msg hook can look at anything about the repository. Get the branch and the subject:
 
-  **Require Ticket Number**
+  ```bash
+  subject=$(grep -v '^#' "$1" | sed -n '1p')
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo detached)
+  ```
 
+  Then apply the rules in order of strictness:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  case "$subject" in "Merge "*) exit 0 ;; esac
+  if printf '%s\n' "$subject" | grep -Eq '^\[FIN-[0-9]{3,5}\] .+'; then exit 0; fi
+  if printf '%s\n' "$subject" | grep -Eq '^\[NOTICKET\] .+'; then
+    case "$branch" in chore/*) exit 0 ;; esac
+    echo "commit-msg: [NOTICKET] is only allowed on chore/* branches" >&2
+    exit 1
+  fi
+  echo "commit-msg: subject must start with a ticket, e.g. [FIN-1234] ..." >&2
+  exit 1
+  ```
 
-  '
+  Save it as `.git/hooks/commit-msg` with `#!/bin/sh` on top and `chmod +x`. Test: on `main`, `[FIN-204] Add retention check` works, `[NOTICKET] tidy` fails;
+  after `git switch -c chore/cleanup`, `[NOTICKET] tidy` works.
+debrief: |
+  ## What you learned
+
+  A hook is a normal program running inside your repository, so it can ask git about branches, remotes, staged
+  files or the author. Here the same message is valid or invalid depending on the branch. Order your checks from the
+  common, accepted case to the special cases, and make each rejection say *how to fix it*.
+
+  ## Real-world use
+
+  Ticket keys in commit messages let Jira, GitLab or GitHub link commits to issues automatically. Many teams derive the key
+  from the branch name instead (see the prepare-commit-msg level) so that developers do not have to type it.
+
+  ## Pitfalls
+
+  - On a detached HEAD, `symbolic-ref` fails; the hook should still behave sensibly (here: it rejects `[NOTICKET]`).
+  - Regular expressions must be anchored (`^`), otherwise a ticket key in the *middle* of the subject would pass.
+  - Policies on the branch name should be mirrored in CI, since a local hook can be skipped.
+common_mistakes:
+  - "Allowing `[NOTICKET]` on every branch, or only checking the branch name and not the marker."
+  - "Accepting `[FIN-12]` or `[FIN-123456]`; the key must have 3 to 5 digits."
+  - "Using `git branch` (which prints a list) instead of `git symbolic-ref --short HEAD`."
+  - "Blocking git's own `Merge branch ...` messages."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: commit-msg
+    description: an executable commit-msg hook exists
+  - type: script_passes
+    description: valid ticket subjects pass and invalid ones fail on main
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      printf 'a\n' >> audit/policy.yaml; git add -A
+      for m in "Add retention check" "[FIN-12] Too short key" "[FIN-123456] Too long key" "[fin-204] lowercase" "[FIN-204]" "FIN-204 no brackets" "[NOTICKET] cleanup on main"; do
+        must_fail git commit -q -m "$m"
+      done
+      git commit -q -m "[FIN-204] Add retention check"
+      printf 'b\n' >> audit/policy.yaml
+      git commit -q -am "[FIN-99999] Largest allowed key"
+  - type: script_passes
+    description: '[NOTICKET] is accepted only on chore/* branches'
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      git switch -q -c feature/retention
+      printf 'a\n' >> audit/policy.yaml; git add -A
+      must_fail git commit -q -m "[NOTICKET] sneaky"
+      git switch -q -c chore/cleanup
+      git commit -q -m "[NOTICKET] tidy the policy file"
+      test "$(git log -1 --format=%s)" = "[NOTICKET] tidy the policy file"
+  - type: script_passes
+    description: merge messages generated by git are not blocked
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      git config user.name T; git config user.email t@example.dev
+      git switch -q -c feature/x
+      printf 'x\n' > x.txt; git add -A; git commit -q -m "[FIN-300] Add x"
+      git switch -q main
+      printf 'y\n' > y.txt; git add -A; git commit -q -m "[FIN-301] Add y"
+      git merge -q --no-ff feature/x
+      git log -1 --format=%s | grep -q '^Merge'
+

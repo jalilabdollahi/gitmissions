@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > all-branches.txt <<'EOF'
-subjects=4
-EOF
-git add all-branches.txt
-git commit -m "docs: add report"
+c=$(git log --all --format=%H -1 --grep='Cap overtime multiplier')
+git branch --contains "$c" --format='%(refname:short)' > found.txt
+git log -1 --format=%an "$c" >> found.txt

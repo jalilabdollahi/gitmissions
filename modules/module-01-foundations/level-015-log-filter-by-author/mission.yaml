@@ -4,50 +4,69 @@ level: level-015-log-filter-by-author
 order: 15
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git log --author=`'
-common_mistakes:
-- Running commands related to `git log --author=` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log
-  --author=``.
-objective: 'Inspect the repository history and create `author-report.txt` containing
-  exactly:
-
-
-  `matches=2`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --author
+  - author vs committer
+description: |
+  A neighbourhood library keeps its book catalogue in a CSV file under Git. The volunteers want to thank
+  Marta Kowalski for her contributions, but the repository also has another volunteer called Marta Lindqvist,
+  and one commit that Marta Kowalski only applied on behalf of someone else. The thank-you list must be accurate.
+objective: |
+  Create `kowalski-commits.txt` with the subject of every commit **authored** by `Marta Kowalski`
+  (not Marta Lindqvist, and not commits she merely committed for somebody else), one subject per line,
+  newest first. Do not change the history.
 hints:
-- Start with the Git command related to ``git log --author=``.
-- Write the exact expected answer into `author-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > author-report.txt <<'EOF'\n\
-  matches=2\nEOF\n   ```\n\n2.\n   ```bash\n   git add author-report.txt\n   ```\n\
-  \n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --format='%an | %cn | %s'` shows author and committer side by side. They are not always the same person."
+  - "`git log --author=<pattern>` filters on the author. The pattern is a regular expression, so `Marta` alone matches both volunteers."
+  - "`git log --author=\"Marta Kowalski\" --format=%s > kowalski-commits.txt`"
+guide: |
+  ## 1. Look at the people involved
+  ```bash
+  git log --format='%an <%ae> / committer %cn | %s'
+  ```
+  Two different Martas, and a commit by Leo that Marta Kowalski committed.
 
+  ## 2. Filter precisely
+  ```bash
+  git log --author="Marta Kowalski" --format=%s
+  ```
+  Using the full name avoids the namesake. `--author` only looks at the author field, so the commit that Marta
+  merely committed for Leo is correctly excluded.
 
-  **Filter Log by Author**
+  ## 3. Save
+  ```bash
+  git log --author="Marta Kowalski" --format=%s > kowalski-commits.txt
+  ```
+debrief: |
+  ## What happened
+  Every commit stores two identities: the **author** (who wrote the change) and the **committer** (who recorded it).
+  They differ when a patch is applied, cherry-picked or rebased by someone else. `--author` filters on the first,
+  `--committer` on the second.
 
+  ## Why it matters
+  Credit, audits and "who do I ask about this change" all depend on the correct person. A sloppy filter can
+  credit the wrong volunteer.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Related
+  - `--author` accepts a regex: `--author='Marta (K|L)'` or `--author=marta.k@`.
+  - `git shortlog -sne` counts commits by author with emails.
+  - `--invert-grep` and `--committer=` complete the family of filters.
 
-  '
+  ## Pitfalls
+  - A short pattern may match several people. Check with `%an %ae` first.
+  - Authors are free text; the same person may appear with several spellings (see `.mailmap`).
+common_mistakes:
+  - Using `--author=Marta`, which includes Marta Lindqvist's commits.
+  - Filtering with `--committer`, which wrongly adds the commit authored by Leo.
+  - Saving hashes or `--oneline` output instead of bare subjects.
 validators:
-- type: file_content_equals
-  path: author-report.txt
-  text: matches=2
-  description: author-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test -s kowalski-commits.txt && test "$(cat kowalski-commits.txt)" = "$(git log --author='Marta Kowalski' --format=%s)"
+    description: kowalski-commits.txt lists the subjects of Marta Kowalski's authored commits, newest first
+  - type: script_passes
+    script: '! grep -q -e Ulysses -e Emma -e Hamlet kowalski-commits.txt'
+    description: The namesake's commits and the patch from Leo are not listed
+  - type: commit_count_eq
+    count: 8
+    description: History is unchanged

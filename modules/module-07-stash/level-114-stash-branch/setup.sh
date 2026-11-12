@@ -1,22 +1,18 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main geofence
+cd geofence
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-printf 'branch me
-' > app.txt
-
-git stash
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf 'APP = "geofence"\n' > app.py
+git add . && git commit -q -m "Create courier app"
+printf 'ZONES = ["A"]\n' > zones.py
+git add . && git commit -q -m "Add zone list"
+printf 'ZONES = ["A", "B"]\n' > zones.py
+git stash push -q -m "zone B draft"
+printf 'ZONES = ["Z"]\n' > zones.py
+git commit -q -am "Rename zone A to Z"

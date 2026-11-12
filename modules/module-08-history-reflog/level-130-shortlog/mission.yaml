@@ -6,47 +6,88 @@ difficulty: advanced
 xp: 280
 expected_time: 10m
 concepts:
-- '`git shortlog -sn`'
-common_mistakes:
-- Running commands related to `git shortlog -sn` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git shortlog
-  -sn``.
-objective: 'Inspect the repository history and create `shortlog.txt` containing exactly:
-
-
-  `Alice 2`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git shortlog -sn
+  - .mailmap
+  - unifying author identities
+description: |
+  The open-source `ledger-lite` library is about to ship 0.9.0 and the release notes must credit contributors by
+  commit count. `git shortlog` shows six "people", but you know two of them are the same human beings using
+  an old work email and a personal address: "J. Okafor" is Joy Okafor and "luca b" is Luca Bianchi. Rewriting
+  history to fix the names is out of the question, because tags and signatures would change.
+objective: |
+  1. Add a `.mailmap` file that maps the two duplicate identities (`J. Okafor <j.okafor@gmail.com>` and
+     `luca b <lbianchi@old-corp.it>`) to their canonical names and emails (`Joy Okafor <joy@ledger.dev>`,
+     `Luca Bianchi <luca@ledger.dev>`), and **commit** it.
+  2. Save the contributor credits for the release, `git shortlog -sn` for everything up to the tag `v0.9.0`, into `credits.txt`
+     (generated after the mailmap is in place, so it shows the merged counts).
+  Existing commits must not be rewritten.
 hints:
-- Start with the Git command related to ``git shortlog -sn``.
-- Write the exact expected answer into `shortlog.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > shortlog.txt <<'EOF'\nAlice\
-  \ 2\nEOF\n   ```\n\n2.\n   ```bash\n   git add shortlog.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Run `git shortlog -sn` to see the problem. Git has a built-in file for 'these identities are the same person', placed in the repository root."
+  - "The format of `.mailmap` is `Proper Name <proper@email> Old Name <old@email>` on one line per alias."
+  - "Create `.mailmap` with two lines, `git add` and commit it, then run `git shortlog -sn v0.9.0 > credits.txt`."
+guide: |
+  ## One person, many identities
 
+  See the current credits:
 
-  **Commit Authorship Summary**
+  ```bash
+  git shortlog -sn v0.9.0
+  ```
 
+  `-s` summarises (count only), `-n` sorts by count. Six names appear. Create the mapping file:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  cat > .mailmap <<'EOF'
+  Joy Okafor <joy@ledger.dev> J. Okafor <j.okafor@gmail.com>
+  Luca Bianchi <luca@ledger.dev> luca b <lbianchi@old-corp.it>
+  EOF
+  ```
 
-  '
+  Re-run the shortlog: four contributors now, with Joy at 7 and Luca at 7. Commit the file so the
+  whole team benefits, then record the credits:
+
+  ```bash
+  git add .mailmap
+  git commit -m "Add .mailmap to merge duplicate identities"
+  git shortlog -sn v0.9.0 > credits.txt
+  ```
+
+  The tag restricts the credits to the release, so your mailmap commit is not counted.
+debrief: |
+  ## What you learned
+
+  `.mailmap` rewrites identities **at display time** for `git log`, `git shortlog` and `git blame`, with no
+  history rewrite. `shortlog -s` gives per-author counts, `-n` sorts numerically, and `-e` shows emails. You can
+  also use `--group=trailer:co-authored-by` to credit pair programmers.
+
+  ## Real-world use
+
+  Large open-source projects (the Linux kernel, for one) ship a `.mailmap` with thousands of entries so
+  contributor statistics stay correct after people change employers or addresses.
+
+  ## Pitfalls
+
+  - The mailmap changes how the names are shown; the raw author in each commit stays (`git log --format=%an` still differs unless `%aN` is used).
+  - The first name/email is the *canonical* one, the second is the alias to replace.
+  - Bots such as dependabot are contributors too; decide in your release process whether to credit them.
+common_mistakes:
+  - "Putting the alias first and the canonical identity second in the `.mailmap` line, which maps the wrong way around."
+  - "Creating `.mailmap` but forgetting to commit it, so teammates do not get it."
+  - "Generating credits.txt before the mailmap exists, or without the tag, so the numbers include the new mailmap commit."
+  - "Rewriting history with a filter command, which changes every hash and breaks the `v0.9.0` tag."
 validators:
-- type: file_content_equals
-  path: shortlog.txt
-  text: Alice 2
-  description: shortlog.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: .mailmap is committed and merges the duplicates into 4 contributors
+    script: |
+      git ls-files --error-unmatch .mailmap >/dev/null
+      test -z "$(git status --porcelain .mailmap)"
+      test "$(git shortlog -sn v0.9.0 | wc -l | tr -d ' ')" = 4
+  - type: script_passes
+    description: credits.txt matches the unified shortlog of v0.9.0
+    script: |
+      diff <(git shortlog -sn v0.9.0 | sed 's/^[[:space:]]*//') <(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' credits.txt | sed '/^$/d')
+  - type: script_passes
+    description: history was not rewritten (the original six raw author names remain)
+    script: |
+      test "$(git log v0.9.0 --format=%an | sort -u | wc -l | tr -d ' ')" = 6
+      test "$(git rev-list --count v0.9.0)" = 23

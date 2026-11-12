@@ -6,36 +6,87 @@ difficulty: advanced
 xp: 350
 expected_time: 10m
 concepts:
-- '`git cherry-pick A..B`'
-common_mistakes:
-- Running commands related to `git cherry-pick A..B` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A useful commit exists on another branch and should be copied onto `main`.
-objective: Cherry-pick the feature commit so `picked.txt` appears on `main`.
+  - git cherry-pick <a>^..<b>
+  - picking a range of commits
+description: |
+  Release 3.1 of the payment batch runner has to ship basic SEPA support next week, but the
+  `feature/sepa-export` branch contains more than the release should have. It starts with a WIP scaffold, followed by three
+  finished, bank-tested commits (IBAN validation, XML header, credit transfer block), then an experimental batch
+  booking mode and a last helper. The release branch must get exactly the three finished commits, in the same order.
+objective: |
+  On `release/3.1`, cherry-pick the three consecutive commits **"Add IBAN validation"**, **"Add SEPA XML header"** and
+  **"Add pain.001 credit transfer block"** (and nothing else) from `feature/sepa-export`. Leave the WIP scaffold, the experimental
+  batch mode and the end-to-end-id helper out. `feature/sepa-export` must stay unchanged.
 hints:
-- Find the commit on `feature/pick`.
-- Use `git cherry-pick <hash>` from `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git cherry-pick feature/pick\n   ```"
-debrief: '## What Just Happened
+  - "Look at `git log --oneline main..feature/sepa-export` (or `git log feature/sepa-export`) and note the first and the last commit you need."
+  - "`git cherry-pick` accepts a range `A..B`, which *excludes* A. Think about how to include the first commit of your range."
+  - "`git switch release/3.1` and `git cherry-pick <first-hash>^..<last-hash>`."
+guide: |
+  ## A range of picks
 
+  List the feature branch, oldest at the bottom:
 
-  **Cherry-Pick a Range**
+  ```bash
+  git log --oneline feature/sepa-export
+  ```
 
+  You need the middle three. Write down the hash of "Add IBAN validation" (first) and
+  "Add pain.001 credit transfer block" (last). Switch to the release branch:
 
-  Cherry-pick copies a commit''s change onto your current branch as a new commit.
+  ```bash
+  git switch release/3.1
+  ```
 
-  '
+  `A..B` means "everything after A up to and including B", so use the *parent* of the first commit as A:
+
+  ```bash
+  git cherry-pick <first>^..<last>
+  ```
+
+  Verify three new commits, oldest first:
+
+  ```bash
+  git log --oneline
+  ls sepa
+  ```
+
+  `sepa/batch.py` and `sepa/e2e.py` must not exist here.
+debrief: |
+  ## What you learned
+
+  Cherry-pick takes whole ranges, applying commits in order. The `^` trick (`first^..last`) makes the range
+  inclusive on both ends. Without it, the first commit is skipped, which is a classic off-by-one.
+
+  ## Real-world use
+
+  Back-porting a self-contained series, such as the finished part of a long-running feature branch, to a stabilisation
+  branch. Alternatives are an interactive rebase to extract the commits onto a new branch, or `git cherry-pick A B C` with explicit hashes.
+
+  ## Pitfalls
+
+  - If one of the picks conflicts, git stops. Resolve, `git add`, then `git cherry-pick --continue`, or use `--abort`.
+  - Picking out of order can create confusing conflicts; commits are applied in the order given.
+  - Do not assume the branch tip is "the feature": the WIP and experimental commits are interleaved in time.
+common_mistakes:
+  - "Writing `<first>..<last>`, which skips the IBAN validation commit."
+  - "Cherry-picking the whole branch (`main..feature/sepa-export`), which brings in the WIP scaffold and the experimental batch mode."
+  - "Cherry-picking while on `main` or the feature branch instead of `release/3.1`."
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_exists
-  path: picked.txt
-  description: picked.txt was cherry-picked
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: release/3.1 has the three finished commits in order
+    script: |
+      got=$(git log release/3.1 --reverse --format=%s | sed -n '2,$p' | tr '\n' '|')
+      test "$got" = "Add IBAN validation|Add SEPA XML header|Add pain.001 credit transfer block|"
+  - type: script_passes
+    description: no WIP, experimental or helper commits were brought in
+    script: |
+      ! git show release/3.1:sepa/batch.py 2>/dev/null
+      ! git show release/3.1:sepa/e2e.py 2>/dev/null
+      ! git show release/3.1:sepa/__init__.py 2>/dev/null
+      test "$(git rev-list --count release/3.1)" = 4
+  - type: script_passes
+    description: the feature branch was not modified
+    script: |
+      test "$(git rev-list --count feature/sepa-export)" = 7
+      git log -1 --format=%s feature/sepa-export | grep -q 'end-to-end id'
+

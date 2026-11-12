@@ -6,41 +6,105 @@ difficulty: expert
 xp: 680
 expected_time: 18m
 concepts:
-- "stash dropped accidentally \u2014 recover via reflog"
-common_mistakes:
-- "Running commands related to stash dropped accidentally \u2014 recover via reflog\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- git stash clear and dangling stash commits
+- git fsck --unreachable to find stash commits
+- stash apply with untracked files and conflicts
+description: |
+  A teammate ran `git stash clear` on your machine "to tidy up" while you were on a call, taking three stashes with it: a lint experiment, a debug-logging hack and, most importantly, a cache-warming experiment (`warmup experiment`) that changed `src/warm.lua` and added a brand-new untracked file `scripts/prewarm.lua`. You have not run `git gc`, so the stash commits still exist as unreachable objects. Since then somebody also committed a TTL change on `feature/warmup` that touches the neighbouring line of `src/warm.lua`. You want the warm-up experiment back, and only that one.
+objective: |
+  Recover the right stash into a new branch.
+
+  1. Find the dangling stash commit of the stash named `warmup experiment` (the other two stashes, `lint tweaks` and `debug logging`, must stay lost).
+  2. Create the branch `recover/warmup` from the current tip of `feature/warmup` and apply the lost stash there, including its untracked file `scripts/prewarm.lua`.
+  3. Resolve the conflict in `src/warm.lua` so that both the stash's `WARM_BATCH = 64` and the branch's newer `WARM_TTL = 90` are present, and commit everything with a message starting `Recover warmup experiment`. No trace of the other two stashes (`LINT_STRICT`, `DEBUG_SPAM`) may appear.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git fsck --unreachable --no-reflogs` lists unreachable commits. Print their subjects with `git log
+  -1 --format=''%H %s'' <sha>`: stash commits are called `On <branch>: <message>` or `WIP on ...`.'
+- '`git stash apply <sha>` accepts any stash-shaped commit, not only `stash@{n}`. With `-u` stashes it
+  also restores the untracked files from the third parent.'
+- When both lines changed, Git leaves conflict markers in `src/warm.lua`. Edit the file, `git add -A`,
+  commit.
+guide: |
+  ## Find the stash commit
 
+  ```bash
+  git fsck --unreachable --no-reflogs | grep commit
+  for c in $(git fsck --unreachable --no-reflogs | awk '/commit/{print $3}'); do
+    git log -1 --format="$c %s" "$c"
+  done
+  ```
 
-  **Lost Stash Entries**
+  You will see `On feature/warmup: warmup experiment`, `On feature/warmup: lint tweaks`, `On feature/warmup: debug logging` and an `untracked files on ...` helper commit.
 
+  ## Apply it on a branch
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ```bash
+  git switch -c recover/warmup
+  git stash apply <sha-of-warmup-experiment>
+  git status        # CONFLICT in src/warm.lua; scripts/prewarm.lua restored
+  ```
 
-  '
+  ## Resolve and commit
+
+  Keep `WARM_BATCH = 64` (stash) and `WARM_TTL = 90` (branch), remove the markers, then:
+
+  ```bash
+  git add -A
+  git commit -m "Recover warmup experiment from the lost stash"
+  ```
+debrief: |
+  ## Stash entries are commits
+
+  `git stash` stores your work as a merge-like commit (parents: HEAD, the index state and, with `-u`, an extra commit with untracked files) and keeps it alive only through the `refs/stash` reflog. `stash drop` and `stash clear` remove that ref, so the commits are just unreachable objects until `gc` prunes them (two weeks by default for loose objects). `git stash drop` even prints the SHA for this reason.
+
+  ## Why apply on a branch
+
+  Applying the old stash onto a fresh branch from the current tip keeps the experiment separate and lets you resolve the conflict once, in a commit, instead of scattering it over your working tree.
+
+  ## Picking the right one
+
+  Subjects are the only label. Applying the wrong stash would have mixed in the debug hack or the lint flag. Always check with `git show --stat <sha>` first.
+
+  ## Related
+
+  - `git stash show -p <sha>` previews any stash commit.
+  - `git fsck --lost-found` writes dangling commits into `.git/lost-found`.
+  - `git stash branch <name> <stash>` creates a branch from the commit the stash was made on (only for existing stashes).
+common_mistakes:
+- Running `git gc --prune=now` while "looking for space", which would destroy the dangling stash commits.
+- Applying the first dangling commit you find, which may be the debug-logging stash.
+- Forgetting that the untracked file lives in a separate commit and expecting `git show` of the main stash
+  commit to show it.
 validators:
+- type: script_passes
+  description: recover/warmup branches off feature/warmup and has the recovery commit
+  script: 'git merge-base --is-ancestor feature/warmup recover/warmup
+
+    git log -1 --format=%s recover/warmup | grep -q ''^Recover warmup experiment''
+
+    test "$(git rev-list --count feature/warmup..recover/warmup)" = 1
+
+    '
+- type: script_passes
+  description: The experiment is there - batch 64, TTL 90 and the untracked prewarm script
+  script: 'git show recover/warmup:src/warm.lua | grep -q ''WARM_BATCH = 64''
+
+    git show recover/warmup:src/warm.lua | grep -q ''WARM_TTL = 90''
+
+    git show recover/warmup:scripts/prewarm.lua | grep -q ''prewarm hot keys''
+
+    ! git show recover/warmup:src/warm.lua | grep -qE ''^(<<<<<<<|=======|>>>>>>>)''
+
+    '
+- type: script_passes
+  description: The other two stashes did not come back
+  script: '! git grep -q ''LINT_STRICT'' recover/warmup
+
+    ! git grep -q ''DEBUG_SPAM'' recover/warmup
+
+    '
 - type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+  branch: recover/warmup
+  description: HEAD is on recover/warmup
 - type: is_clean
   description: Working tree is clean

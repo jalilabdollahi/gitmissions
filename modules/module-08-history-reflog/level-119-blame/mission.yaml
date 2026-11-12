@@ -4,49 +4,83 @@ level: level-119-blame
 order: 119
 difficulty: advanced
 xp: 280
-expected_time: 10m
+expected_time: 9m
 concepts:
-- '`git blame <file>`'
-common_mistakes:
-- Running commands related to `git blame <file>` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git blame
-  <file>``.
-objective: 'Inspect the repository history and create `blame.txt` containing exactly:
-
-
-  `line1=Alice`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git blame
+  - git blame -w
+  - -L line ranges
+description: |
+  The nightly statement parser is charging customers an overdraft fee of 35.00 instead of 25.00, and a complaint
+  has arrived. `git blame` on the line says the last person to touch it just reformatted the file, but
+  you know that cannot be right: the value itself was changed earlier by someone else, and that person
+  must explain which tariff sheet they used.
+objective: |
+  Find the commit that last changed the **value** of `OVERDRAFT_FEE_CENTS` in `parser/fees.py` (not the
+  commit that only reformatted whitespace). Write its full commit hash into `culprit.txt` and the author's name into `author.txt`.
 hints:
-- Start with the Git command related to ``git blame <file>``.
-- Write the exact expected answer into `blame.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > blame.txt <<'EOF'\nline1=Alice\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add blame.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Run `git blame parser/fees.py` and look at who owns the OVERDRAFT line. Is it the commit that really changed the number?"
+  - "`git blame` can ignore whitespace-only changes with a flag, and `-L` limits the output to one line or range."
+  - "`git blame -w -L '/OVERDRAFT_FEE_CENTS/,+1' --porcelain parser/fees.py` prints the hash on the first line."
+guide: |
+  ## Blame, then blame better
 
+  ```bash
+  git blame parser/fees.py
+  ```
 
-  **Find Who Changed a Line**
+  Every line is annotated with the commit that last changed it. The OVERDRAFT line points to a commit that just
+  aligned the equals signs, so it hides the real change. Tell blame to ignore whitespace:
 
+  ```bash
+  git blame -w parser/fees.py
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  Now the line belongs to the commit that really changed 2500 to 3500. Focus on a single line to keep the
+  output short:
 
-  '
+  ```bash
+  git blame -w -L '/OVERDRAFT_FEE_CENTS/,+1' parser/fees.py
+  ```
+
+  Get the plain hash and the author for your answer files:
+
+  ```bash
+  git blame -w -L '/OVERDRAFT_FEE_CENTS/,+1' --porcelain parser/fees.py | head -1 | cut -d' ' -f1 > culprit.txt
+  git log -1 --format=%an "$(cat culprit.txt)" > author.txt
+  ```
+debrief: |
+  ## What you learned
+
+  `git blame` shows, for each line, the *last* commit that touched it. Formatting commits, renames and
+  moved blocks make that answer misleading. `-w` ignores whitespace changes; `-M` follows lines moved within
+  a file; `-C` follows lines copied from other files. `-L` restricts blame to a line range or a regex.
+
+  ## Real-world use
+
+  Blame is not for assigning guilt: the author is simply the person who knows why a line is the way it is. The
+  commit message and linked ticket usually matter more than the name. Teams keep a
+  `.git-blame-ignore-revs` file and run `git config blame.ignoreRevsFile` so that bulk reformat commits are skipped.
+
+  ## Pitfalls
+
+  - Blame reports the last change, not the original. Walk back by blaming the parent: `git blame <hash>^ -- file`.
+  - Whitespace flags do not skip commits that changed the line's content together with formatting.
+  - Porcelain output starts each block with the full 40-character hash.
+common_mistakes:
+  - "Trusting plain `git blame`, which points at the whitespace-alignment commit."
+  - "Writing the abbreviated hash with a trailing `^` or extra characters, so it does not resolve."
+  - "Picking the commit that changed the international or ATM fee, which sit on neighbouring lines."
 validators:
-- type: file_content_equals
-  path: blame.txt
-  text: line1=Alice
-  description: blame.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: culprit.txt contains the commit that really changed the overdraft fee value
+    script: |
+      want=$(git blame -w -L '/^OVERDRAFT_FEE_CENTS/,+1' --porcelain parser/fees.py | head -1 | cut -d' ' -f1)
+      got=$(git rev-parse --verify "$(tr -d ' \r\n' < culprit.txt)^{commit}")
+      test "$got" = "$want"
+      test "$(git log -1 --format=%an "$got")" != "Mei"
+  - type: script_passes
+    description: author.txt contains the author name of that commit
+    script: |
+      want=$(git blame -w -L '/^OVERDRAFT_FEE_CENTS/,+1' --porcelain parser/fees.py | head -1 | cut -d' ' -f1)
+      test "$(sed 's/[[:space:]]*$//' author.txt)" = "$(git log -1 --format=%an "$want")"
+

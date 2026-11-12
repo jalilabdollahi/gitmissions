@@ -4,34 +4,85 @@ level: level-155-checkout-tag
 order: 155
 difficulty: intermediate
 xp: 230
-expected_time: 7m
+expected_time: 8m
 concepts:
-- "`git checkout v1.0` \u2014 enters detached HEAD"
-common_mistakes:
-- "Running commands related to `git checkout v1.0` \u2014 enters detached HEAD without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
-objective: Check out tag `v1.0` so HEAD becomes detached.
+  - checking out a tag
+  - git switch -c <branch> <tag>
+  - detached HEAD
+description: |
+  A customer on the billing database release `v2.4.1` reports a migration failure. To reproduce it, you need
+  the code exactly as it was shipped, not today's `main`, which has two newer schema versions. You also expect to
+  patch this customer, so work should happen on a proper maintenance branch rather than in a detached HEAD where commits
+  can easily get lost. First find out which schema version `v2.4.1` shipped with.
+objective: |
+  1. Create the branch `support/2.4` starting at the tag `v2.4.1` and switch to it.
+  2. Write the schema version number that is shipped in that tag (the number in the first line of `schema.sql` as of `v2.4.1`) into `shipped-schema.txt`.
+  You must end on `support/2.4`, with `schema.sql` showing the content of the tag.
 hints:
-- "Start with the Git command related to ``git checkout v1.0` \u2014 enters detached\
-  \ HEAD`."
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag v1.0\n   ```\n\n2.\n \
-  \  ```bash\n   git checkout v1.0\n   ```"
-debrief: '## What Just Happened
+  - "Checking out a tag directly gives a detached HEAD. Commits made there belong to no branch. Think of how to start a branch at the tag."
+  - "`git switch -c <new-branch> <start-point>` creates and switches at once, and a tag can be the start point."
+  - "`git switch -c support/2.4 v2.4.1`, then `head -1 schema.sql` to read the version."
+guide: |
+  ## From a tag to a working branch
 
+  Option 1, look around read-only:
 
-  **Checkout a Tag**
+  ```bash
+  git switch --detach v2.4.1
+  git status          # HEAD detached at v2.4.1
+  head -1 schema.sql
+  ```
 
+  That is fine for browsing, but any commit made now is not on a branch. For a fix, create a branch at the tag instead
+  (you can do it from the detached state as well, with `git switch -c`):
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git switch -c support/2.4 v2.4.1
+  git status
+  ```
 
-  '
+  Read the shipped version and record it:
+
+  ```bash
+  head -1 schema.sql
+  sed -n '1p' schema.sql | sed 's/.*: //' > shipped-schema.txt
+  cat shipped-schema.txt
+  ```
+
+  The first line says `-- schema_version: 14`, but `main` says 17.
+debrief: |
+  ## What you learned
+
+  A tag is a fixed snapshot, so `git checkout v2.4.1` (or `git switch --detach`) lets you inspect the exact shipped
+  code. Because a tag cannot move, git detaches HEAD instead of attaching it to a branch. To do any real work from
+  that point, start a branch there: `git switch -c <name> <tag>`.
+
+  ## Real-world use
+
+  Reproducing customer bugs on the shipped version, building old releases and maintaining long-term-support branches
+  (`support/2.4`) all start from a tag.
+
+  ## Pitfalls
+
+  - Commits created in a detached HEAD are only reachable via the reflog until you create a branch for them.
+  - `git switch v2.4.1` without `--detach` is refused; this guards against accidentally detaching.
+  - Moving back with `git switch -` or `git switch main` leaves the detached commits behind.
+common_mistakes:
+  - "Reading the schema version from `main` (17) instead of from the tag (14)."
+  - "Staying in a detached HEAD and thinking `shipped-schema.txt` is enough; the branch `support/2.4` is part of the task."
+  - "Creating the branch from `main`, so it contains the newer schema changes."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: support/2.4
+    description: support/2.4 is checked out
+  - type: refs_equal
+    left: support/2.4
+    right: v2.4.1
+    description: support/2.4 starts at v2.4.1
+  - type: script_passes
+    description: shipped-schema.txt has the schema version of the tag and the files match it
+    script: |
+      want=$(git show v2.4.1:schema.sql | sed -n '1p' | sed 's/.*: //')
+      test "$want" = 14
+      test "$(tr -d ' \r\n' < shipped-schema.txt)" = "$want"
+      git diff --quiet v2.4.1 -- schema.sql

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-git switch main
-git cherry-pick feature/pick
+fix=$(git log --format=%h -1 --grep='Reject negative withdrawal')
+git switch release/2.4
+git cherry-pick -x "$fix"

@@ -6,47 +6,90 @@ difficulty: expert
 xp: 400
 expected_time: 14m
 concepts:
-- '`git bisect start/good/bad`'
-common_mistakes:
-- Running commands related to `git bisect start/good/bad` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git bisect
-  start/good/bad``.
-objective: 'Inspect the repository history and create `bisect.txt` containing exactly:
+- git bisect start / good / bad
+- binary search through history
+- git bisect reset
+description: |
+  You maintain the ground-station decoder for a cubesat downlink. Since last week every telemetry frame fails its checksum, but nobody can say which of the 28 commits broke it. Priya swears it was "the timing fix", Marek blames the new antenna settings. The repo ships `check.sh`, a small test that decodes two recorded frames and compares the checksums. It passed on the very first commit and fails on `main` today.
+objective: |
+  Find the first commit where `./check.sh` fails, using `git bisect` (do not just read 28 diffs).
 
+  1. Write the full or abbreviated SHA of that commit into `culprit.txt` in the repository root.
+  2. End the bisect session so the repo is back on branch `main` with no bisect in progress.
 
-  `bad_commit=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  Do not commit `culprit.txt`; the working tree must otherwise stay clean.
 hints:
-- Start with the Git command related to ``git bisect start/good/bad``.
-- Write the exact expected answer into `bisect.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > bisect.txt <<'EOF'\nbad_commit=known\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add bisect.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- Bisect needs one known-good and one known-bad commit. The root commit is good, `main` is bad. `git rev-list
+  --max-parents=0 HEAD` prints the root.
+- Start with `git bisect start`, mark the ends with `git bisect bad` and `git bisect good <sha>`, then
+  run `./check.sh` at every commit Git checks out and answer with `good` or `bad`.
+- Once Git prints "is the first bad commit", save `git rev-parse refs/bisect/bad` into culprit.txt and
+  finish with `git bisect reset`.
+guide: |
+  ## Binary search through 28 commits
 
+  `git bisect` halves the suspect range at every step, so 28 commits need about five tests.
 
-  **Git Bisect: Find the Bug**
+  ```bash
+  git bisect start
+  git bisect bad HEAD                                   # today's main is broken
+  git bisect good $(git rev-list --max-parents=0 HEAD)  # the root commit worked
+  ```
 
+  Git checks out a commit in the middle (detached HEAD). Run the test and tell Git the verdict:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  ./check.sh && git bisect good || git bisect bad
+  ```
 
-  '
+  Repeat until Git prints `<sha> is the first bad commit`. The verdict lives in a ref:
+
+  ```bash
+  git rev-parse refs/bisect/bad > culprit.txt
+  git bisect reset      # back to main, bisect state removed
+  ```
+
+  Leaving the session open is the classic mistake: HEAD stays detached in the middle of history and the next commit you make lands in the wrong place.
+debrief: |
+  ## What just happened
+
+  Bisect treats history as a sorted list: every commit before the culprit is good, every commit after is bad. A binary search finds the boundary in `log2(n)` steps. Here the suspects were a commit called "fix: decoder timing drift" (which only touched the baud rate) and the real culprit, a tuning commit that quietly changed the checksum modulus.
+
+  ## Why it matters
+
+  Commit messages describe intent, not effect. Bisect finds the real boundary with a mechanical test, so it works on repos you do not know and with commits written by people you cannot ask.
+
+  ## Related
+
+  - `git bisect log` prints your answers so far, `git bisect visualize` shows the remaining range.
+  - `git bisect skip` marks an untestable commit.
+  - `git bisect run <cmd>` automates the loop (next level).
+
+  ## Pitfalls
+
+  - Marking a commit wrongly poisons the search; re-run `git bisect replay` after editing the log.
+  - Uncommitted changes can block the checkout of the next candidate.
+common_mistakes:
+- Reading the commit messages and guessing "the timing fix" instead of testing each candidate.
+- Forgetting `git bisect reset`, leaving HEAD detached in the middle of history.
+- Marking the root commit as bad or main as good because the arguments to good and bad were swapped.
 validators:
-- type: file_content_equals
-  path: bisect.txt
-  text: bad_commit=known
-  description: bisect.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: is_on_branch
+  branch: main
+  description: HEAD is back on branch main
+- type: script_passes
+  description: No bisect session is in progress
+  script: 'test ! -f "$(git rev-parse --git-path BISECT_START)"
+
+    test ! -s "$(git rev-parse --git-path BISECT_LOG)"
+
+    '
+- type: script_passes
+  description: culprit.txt names the first commit where check.sh fails
+  script: "test -f culprit.txt\nwant=\"\"\nfor c in $(git rev-list --reverse main); do\n  t=$(mktemp -d);\
+    \ git archive \"$c\" | tar -x -C \"$t\"\n  if ! (cd \"$t\" && bash check.sh >/dev/null 2>&1); then\
+    \ want=$c; rm -rf \"$t\"; break; fi\n  rm -rf \"$t\"\ndone\ntest -n \"$want\"\ngot=$(git rev-parse\
+    \ --verify \"$(tr -d '[:space:]' < culprit.txt)^{commit}\")\ntest \"$got\" = \"$want\"\n"
 - type: is_clean
-  description: Working tree is clean
+  ignore_untracked: true
+  description: No tracked file is modified

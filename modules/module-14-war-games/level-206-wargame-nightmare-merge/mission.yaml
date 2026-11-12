@@ -6,41 +6,136 @@ difficulty: expert
 xp: 600
 expected_time: 18m
 concepts:
-- 3-way conflict in 4 files + deleted file
-common_mistakes:
-- Running commands related to 3-way conflict in 4 files + deleted file without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- conflicts in four files
+- modify/delete conflict
+- diff3 conflict markers
+description: |
+  It is release night for the shop's Kubernetes manifests. `release/2.4` must be merged into `main`, but both sides changed the same manifests for different reasons. Four files conflict (`deployment.yaml`, `configmap.yaml`, `hpa.yaml`, `ingress.yaml`), and one more is a modify/delete clash: `main` removed `legacy-svc.yaml` after the monolith was retired, while the release branch still tweaked its port. The repo is configured with `merge.conflictStyle = diff3`, so every conflict also shows the common ancestor between the two sides. The platform lead has left merge rules in the ticket.
+objective: |
+  Merge `release/2.4` into `main` and resolve everything as follows, then finish with a merge commit.
+
+  - `k8s/deployment.yaml`: `replicas: 6` and image `shop/api:2.4.0` (release), but keep `memory: 512Mi` (main).
+  - `k8s/configmap.yaml`: `LOG_LEVEL: warn` (main), and keep both new keys `CACHE_TTL` and `FEATURE_CHECKOUT_V2`.
+  - `k8s/hpa.yaml`: `maxReplicas: 20` and `targetCPUUtilizationPercentage: 70` (release).
+  - `k8s/ingress.yaml`: host `www.shop.example.com` (main) and keep the release's `tls` block, with its host changed to `www.shop.example.com` and `secretName: shop-tls`.
+  - `k8s/legacy-svc.yaml` stays deleted, and nothing in `kustomization.yaml` may reference it.
+
+  No conflict markers or unmerged paths may remain.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git merge release/2.4` stops with conflicts. `git status` lists the five paths: four `both modified`
+  and one `deleted by us`.'
+- In diff3 markers the part between `|||||||` and `=======` is the common ancestor; it tells you which
+  side actually changed what. Edit each file to the rule above and `git add` it.
+- For the modify/delete conflict decide with `git rm k8s/legacy-svc.yaml`, then finish with `git commit
+  --no-edit`.
+guide: |
+  ## Survey
 
+  ```bash
+  git merge release/2.4
+  git status                    # 4x both modified, 1x deleted by us
+  git diff --name-only --diff-filter=U
+  ```
 
-  **Nightmare Merge**
+  ## Resolve file by file
 
+  Open a conflicted file and read all three blocks: ours (main), the base after `|||||||`, theirs (release). Combine them according to the ticket and delete every marker line. Check each with:
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ```bash
+  grep -n '^[<=>|]\{7\}' k8s/*.yaml
+  git add k8s/deployment.yaml
+  ```
 
-  '
+  For the deleted file, `git status` says `deleted by us: k8s/legacy-svc.yaml`. The ticket says it stays gone:
+
+  ```bash
+  git rm k8s/legacy-svc.yaml
+  ```
+
+  ## Finish
+
+  ```bash
+  git status                 # no unmerged paths
+  git commit --no-edit
+  git log --oneline --graph -5
+  ```
+debrief: |
+  ## Anatomy of a 3-way merge
+
+  Git compares both branches against their merge base. A hunk changed on one side only merges silently (that is why `memory: 512Mi` arrived on its own), identical changes on both sides merge silently as well, and different changes to the same lines conflict. diff3 style keeps the base text in the conflict block so you can see each side's *intent*, not just its text.
+
+  ## Modify/delete
+
+  When one side removes a file and the other edits it, Git cannot decide if the edit still matters. You decide: keep the file (`git add`), or confirm the deletion (`git rm`). The kustomization entry had already been removed by main, which is why the resource list needs no change.
+
+  ## Habits that help
+
+  - Merge with a clean tree, resolve file by file, run a validation (here `kubectl kustomize` in real life) before committing.
+  - `git checkout --conflict=merge <file>` recreates the markers if you botched a file, `git merge --abort` restarts.
+  - Never commit with markers: `git diff --check` finds them.
+
+  ## Related
+
+  - `git rerere` for repeated conflicts, `git mergetool` for GUI resolution, `git merge -X ours/theirs` for bulk preferences (use with care).
+common_mistakes:
+- Taking "theirs" for whole files with `git checkout --theirs`, silently discarding main's memory limit
+  and cache keys.
+- Resolving `legacy-svc.yaml` with `git add`, which resurrects a service that was decommissioned.
+- Leaving a `|||||||` marker line in a file; the usual `<<<<<<<` search misses diff3 base markers.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: main is a merge commit whose second parent is release/2.4
+  script: 'test "$(git rev-list --parents -1 main | wc -w | tr -d '' '')" = 3
+
+    test "$(git rev-parse main^2)" = "$(git rev-parse release/2.4)"
+
+    '
+- type: no_unmerged_files
+  description: No unmerged paths remain
+- type: no_conflict_markers
+  description: No conflict markers remain in tracked files
+- type: script_passes
+  description: deployment.yaml and configmap.yaml follow the ticket
+  script: 'grep -q ''replicas: 6$'' k8s/deployment.yaml
+
+    grep -q ''image: shop/api:2.4.0$'' k8s/deployment.yaml
+
+    grep -q ''memory: 512Mi$'' k8s/deployment.yaml
+
+    grep -q ''LOG_LEVEL: warn'' k8s/configmap.yaml
+
+    grep -q ''CACHE_TTL'' k8s/configmap.yaml
+
+    grep -q ''FEATURE_CHECKOUT_V2'' k8s/configmap.yaml
+
+    test "$(grep -c ''LOG_LEVEL'' k8s/configmap.yaml)" = 1
+
+    '
+- type: script_passes
+  description: hpa.yaml and ingress.yaml follow the ticket
+  script: 'grep -q ''maxReplicas: 20$'' k8s/hpa.yaml
+
+    grep -q ''targetCPUUtilizationPercentage: 70$'' k8s/hpa.yaml
+
+    grep -q ''host: www.shop.example.com$'' k8s/ingress.yaml
+
+    grep -q ''tls:'' k8s/ingress.yaml
+
+    grep -q ''secretName: shop-tls'' k8s/ingress.yaml
+
+    grep -q -- ''- www.shop.example.com$'' k8s/ingress.yaml
+
+    ! grep -q ''shop.eu'' k8s/ingress.yaml
+
+    '
+- type: script_passes
+  description: legacy-svc.yaml stays deleted and is not referenced
+  script: 'test ! -e k8s/legacy-svc.yaml
+
+    ! grep -q legacy k8s/kustomization.yaml
+
+    test -z "$(git ls-files | grep legacy)"
+
+    '
 - type: is_clean
-  description: Working tree is clean
+  description: Working tree is clean after the merge commit

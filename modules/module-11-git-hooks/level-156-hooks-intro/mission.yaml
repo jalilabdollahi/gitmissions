@@ -4,39 +4,99 @@ level: level-156-hooks-intro
 order: 156
 difficulty: advanced
 xp: 300
-expected_time: 12m
+expected_time: 8m
 concepts:
-- '`.git/hooks/` directory'
-- hook lifecycle
-common_mistakes:
-- Running commands related to `.git/hooks/` directory, hook lifecycle without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices local and server-side Git hooks inside a sandbox.
-objective: Create an executable `pre-commit` hook that prints `hook ok`.
+  - .git/hooks directory
+  - pre-commit hook
+  - hook scripts are executable files
+description: |
+  The bookkeeping team keeps its general journal in this repo. Before they trust git with the books, they want a
+  small "guard rail" that proves git can run their own code at the exact moment of a commit. That is what hooks
+  are: executable scripts inside `.git/hooks` that git calls at defined points. You will write the simplest useful one,
+  a `pre-commit` hook that announces how many files are about to be committed and lets the commit continue.
+  (The repo already sets `core.hooksPath` to `.git/hooks`, so your hook is picked up even if you have a global hooks setting.)
+objective: |
+  Create an executable hook `.git/hooks/pre-commit` that prints a line of the exact form
+  `[ledger-guard] N file(s) staged`, where `N` is the number of files in the staging area at that moment, and then
+  allows the commit (exit status 0). Committing one file must print `1 file(s)`, committing two must print `2 file(s)`.
 hints:
-- Hooks live in `.git/hooks/`.
-- Remember to make the file executable.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '#!/usr/bin/env bash\\\
-  necho hook ok\\n' > .git/hooks/pre-commit\n   ```\n\n2.\n   ```bash\n   chmod +x\
-  \ .git/hooks/pre-commit\n   ```"
-debrief: '## What Just Happened
+  - "Look inside `.git/hooks`. Git only runs a file named exactly like the hook (`pre-commit`, no extension) and only if it is executable."
+  - "A hook is an ordinary script. `git diff --cached --name-only` lists what is staged; `wc -l` counts lines."
+  - "Write a `#!/bin/sh` script that echoes `[ledger-guard] $n file(s) staged` and `exit 0`, save it as `.git/hooks/pre-commit`, then `chmod +x` it."
+guide: |
+  ## Your first hook
 
+  Look at the hooks directory:
 
-  **What Are Git Hooks?**
+  ```bash
+  ls .git/hooks
+  ```
 
+  Git ships `*.sample` files. They do nothing until renamed, which shows the rule: the file must be named after the
+  hook and be executable. Write your own:
 
-  Hooks let you automate checks at key points in the Git workflow.
+  ```bash
+  cat > .git/hooks/pre-commit <<'HOOK'
+  #!/bin/sh
+  n=$(git diff --cached --name-only | wc -l | tr -d ' ')
+  echo "[ledger-guard] $n file(s) staged"
+  exit 0
+  HOOK
+  chmod +x .git/hooks/pre-commit
+  ```
 
-  '
+  Try it:
+
+  ```bash
+  echo "2025-02-05,1000,80.00," >> journal.csv
+  git add journal.csv
+  git commit -m "Post a sale"
+  ```
+
+  The banner appears before the commit message prompt is processed. Exit status 0 lets the commit proceed; any non-zero status would stop it.
+debrief: |
+  ## What you learned
+
+  Hooks are local executable scripts that git runs at specific events. `pre-commit` runs after `git add` and before the
+  commit is created; it receives no arguments, but the repository state (index, working tree) is available to inspect.
+  Its exit code decides: 0 continues, anything else aborts the commit.
+
+  ## Real-world use
+
+  Formatters, linters, secret scanners and test runners are all hooks. Tools like `pre-commit` or `husky` just manage these scripts for you.
+
+  ## Pitfalls
+
+  - Hooks live in `.git/hooks`, which is **not** versioned, so they are not shared when someone clones the repository (see the shared-hooks level).
+  - A hook without the executable bit is silently skipped (git only prints a hint).
+  - The sample files end in `.sample`; removing that suffix enables them, but they are examples, not recommendations.
+common_mistakes:
+  - "Naming the file `pre-commit.sh` or leaving it as `pre-commit.sample`; git ignores both."
+  - "Forgetting `chmod +x`, so the hook never runs."
+  - "Counting files from the working tree (`git status`) instead of the staging area (`--cached`)."
+  - "Ending the hook with a non-zero status, which would block every commit."
 validators:
-- type: hook_exists
-  name: pre-commit
-  description: pre-commit hook exists and is executable
-- type: hook_output_contains
-  name: pre-commit
-  text: hook ok
-  description: pre-commit hook prints the expected output
+  - type: hook_exists
+    name: pre-commit
+    description: an executable pre-commit hook exists
+  - type: script_passes
+    description: the hook announces 2 staged files and lets the commit through
+    script: |
+      orig=$(pwd); t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf '2025-02-05,1000,80.00,\n' >> journal.csv
+      printf '5000,Rent\n' >> accounts.csv
+      git add journal.csv accounts.csv
+      out=$(git commit -q -m "Post a sale and a new account" 2>&1)
+      printf '%s\n' "$out" | grep -qxF '[ledger-guard] 2 file(s) staged'
+      test "$(git log -1 --format=%s)" = "Post a sale and a new account"
+  - type: script_passes
+    description: the hook reports the right count for a single file too
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf '2025-02-06,4000,,45.00\n' >> journal.csv
+      git add journal.csv
+      out=$(git commit -q -m "Post a credit" 2>&1)
+      printf '%s\n' "$out" | grep -qxF '[ledger-guard] 1 file(s) staged'
+

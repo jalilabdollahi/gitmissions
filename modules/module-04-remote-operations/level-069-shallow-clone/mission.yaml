@@ -4,34 +4,74 @@ level: level-069-shallow-clone
 order: 69
 difficulty: intermediate
 xp: 260
-expected_time: 9m
+expected_time: 10m
 concepts:
-- "`git clone --depth 1` \u2014 use cases"
-common_mistakes:
-- "Running commands related to `git clone --depth 1` \u2014 use cases without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The mission is to produce a shallow clone from a multi-commit remote
-  history.
-objective: Create a shallow clone in `shallow/` with depth 1.
+  - git clone --depth
+  - file:// URLs
+  - git fetch --deepen
+repo_path: workspace
+description: |
+  The Streamlane video platform has years of history, and the CI job only needs the latest few commits to
+  build a release. You are writing the checkout step. Cloning everything wastes minutes, so you want a
+  shallow clone. The repository sits at `../streamlane.git` (a local path). Careful: Git ignores `--depth` for
+  plain local paths and quietly makes a full clone. The CI then discovers it also needs a few more commits of
+  context, so you must extend the shallow clone afterwards.
+objective: |
+  - create a shallow clone of `../streamlane.git` in a new folder called `ci-checkout` with a depth of 2
+  - then deepen it by 3 more commits, so `ci-checkout` ends up with exactly 5 commits of history on `main`
+  - the clone must stay shallow (it must not contain the full history) and have `main` checked out
 hints:
-- Run the clone from the sandbox root.
-- Use `git clone --depth 1 remote.git shallow`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git clone --depth 1 remote.git\
-  \ shallow\n   ```"
-debrief: '## What Just Happened
+  - "`git clone --depth 2 ../streamlane.git x` prints a warning and clones everything. Local paths need a `file://` URL for depth to work."
+  - "Use `file://$(pwd)/../streamlane.git` as the URL. To extend history later use `git fetch --deepen <n>`."
+  - "`git clone --depth 2 \"file://$(pwd)/../streamlane.git\" ci-checkout && cd ci-checkout && git fetch --deepen 3`"
+guide: |
+  ## 1. Shallow clone through file://
+  ```bash
+  git clone --depth 2 "file://$(pwd)/../streamlane.git" ci-checkout
+  cd ci-checkout
+  git log --oneline
+  cat .git/shallow
+  ```
+  You get 2 commits. `.git/shallow` lists the boundary commits whose parents were left behind.
 
+  ## 2. Deepen
+  ```bash
+  git fetch --deepen 3
+  git rev-list --count HEAD
+  ```
+  `--deepen N` adds N commits beyond the current boundary. `--depth N` would set an absolute depth.
 
-  **Shallow Clone**
+  ## 3. Back out if needed
+  `git fetch --unshallow` downloads the rest of the history.
+debrief: |
+  ## What happened
+  A shallow clone stores only the last N commits of each branch and records the cut in `.git/shallow`.
+  Over `file://` Git uses the real transport and honours `--depth`; with a plain path it uses a hard-link
+  shortcut and ignores it.
 
+  ## Real-world use
+  CI systems (`actions/checkout` uses depth 1) save time and disk this way. Tools that need history,
+  such as `git describe`, `git blame` or changelog generators, may then misbehave, which is when you
+  deepen or unshallow.
 
-  Shallow clones reduce history transfer cost when you only need the newest snapshot.
+  ## Limits
+  - You can fetch from a shallow clone, but you cannot push history that is missing parents on some servers.
+  - `--shallow-since=<date>` and `--shallow-exclude=<ref>` cut by date or ref instead of count.
+  - `--single-branch` is implied by `--depth`.
 
-  '
+  ## Related
+  - `git clone --filter=blob:none` is a partial clone: full history, lazy file contents.
+common_mistakes:
+  - "Using a plain path, so Git warns and makes a full clone with 14 commits."
+  - "Deepening with `--depth 3` (absolute) when the goal was 3 more commits beyond depth 2."
+  - "Cloning into the default folder name `streamlane` instead of `ci-checkout`."
 validators:
-- type: script_passes
-  description: shallow clone has a single visible commit
-  script: test "$(git -C shallow rev-list --count HEAD)" = "1"
+  - type: script_passes
+    script: cd ci-checkout && test -f .git/shallow
+    description: ci-checkout is a shallow clone
+  - type: script_passes
+    script: cd ci-checkout && test "$(git rev-list --count HEAD)" = 5
+    description: ci-checkout has exactly 5 commits of history
+  - type: script_passes
+    script: cd ci-checkout && test "$(git branch --show-current)" = main && git remote get-url origin | grep -q 'streamlane.git'
+    description: main is checked out and origin is streamlane.git

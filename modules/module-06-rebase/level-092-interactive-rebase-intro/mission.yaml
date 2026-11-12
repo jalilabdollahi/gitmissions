@@ -1,36 +1,85 @@
-name: "Interactive Rebase \u2014 Intro"
+name: Interactive Rebase — Intro
 module: module-06-rebase
 level: level-092-interactive-rebase-intro
 order: 92
 difficulty: intermediate
 xp: 300
-expected_time: 12m
+expected_time: 10m
 concepts:
-- "`git rebase -i HEAD~3` \u2014 the editor"
-common_mistakes:
-- "Running commands related to `git rebase -i HEAD~3` \u2014 the editor without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - git rebase -i --root
+  - reword
+  - the todo list
+repo_path: ticketboard
+description: |
+  Ticketboard is an internal Kanban tool. Its first commit was made in a hurry with the message `initial`, and the
+  team now generates its changelog from commit messages, so the root commit must read properly. Rewording a
+  commit that is not the latest one needs an interactive rebase, and for the very first commit of a repository
+  there is no parent to rebase onto, so a special option is required. The three later commits must stay as they are.
+objective: |
+  - change the message of the root commit to `Initial commit: scaffold ticket-board`
+  - keep the other three commits, their messages, and every file unchanged (4 commits on `main`)
+  - finish on `main` with no rebase in progress
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: "## What Just Happened\n\n**Interactive Rebase \u2014 Intro**\n\nRebase rewrites\
-  \ commits so they appear as if they were created on top of a new base.\n"
+  - "`git log --oneline` shows four commits. A normal `git rebase -i HEAD~3` cannot reach the root: it has no parent."
+  - "`git rebase -i --root` opens a todo list including the very first commit. Change `pick` to `reword` for it."
+  - "In the todo, replace `pick` with `reword` on the first (oldest, top) line, save, then type the new message when the editor opens."
+guide: |
+  ## 1. Start an interactive rebase over everything
+  ```bash
+  git rebase -i --root
+  ```
+  The todo list shows all four commits, oldest first, each starting with `pick`.
+
+  ## 2. Mark the first one
+  Change the first line from `pick <hash> initial` to `reword <hash> initial`, then save and close.
+
+  ## 3. Write the new message
+  Git opens a second editor with the old message. Replace it with
+  `Initial commit: scaffold ticket-board`, save and close.
+
+  ## 4. Verify
+  ```bash
+  git log --oneline
+  git status
+  ```
+  Notice that every hash changed, even for the commits you did not touch: they sit on a rewritten parent.
+debrief: |
+  ## What happened
+  `--root` tells rebase to include the first commit by replaying everything onto an empty base. `reword`
+  stops at that commit only to change its message, then continues with the rest unchanged.
+
+  ## The todo list
+  The interactive todo is read top to bottom, oldest commit first (the reverse of `git log`). Each line
+  is `<command> <hash> <subject>`. Commands: pick, reword, edit, squash, fixup, drop, exec. Lines starting
+  with `#` are comments, and removing a line drops that commit.
+
+  ## Hash changes
+  Changing one message alters the hash of that commit and of every descendant, which is why rewriting
+  pushed history is dangerous.
+
+  ## Related
+  - `git commit --amend` is the shortcut for the latest commit only.
+  - `git rebase -i HEAD~N` covers the last N commits when the root is not involved.
+common_mistakes:
+  - "Using `HEAD~3`, which leaves the root commit out of the list."
+  - "Changing the wrong line, or `pick` on the first line while editing the message by hand elsewhere."
+  - "Saving an empty message, which aborts the reword."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: commit_count_eq
+    count: 4
+    branch: main
+    description: main still has 4 commits
+  - type: script_passes
+    script: |
+      test "$(git log -1 --format=%s "$(git rev-list --max-parents=0 main)")" = "Initial commit: scaffold ticket-board"
+    description: The root commit has the new message
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main | tail -3 | tr '\n' '|')" = "Add ticket model|Add assignee field|Add due dates|"
+    description: The other three commits are unchanged
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && test -f board.py && test -f due.py"
+    description: No rebase in progress and all files are present
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main

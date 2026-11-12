@@ -4,35 +4,82 @@ level: level-057-clone-a-repo
 order: 57
 difficulty: intermediate
 xp: 200
-expected_time: 9m
+expected_time: 8m
 concepts:
-- "`git clone` \u2014 what it sets up"
-common_mistakes:
-- "Running commands related to `git clone` \u2014 what it sets up without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A bare repo already exists, and your task is to create a fresh local
-  clone from it.
-objective: Clone `remote.git` into a directory named `clone/`.
+  - git clone
+  - --branch
+  - cloning into a named directory
+repo_path: workspace
+description: |
+  You join the Kitchen Sink design-system team to fix a button regression for customers who are still
+  on the 2.x line of the component library. The library lives on the team's git host; in this
+  sandbox it is the bare repository `../registry/design-kit.git`. Its default branch is `main`, but the
+  2.x maintenance work happens on `release/2.x`, where the design tokens differ.
+  You are standing in an empty `workspace` folder.
+objective: |
+  Create a local copy of the library:
+  - clone `../registry/design-kit.git` into a new folder named `kit-2x` inside the workspace
+  - the clone must have the `release/2.x` branch checked out (not `main`)
+  - `origin` must point at the design-kit repository, as usual after a clone
 hints:
-- Run the clone from the sandbox root, not inside another repo.
-- Use `git clone remote.git clone`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git clone remote.git clone\n \
-  \  ```"
-debrief: '## What Just Happened
+  - "Run `git clone --help` and look for the option that selects which branch gets checked out."
+  - "`git clone <url> <directory>` lets you pick the folder name; `-b` / `--branch` picks the branch."
+  - "`git clone --branch release/2.x ../registry/design-kit.git kit-2x`"
+guide: |
+  ## 1. Look around
+  ```bash
+  ls
+  ls ../registry
+  ```
+  The workspace is empty and the bare repository is a sibling folder.
 
+  ## 2. Clone a specific branch
+  ```bash
+  git clone --branch release/2.x ../registry/design-kit.git kit-2x
+  ```
+  Without `--branch`, Git checks out whatever the remote's `HEAD` points to, here `main`.
+  The last argument is the target directory. Without it, the folder would be called `design-kit`.
 
-  **Clone a Repository**
+  ## 3. Check the result
+  ```bash
+  cd kit-2x
+  git branch -vv
+  git remote -v
+  cat tokens/colors.json
+  ```
+  The file shows the 2.x palette, proof you are on the right branch.
+debrief: |
+  ## What happened
+  `git clone` did four things: created the folder, ran `git init`, added `origin` pointing at the
+  source, and fetched every branch as `origin/*` before checking out one local branch.
 
+  ## Branch choice
+  A clone always downloads all branches. `--branch` only changes which one is checked out, so you can
+  still `git switch main` later without another download. Add `--single-branch` if you really want to
+  fetch only one.
 
-  Cloning gives you a working tree, object database, and a configured `origin` remote
-  in one step.
+  ## Real-world use
+  Maintenance lines, hotfix lines and docs sites often live on non-default branches. Cloning straight
+  onto the right branch saves a switch and avoids editing the wrong code.
 
-  '
+  ## Related
+  - `git clone --depth 1` for a shallow copy (see the shallow-clone level).
+  - `git clone --origin upstream <url>` names the remote differently.
+  - `git remote show origin` lists the branches the remote has.
+common_mistakes:
+  - "Cloning without a directory name, which creates `design-kit` instead of `kit-2x`."
+  - "Cloning `main` and forgetting to switch, so the 2.x tokens are not what you edit."
+  - "Running the clone from inside another repository or with the wrong relative path to the bare repo."
 validators:
-- type: script_passes
-  description: clone/ is a Git repository
-  script: git -C clone rev-parse --is-inside-work-tree >/dev/null
+  - type: script_passes
+    script: test -d kit-2x/.git
+    description: kit-2x is a Git clone
+  - type: script_passes
+    script: cd kit-2x && test "$(git branch --show-current)" = release/2.x
+    description: kit-2x has release/2.x checked out
+  - type: script_passes
+    script: cd kit-2x && git remote get-url origin | grep -q 'design-kit.git'
+    description: origin points at design-kit.git
+  - type: script_passes
+    script: cd kit-2x && grep -q '#2255cc' tokens/colors.json && test "$(git config branch.release/2.x.remote)" = origin
+    description: The 2.x tokens are present and the branch tracks origin

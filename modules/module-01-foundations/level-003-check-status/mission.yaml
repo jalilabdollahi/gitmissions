@@ -4,58 +4,76 @@ level: level-003-check-status
 order: 3
 difficulty: beginner
 xp: 100
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git status` output: staged/unstaged/untracked'
-common_mistakes:
-- 'Running commands related to `git status` output: staged/unstaged/untracked without
-  checking `git status` first, which hides the actual repository state.'
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: 'This repository contains a small history designed to practice ``git
-  status` output: staged/unstaged/untracked`.'
-objective: 'Inspect the repository history and create `status-report.txt` containing
-  exactly:
-
-
-  `staged=1
-
-  unstaged=1
-
-  untracked=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git status
+  - staged, unstaged, untracked
+description: |
+  Noor runs the Riverside Chess Club and keeps the event planner in Git. Before the Thursday meeting
+  she was editing in a hurry: she staged a couple of files, changed others without staging them,
+  deleted a file, and created some brand new notes. Now she cannot remember what is what, and she wants
+  an exact list before committing anything.
+objective: |
+  Use `git status` to find out which files are **staged** (will be in the next commit) and which are
+  **untracked** (new files Git has never seen). Save the staged file names to `staged.txt` and the
+  untracked file names to `untracked.txt`, one per line, with no other text. Do not stage, unstage,
+  commit or delete anything: the working tree must stay exactly as it is.
 hints:
-- 'Start with the Git command related to ``git status` output: staged/unstaged/untracked`.'
-- Write the exact expected answer into `status-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > status-report.txt <<'EOF'\n\
-  staged=1\nunstaged=1\nuntracked=1\nEOF\n   ```\n\n2.\n   ```bash\n   git add status-report.txt\n\
-  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` groups files under three headings: \"Changes to be committed\", \"Changes not staged for commit\" and \"Untracked files\"."
+  - Use `git status --short` for a compact view; the first column is the staging area, the second is the working tree, and `??` means untracked.
+  - Write the names with an editor or with redirection, for example `printf 'a.txt\nb.txt\n' > staged.txt`. Don't include the report files themselves in untracked.txt.
+guide: |
+  ## 1. Ask Git
+  ```bash
+  git status
+  ```
+  Read the three sections. Only files under "Changes to be committed" are staged.
 
+  ## 2. A shorter view
+  ```bash
+  git status --short
+  ```
+  `M ` is staged and modified, ` M` is modified but not staged, ` D` is deleted but not staged and
+  `??` is untracked.
 
-  **Read the Status**
+  ## 3. Write the report
+  Use the names you found:
+  ```bash
+  printf 'schedule.txt\nrules.md\n' > staged.txt
+  ```
+  and the same for `untracked.txt`. The report files are new files too, but they do not belong in the list.
+debrief: |
+  ## What happened
+  Git tracks three places: the last commit, the index (staging area) and your working tree.
+  `git status` compares them in two directions: commit vs. index (staged), and index vs. working tree
+  (unstaged or untracked).
 
+  ## Why it matters
+  Most Git accidents (committing too much, forgetting a new file) can be avoided by running
+  `git status` before every commit. It is the safest command in Git because it never changes anything.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Related
+  - `git status -s` / `--short` for scripts and quick checks.
+  - `git diff --name-only` and `git diff --cached --name-only` print the same lists without the prose.
+  - `git ls-files --others --exclude-standard` lists untracked files only.
 
-  '
+  ## Pitfalls
+  - A file can be in two sections at once: staged earlier, then edited again afterwards.
+  - Untracked folders are shown as a single entry (`docs/`) unless you add `-uall`.
+common_mistakes:
+  - Listing the unstaged modification (flyer.md) as staged because it is also "changed".
+  - Staging everything to "see" what happens; the validator checks that the staging area is untouched.
+  - Including `staged.txt` itself in `untracked.txt`.
 validators:
-- type: file_content_equals
-  path: status-report.txt
-  text: 'staged=1
-
-    unstaged=1
-
-    untracked=1'
-  description: status-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test "$(git diff --cached --name-only | sort | tr '\n' ' ')" = "rules.md schedule.txt "
+    description: The staging area has not been changed
+  - type: script_passes
+    script: test -f staged.txt && test "$(sort staged.txt)" = "$(git diff --cached --name-only | sort)"
+    description: staged.txt lists exactly the staged files
+  - type: script_passes
+    script: test -f untracked.txt && test "$(sort untracked.txt)" = "$(git ls-files --others --exclude-standard | grep -v -e '^staged.txt$' -e '^untracked.txt$' | sort)"
+    description: untracked.txt lists exactly the untracked files
+  - type: file_not_exists
+    path: snacks.txt
+    description: The deleted file has not been restored

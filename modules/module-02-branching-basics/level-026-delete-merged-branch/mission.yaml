@@ -6,35 +6,78 @@ difficulty: beginner
 xp: 130
 expected_time: 6m
 concepts:
-- '`git branch -d`'
-common_mistakes:
-- Running commands related to `git branch -d` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A temporary branch should be removed from the repository.
-objective: Delete `feature/old` and leave the repo on `main`.
+  - git branch -d
+  - safe deletion
+  - cannot delete the current branch
+description: |
+  Tess maintains a hiking trail guide. Two small branches, `old-layout` and `typo-fix`, were merged into `main` last
+  week and have no reason to exist any more. A third branch, `new-map`, contains a map link nobody has reviewed yet and
+  must stay. Tess is currently standing on `old-layout`.
+objective: |
+  Delete the already-merged branches `old-layout` and `typo-fix` with the safe delete command, keep
+  `new-map` and its commit, and finish on `main`.
 hints:
-- List branches first.
-- Use `git branch -d feature/old`.
-- Stay on `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch -d feature/old\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "`git branch` shows what exists. If you try to delete the branch you are on, Git refuses."
+  - "`git branch -d <name>` deletes only branches that are fully merged. It is the safe variant, which is why it fits here."
+  - "`git switch main`, then `git branch -d old-layout typo-fix`."
+guide: |
+  ## 1. First try
+  ```bash
+  git branch -d old-layout
+  ```
+  Git refuses: you cannot delete the branch that is checked out.
 
+  ## 2. Move away
+  ```bash
+  git switch main
+  ```
 
-  **Delete a Merged Branch**
+  ## 3. Safe delete
+  ```bash
+  git branch -d old-layout typo-fix
+  ```
+  `-d` verifies that each branch is reachable from `HEAD` (or its upstream) before deleting. Both are merged,
+  so it succeeds. Trying `git branch -d new-map` would be refused, protecting the unreviewed commit.
 
+  ## 4. Check
+  ```bash
+  git branch
+  ```
+  Only `main` and `new-map` remain.
+debrief: |
+  ## What happened
+  A branch is a pointer. After a merge, the commits are reachable from `main`, so deleting the extra pointer loses nothing.
+  `-d` is Git's guard: it checks that the commits are reachable from your current branch before removing the label.
 
-  Deleting merged branches is cleanup; force deletion is a deliberate safety override.
+  ## Why it matters
+  Dead branches pile up and make `git branch` unreadable. Deleting merged ones keeps the list meaningful,
+  and the safe flag means a mistake cannot cost you work.
 
-  '
+  ## Related
+  - `git branch --merged` lists candidates for cleanup (next missions).
+  - `git branch -D` forces deletion of unmerged branches (see the mission after next).
+  - `git push origin --delete <name>` removes a branch on the server.
+
+  ## Pitfalls
+  - "Merged" is judged relative to your current branch, so be on `main` when you check.
+  - Deleting a branch does not delete its commits immediately; they may stay reachable via the reflog.
+common_mistakes:
+  - Using `-D` out of habit, which would also happily delete `new-map`.
+  - Trying to delete while still on `old-layout`.
+  - Deleting `new-map` because the list "looks long".
 validators:
-- type: branch_not_exists
-  branch: feature/old
-  description: feature/old no longer exists
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: branch_not_exists
+    branch: old-layout
+    description: old-layout is deleted
+  - type: branch_not_exists
+    branch: typo-fix
+    description: typo-fix is deleted
+  - type: branch_exists
+    branch: new-map
+    description: new-map is kept
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    script: test "$(git log -1 --format=%s new-map)" = "Link new map (not reviewed yet)"
+    description: new-map still has its unreviewed commit

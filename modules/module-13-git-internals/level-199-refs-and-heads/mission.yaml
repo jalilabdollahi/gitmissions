@@ -4,51 +4,99 @@ level: level-199-refs-and-heads
 order: 199
 difficulty: expert
 xp: 500
-expected_time: 12m
+expected_time: 14m
 concepts:
-- '`.git/refs/heads/`'
-- "`.git/HEAD` \u2014 what's inside"
-common_mistakes:
-- "Running commands related to `.git/refs/heads/`, `.git/HEAD` \u2014 what's inside\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``.git/refs/heads/`,\
-  \ `.git/HEAD` \u2014 what's inside`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- .git/HEAD and symbolic refs
+- refs are files
+- recovering a lost branch from the HEAD reflog
+description: |
+  On the NTP ops repo a botched cleanup script did two things at once. It rewrote `.git/HEAD` with a typo, so Git believes you are on an unborn branch `mian` and `git status` claims every file is new. And it deleted the file for the branch `hotfix/ntp`, which held three unmerged commits (the last one pins chrony to 4.5). Nothing was pushed. The branch name is gone, but the commits were checked out through HEAD earlier today.
+objective: |
+  Repair both problems.
 
+  1. Make `HEAD` a symbolic ref to `refs/heads/main` again (no commit, no checkout of a new branch).
+  2. Recreate the branch `hotfix/ntp` at the commit whose subject is `ntp: pin chrony to 4.5`, so that it has all three hotfix commits (`main..hotfix/ntp` counts 3). Find the SHA yourself in the reflog or with `git fsck --lost-found`.
 
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  The working tree must end clean.
 hints:
-- "Start with the Git command related to ``.git/refs/heads/`, `.git/HEAD` \u2014 what's\
-  \ inside`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`cat .git/HEAD` shows the typo. `git symbolic-ref HEAD refs/heads/main` fixes it properly; so does
+  writing the right line into the file.'
+- Unreachable commits are still in the object database and listed in `git reflog` (HEAD's log keeps what
+  was checked out). `git reflog` or `git fsck --no-reflogs --lost-found` finds the SHA.
+- A branch is a file containing a SHA. `git update-ref refs/heads/hotfix/ntp <sha>` creates it, `git branch
+  hotfix/ntp <sha>` is equivalent.
+guide: |
+  ## HEAD is a file
 
+  ```bash
+  cat .git/HEAD                 # ref: refs/heads/mian  (typo)
+  git symbolic-ref HEAD refs/heads/main
+  git status                    # normal again
+  ```
 
-  **Refs and HEAD**
+  HEAD normally holds `ref: <branch ref>`; only a detached HEAD holds a SHA.
 
+  ## Find the lost tip
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git reflog | grep -i chrony
+  git reflog --format='%H %gs'       # SHA and the reflog message
+  ```
 
-  '
+  The line `commit: ntp: pin chrony to 4.5` gives the SHA at its left. As a cross-check:
+
+  ```bash
+  git fsck --no-reflogs --lost-found   # dangling commits
+  ```
+
+  ## Write the ref back
+
+  ```bash
+  git update-ref refs/heads/hotfix/ntp <sha>
+  git log --oneline main..hotfix/ntp   # three commits
+  cat .git/refs/heads/hotfix/ntp       # just the SHA
+  ```
+debrief: |
+  ## What a branch is
+
+  A branch is a 41-byte file under `.git/refs/heads/` holding a commit SHA. HEAD is another small file that normally says which of those files is current. Deleting the file orphans the commits but does not delete them; they live on in the object database until garbage collection, and HEAD's reflog records every commit that was checked out.
+
+  ## Reflog versus fsck
+
+  The reflog is your personal journal of where HEAD and each branch pointed. `fsck --lost-found` ignores history and finds everything no ref reaches, which also works for objects that were never in a reflog (for example after a fresh clone of a damaged repository).
+
+  ## `update-ref` rather than `echo`
+
+  Writing the file yourself works, but `update-ref` also validates that the SHA is a real commit, writes the reflog and takes the lock files other Git processes expect.
+
+  ## Related
+
+  - `git symbolic-ref -q HEAD` tells you the current branch or fails when detached.
+  - `git for-each-ref` lists refs including packed ones.
+common_mistakes:
+- Running `git checkout -b mian` or `git branch main`, which makes a new unborn-branch workaround instead
+  of repairing HEAD.
+- Recreating `hotfix/ntp` at the first hotfix commit instead of the tip, so two commits stay unreachable.
+- 'Waiting for gc: once pruned, the commits would be gone for good.'
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: is_on_branch
+  branch: main
+  description: HEAD is attached to main
+- type: script_passes
+  description: 'hotfix/ntp exists again at the commit with subject ntp: pin chrony to 4.5'
+  script: 'tip=$(git log -g --format=''%H %s'' HEAD | awk ''/ ntp: pin chrony to 4\.5$/ {print $1; exit}'')
+
+    test -n "$tip"
+
+    test "$(git rev-parse refs/heads/hotfix/ntp)" = "$tip"
+
+    '
+- type: script_passes
+  description: hotfix/ntp carries all three hotfix commits on top of main
+  script: 'test "$(git rev-list --count main..hotfix/ntp)" = 3
+
+    git log --format=%s main..hotfix/ntp | grep -q ''stratum''
+
+    '
 - type: is_clean
-  description: Working tree is clean
+  description: Working tree and index are clean

@@ -6,41 +6,88 @@ difficulty: intermediate
 xp: 300
 expected_time: 12m
 concepts:
-- "conflict during rebase \u2014 resolve and `--continue`"
-common_mistakes:
-- "Running commands related to conflict during rebase \u2014 resolve and `--continue`\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A rebase onto `main` will stop on a conflict in `app.txt`.
-objective: Resolve the conflict so `app.txt` ends as `value=rebase`, then continue
-  the rebase.
+  - rebase conflict
+  - git rebase --continue
+  - resolving overlapping edits
+repo_path: billify
+description: |
+  Billify generates invoices. Your branch `feature/country-tax` replaces the single `TAX_RATE` number with a
+  per-country table (`NL` and `DE`) in two commits. While you worked, a colleague raised the Dutch rate from
+  20% to 21% on `main`, editing the very same line. Rebasing your branch will stop with a conflict in
+  `billing.py`. The result must contain the new 21% Dutch rate inside your new table.
+objective: |
+  - rebase `feature/country-tax` onto `main` and resolve the conflict so `billing.py` has `"NL": 0.21` and `"DE": 0.19` in the `TAX_RATE` table
+  - finish the rebase (no rebase in progress, no conflict markers) with your two commits (`Use per-country tax table`, `Add country argument to total`) on top of main
+  - stay on `feature/country-tax`
 hints:
-- Start the rebase on `feature/rebase`.
-- When it stops, edit `app.txt`, stage it, and run `git rebase --continue`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```\n\n3.\n   ```bash\n   printf\
-  \ 'value=rebase\n' > app.txt\n   ```\n\n4.\n   ```bash\n   git add app.txt\n   ```\n\
-  \n5.\n   ```bash\n   GIT_EDITOR=true git rebase --continue\n   ```"
-debrief: '## What Just Happened
+  - "`git rebase main` stops with CONFLICT in `billing.py`. `git status` names the file and `git diff` shows both sides between the markers."
+  - "Edit the file so it contains your table with main's 0.21 rate, remove the markers, `git add billing.py`, then continue the rebase. The second commit may apply cleanly."
+  - "After editing: `git add billing.py && git rebase --continue` (use `git -c core.editor=true rebase --continue` to skip the message editor)."
+guide: |
+  ## 1. Start and hit the conflict
+  ```bash
+  git rebase main
+  git status
+  ```
+  Git is stopped on your first commit ("Use per-country tax table").
 
+  ## 2. Understand the markers
+  ```bash
+  cat billing.py
+  ```
+  `<<<<<<< HEAD` is main's side (`TAX_RATE = 0.21`), the other part is your commit. In a rebase, "HEAD" is main plus
+  already replayed commits, and "theirs" is the commit being replayed.
 
-  **Rebase Conflict**
+  ## 3. Write the combined line
+  The new table should read `TAX_RATE = {"NL": 0.21, "DE": 0.19}`.
+  ```bash
+  git add billing.py
+  git rebase --continue
+  ```
 
+  ## 4. Finish and check
+  ```bash
+  git log --oneline -4
+  git status
+  ```
+  Your second commit is replayed automatically.
+debrief: |
+  ## What happened
+  Rebase replays each commit as a patch. The first patch changed a line that main had already changed in
+  another way, so Git could not decide and stopped. After you resolved and staged the file, it
+  committed the result with your original message and continued with the next commit.
 
-  Rebase conflicts are resolved the same way as merge conflicts, but you continue
-  replaying commits afterward.
+  ## Which side is which?
+  During a rebase the meanings flip compared with a merge: "ours" is the branch you are rebasing onto,
+  "theirs" is your own commit being replayed. That surprises almost everybody once.
 
-  '
+  ## State while stopped
+  The repository is in the middle of an operation; `git status` says "rebase in progress". You can `--continue`,
+  `--skip` the commit, or `--abort` everything.
+
+  ## Related
+  - `git diff --name-only --diff-filter=U` lists files still conflicted.
+  - `git config merge.conflictstyle zdiff3` shows the base version too.
+common_mistakes:
+  - "Keeping only your line, which silently drops the 21% rate that main introduced."
+  - "Running `git commit` instead of `git rebase --continue` after the resolution."
+  - "Committing the file with conflict markers still in it."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: file_content_equals
-  path: app.txt
-  text: value=rebase
-  description: app.txt contains the resolved content
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/country-tax
+    description: HEAD is on feature/country-tax
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && ! test -d .git/rebase-apply"
+    description: No rebase is in progress
+  - type: script_passes
+    script: |
+      grep -qF '"NL": 0.21' billing.py && grep -qF '"DE": 0.19' billing.py
+    description: billing.py has the 21% Dutch rate in the new table
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: script_passes
+    script: test "$(git log --reverse --format=%s main..HEAD | tr '\n' '|')" = "Use per-country tax table|Add country argument to total|" && git merge-base --is-ancestor main HEAD
+    description: Your two commits sit on top of main
+  - type: no_merge_commit
+    branch: feature/country-tax
+    description: History is linear

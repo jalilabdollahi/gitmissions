@@ -4,50 +4,101 @@ level: level-169-hook-wrong-exit-code
 order: 169
 difficulty: advanced
 xp: 320
-expected_time: 12m
+expected_time: 10m
 concepts:
-- "hook always exits 1 \u2014 nothing commits"
-common_mistakes:
-- "Running commands related to hook always exits 1 \u2014 nothing commits without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice `hook\
-  \ always exits 1 \u2014 nothing commits`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - pre-rebase hook
+  - exit status bugs in hooks
+  - "'exit $?' after echo"
+description: |
+  Release branches of the regulatory-reporting repo are published; rebasing one rewrites history that auditors already hold. The
+  platform team wrote a `pre-rebase` hook to forbid it, and the hook prints a stern message, yet last week an intern rebased
+  `release/2025.1` anyway. Reading the hook, the message is shown when it should be, so the condition works. What goes wrong is the
+  hook's **exit status**: git only aborts the rebase when the hook returns non-zero. Fix the hook, and keep rebasing of other branches (like
+  `feature/late-ratio`) working.
+objective: |
+  Fix `.git/hooks/pre-rebase` so that rebasing any `release/*` branch is **refused** (non-zero exit, history unchanged), while rebasing other branches
+  such as `feature/late-ratio` onto `main` still succeeds. Keep the printed message.
 hints:
-- "Start with the Git command related to `hook always exits 1 \u2014 nothing commits`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Try `git rebase main release/2025.1` and look at what happens to the branch. Then read the exit status logic in the hook line by line."
+  - "`$?` holds the status of the *previous* command. Which command ran just before `exit $?` in the hook?"
+  - "`echo` succeeded, so `exit $?` is `exit 0`. Replace it with an explicit `exit 1`."
+guide: |
+  ## A message is not a veto
 
+  Reproduce the bug on a scratch copy of the branch history (or simply look at the log afterwards):
 
-  **Fix Hook Exit Code Bug**
+  ```bash
+  git rebase main release/2025.1
+  git log --oneline release/2025.1
+  ```
 
+  The message appeared but the rebase happened. Open the hook:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  cat .git/hooks/pre-rebase
+  ```
 
-  '
+  The offending line is `exit $?`. `$?` is the exit status of the last command, and the last command was `echo`, which succeeded, so the hook
+  exits 0 and git thinks everything is fine. Replace it:
+
+  ```bash
+  sed -i.bak 's/exit \$?/exit 1/' .git/hooks/pre-rebase && rm .git/hooks/pre-rebase.bak
+  ```
+
+  Verify both directions:
+
+  ```bash
+  git rebase main release/2025.1      # refused
+  git rebase main feature/late-ratio  # allowed
+  ```
+debrief: |
+  ## What you learned
+
+  A hook's *exit status* is the only thing git evaluates, never its output. `exit $?` right after `echo` is a classic
+  bug (as are `exit` inside a piped `while` loop and a final `|| true`). `pre-rebase` receives the upstream and, optionally,
+  the branch being rebased (empty when it is the current one), and a non-zero status stops the rebase before it starts.
+
+  ## Real-world use
+
+  Protecting shared branches from history rewrites. Always test a policy hook in both directions: that it blocks what it should *and* that it allows
+  what it should.
+
+  ## Pitfalls
+
+  - `set -e` in a hook plus `grep` returning 1 can unintentionally abort; the reverse mistakes make hooks silently pass.
+  - `git rebase --onto` and `git pull --rebase` also trigger `pre-rebase` (the latter only if you rebase an existing local branch).
+  - `--no-verify` is **not** honoured by `git rebase` in the same way; use `git rebase --no-verify` (newer git) when you must.
+common_mistakes:
+  - "Deleting the `release/*` case or the whole hook, which allows everything."
+  - "Changing the message text and thinking that fixes it; the message was never the problem."
+  - "Using `exit 1` for *every* branch, which blocks the feature branch rebase as well."
+  - "Testing by running the script by hand (`sh .git/hooks/pre-rebase main release/2025.1; echo $?`) but not through `git rebase`."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: pre-rebase
+    description: an executable pre-rebase hook exists
+  - type: script_passes
+    description: rebasing release/2025.1 is refused and the branch is untouched
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      git config user.name T; git config user.email t@example.dev
+      before=$(git rev-parse release/2025.1)
+      if git rebase main release/2025.1 >/dev/null 2>&1; then echo "rebase should be refused" >&2; exit 1; fi
+      test "$(git rev-parse release/2025.1)" = "$before"
+      git switch -q release/2025.1
+      if git rebase main >/dev/null 2>&1; then echo "rebase of current release branch should be refused" >&2; exit 1; fi
+      test "$(git rev-parse release/2025.1)" = "$before"
+  - type: script_passes
+    description: rebasing feature/late-ratio onto main still works
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      git config user.name T; git config user.email t@example.dev
+      git rebase -q main feature/late-ratio
+      test "$(git merge-base main feature/late-ratio)" = "$(git rev-parse main)"
+  - type: script_passes
+    description: the hook still explains why the rebase was refused
+    script: |
+      grep -q 'release branches must never be rebased' .git/hooks/pre-rebase
+

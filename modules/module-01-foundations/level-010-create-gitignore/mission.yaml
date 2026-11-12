@@ -4,49 +4,83 @@ level: level-010-create-gitignore
 order: 10
 difficulty: beginner
 xp: 120
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`.gitignore` patterns'
-- '`#`'
-- '`*`'
-- '`/`'
-common_mistakes:
-- Running commands related to `.gitignore` patterns, `#`, `*`, `/` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Build artifacts are cluttering the repo and should be ignored going forward.
-objective: 'Create a `.gitignore` that ignores `*.log` and `build/`, then commit it
-  with the message `chore: add gitignore`.'
+  - .gitignore
+  - ignore patterns
+  - negative cases (what must stay tracked)
+description: |
+  Yuki's weather command-line tool is about to be published. `git status` is noisy: there is a real API key in
+  `.env`, compiled `__pycache__` files, `*.log` files, and a `dist/` folder with release tarballs. The repository
+  already tracks `.env.example` (a safe template) and an empty `logs/.gitkeep` that keeps the folder alive.
+  Yuki wants a clean `git status` without hiding anything that belongs in the project.
+objective: |
+  Create a `.gitignore` that ignores `.env`, the `__pycache__/` folder, every `*.log` file and the `dist/`
+  folder, while `.env.example`, `logs/.gitkeep` and the source files stay visible to Git. Commit the file
+  with the message `Add .gitignore`. Afterwards `git status` must be clean.
 hints:
-- Start with the Git command related to ``.gitignore` patterns, `#`, `*`, `/``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '*.log\nbuild/\n' > .gitignore\n\
-  \   ```\n\n2.\n   ```bash\n   git add .gitignore\n   ```\n\n3.\n   ```bash\n   git\
-  \ commit -m \"chore: add gitignore\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` lists the clutter. For each kind of file, think of the shortest pattern that matches it."
+  - Patterns can name files (`.env`), folders (a trailing `/`) and wildcards (`*.log`). Avoid patterns that are too broad, such as `logs/` or `.env*`, which would hide files that must stay tracked.
+  - "`git check-ignore -v logs/.gitkeep .env.example` should print nothing, while `git check-ignore -v .env` names your rule. Then `git add .gitignore && git commit -m \"Add .gitignore\"`."
+guide: |
+  ## 1. Write the patterns
+  Create `.gitignore` in the repository root:
+  ```
+  .env
+  __pycache__/
+  *.log
+  dist/
+  ```
+  A trailing slash only matches directories; `*` matches any characters within a name.
 
+  ## 2. Test, don't guess
+  ```bash
+  git status
+  git check-ignore -v .env debug.log logs/app.log dist/weather-0.1.tar.gz
+  ```
+  `check-ignore -v` shows which rule matches each path. Run it on files that must stay visible too;
+  there should be no output for `logs/.gitkeep` and `.env.example`.
 
-  **Create a .gitignore**
+  ## 3. Commit the rules
+  ```bash
+  git add .gitignore
+  git commit -m "Add .gitignore"
+  ```
+  Ignore rules are shared with the team only if they are committed.
+debrief: |
+  ## What happened
+  `.gitignore` tells Git which untracked files to leave alone. Ignored files do not appear in
+  `git status` and are skipped by `git add .`.
 
+  ## Why it matters
+  It prevents accidents (secrets, build artefacts) before they happen. A rule that is too broad is
+  just as bad as no rule: `logs/` would also hide `.gitkeep`, and `.env*` would hide the template.
 
-  This level focused on `.gitignore` patterns, `#`, `*`, `/`.
+  ## Related
+  - `!pattern` re-includes something an earlier rule excluded.
+  - `git status --ignored` lists the ignored files.
+  - `~/.config/git/ignore` is a personal, global ignore file for editor junk.
+  - Ignoring has no effect on files that are already tracked (next mission).
 
-  '
+  ## Pitfalls
+  - The file must be named exactly `.gitignore`.
+  - A trailing slash matters: `dist` matches a file or folder, `dist/` only a folder.
+common_mistakes:
+  - Ignoring `logs/` as a whole, which makes `logs/.gitkeep` unreachable for new commits and hides the folder structure.
+  - Using `.env*` and accidentally ignoring `.env.example`.
+  - Forgetting to commit `.gitignore`, so it shows up as untracked itself.
 validators:
-- type: file_content_contains
-  path: .gitignore
-  text: '*.log'
-  description: .gitignore ignores log files
-- type: file_content_contains
-  path: .gitignore
-  text: build/
-  description: .gitignore ignores build/
-- type: commit_message_contains
-  text: 'chore: add gitignore'
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: file_tracked
+    path: .gitignore
+    description: .gitignore is committed
+  - type: script_passes
+    script: for f in .env __pycache__/weather.cpython-312.pyc debug.log logs/app.log dist/weather-0.1.tar.gz; do git check-ignore -q "$f" || exit 1; done
+    description: The key, bytecode, logs and dist files are ignored
+  - type: script_passes
+    script: for f in .env.example logs/.gitkeep weather.py requirements.txt; do ! git check-ignore -q "$f" || exit 1; done
+    description: .env.example, logs/.gitkeep and the sources are not ignored
+  - type: commit_message_equals
+    text: Add .gitignore
+    description: Latest commit message is "Add .gitignore"
+  - type: is_clean
+    description: git status is clean

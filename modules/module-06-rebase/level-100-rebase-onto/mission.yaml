@@ -4,36 +4,83 @@ level: level-100-rebase-onto
 order: 100
 difficulty: intermediate
 xp: 360
-expected_time: 12m
+expected_time: 14m
 concepts:
-- '`git rebase --onto new-base old-base branch`'
-common_mistakes:
-- Running commands related to `git rebase --onto new-base old-base branch` without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A branch was based on the wrong parent branch and needs to be transplanted.
-objective: Move `feature/rebase` so it is based directly on `main` instead of `old-base`.
+  - git rebase --onto
+  - transplanting a branch
+  - squash-merged parent branch
+repo_path: billsplit
+description: |
+  In the Billsplit bill-sharing app, `feature/refund-ui` (two commits) was started on top of `feature/payments-api`,
+  not on `main`, because it needed the payments code. Later `feature/payments-api` was squash-merged into
+  `main` as a single commit, so `main` has the same code but none of the original commits. A plain
+  `git rebase main` would try to replay the old payments commits as well, causing conflicts and
+  duplicates. Move only your two refund commits onto the new `main`.
+objective: |
+  - rebase `feature/refund-ui` so that it consists of exactly its own two commits (`Add refund screen`, `Add refund confirmation toast`) on top of `main`
+  - none of the old payments commits (`Add payment intents API`, `Add payment webhooks`) may appear in its history above main
+  - stay on `feature/refund-ui`; do not modify `main` or `feature/payments-api`
 hints:
-- This is a classic `git rebase --onto` use case.
-- The shape is `git rebase --onto new-base old-base branch`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git rebase --onto main old-base\
-  \ feature/rebase\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows the refund branch hanging off the old payments branch, while main has the squashed copy."
+  - "`git rebase --onto <newbase> <oldbase> <branch>` replays the commits after `<oldbase>` onto `<newbase>`."
+  - "`git rebase --onto main feature/payments-api feature/refund-ui`"
+guide: |
+  ## 1. Draw the situation
+  ```bash
+  git log --oneline --graph --all
+  ```
+  `feature/refund-ui` = payments commits (2) + refund commits (2). `main` has a squash commit with the same code.
 
+  ## 2. Say what to move and where
+  ```bash
+  git rebase --onto main feature/payments-api feature/refund-ui
+  ```
+  Read it as: "take the commits in `feature/payments-api..feature/refund-ui` and replay them onto `main`".
 
-  **Rebase Onto Another Base**
+  ## 3. Verify
+  ```bash
+  git log --oneline main..feature/refund-ui
+  git log --oneline --graph --all
+  ```
+  Only the two refund commits are left.
+debrief: |
+  ## What happened
+  The three-argument form separates "where the branch starts now" (the old base) from "where it should
+  start" (the new base). Everything between the old base and the branch tip is replayed; everything
+  at or before the old base is left behind.
 
+  ## Why a plain rebase fails
+  `git rebase main` uses the merge base of main and the branch as the cut. The squash commit is
+  unrelated to the original payments commits, so the merge base is far back, and the payments commits
+  get replayed on top of their own squashed copy.
 
-  Rebase onto is precise history surgery: choose the new base, the old base boundary,
-  and the branch to rewrite.
+  ## Real-world use
+  Stacked branches, squash-merging hosts and "I branched from the wrong place" mistakes all need
+  `--onto`. It is also the tool for moving a topic branch from one release line to another.
 
-  '
+  ## Related
+  - `git rebase --onto main A^ B` with a commit as the base cuts a range out of the middle.
+  - `git reflog` rescues you if you chose the wrong base.
+common_mistakes:
+  - "Running plain `git rebase main`, which conflicts on the payments files and duplicates commits."
+  - "Swapping the old base and the branch name in the command."
+  - "Rebasing `feature/payments-api` instead of the refund branch."
 validators:
-- type: script_passes
-  description: feature/rebase no longer contains old-base only commit
-  script: '! git log feature/rebase --pretty=%s | grep -q ''^Old base work$'''
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/refund-ui
+    description: HEAD is on feature/refund-ui
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/refund-ui | tr '\n' '|')" = "Add refund screen|Add refund confirmation toast|"
+    description: Only the two refund commits sit on top of main
+  - type: is_ancestor
+    ancestor: main
+    descendant: feature/refund-ui
+    description: main is an ancestor of the branch
+  - type: script_passes
+    script: |
+      test "$(git log --format=%s main | head -1)" = "Update billing docs" && git rev-parse --verify -q feature/payments-api >/dev/null
+    description: main and feature/payments-api are untouched
+  - type: no_merge_commit
+    branch: feature/refund-ui
+    description: History is linear

@@ -6,36 +6,81 @@ difficulty: intermediate
 xp: 220
 expected_time: 9m
 concepts:
-- '`git push --tags`'
-common_mistakes:
-- Running commands related to `git push --tags` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Create tags `v1.0` and `v1.1`, then push all tags to `origin`.
+  - git push --tags
+  - tag refspecs
+  - annotated tags
+repo_path: pointsmith
+description: |
+  You are releasing the Pointsmith loyalty-points API. Three release tags (v1.0.0, v1.1.0 and the annotated
+  v1.2.0) exist only on your laptop, and so does a lightweight tag `scratch-benchmark` that you made to remember
+  a performance experiment. Release automation looks at `origin` for `v*` tags. `main` has already been pushed.
+  Publish the release tags and keep the scratch tag private.
+objective: |
+  - push all three release tags (`v1.0.0`, `v1.1.0`, `v1.2.0`) to `origin`
+  - do NOT push `scratch-benchmark`
+  - `v1.2.0` must still be an annotated tag on the remote
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git tag v1.0\n   ```\n\n3.\n   ```bash\n   git tag v1.1\n   ```\n\n4.\n   ```bash\n\
-  \   git push --tags origin\n   ```"
-debrief: '## What Just Happened
+  - "`git tag` lists the tags. `git push` alone never sends tags."
+  - "`git push --tags` sends every tag, including the scratch one. Use a refspec with a wildcard to select only `v*`."
+  - "`git push origin 'refs/tags/v*:refs/tags/v*'`"
+guide: |
+  ## 1. Inspect the tags
+  ```bash
+  git tag -n
+  git cat-file -t v1.2.0
+  git cat-file -t v1.1.0
+  ```
+  `tag` means annotated, `commit` means lightweight.
 
+  ## 2. Why not `--tags`
+  ```bash
+  git push --tags
+  ```
+  This would also publish `scratch-benchmark`, which is exactly what we must avoid.
 
-  **Push All Tags**
+  ## 3. Push a refspec
+  ```bash
+  git push origin 'refs/tags/v*:refs/tags/v*'
+  ```
+  The quotes stop the shell from expanding the wildcard.
 
+  ## 4. Verify
+  ```bash
+  git ls-remote --tags origin
+  ```
+debrief: |
+  ## What happened
+  Tags are ordinary refs under `refs/tags/`. Pushing is just copying refs, so a wildcard refspec selects a
+  subset. Annotated tags are real objects, with tagger, date and message, and travel with their object.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why tags need their own push
+  Branch pushes carry only the branch. `git push --follow-tags` sends annotated tags that point at the
+  commits you are pushing, which is a handy middle path, but lightweight tags are never included.
 
-  '
+  ## Real-world use
+  CI releases triggered by `v*` tags must not see experiment markers. Using naming conventions plus
+  refspecs keeps noise out of the shared repository.
+
+  ## Deleting a wrong tag
+  `git push origin --delete tag scratch-benchmark` (or `:refs/tags/name`) removes it from the remote.
+
+  ## Related
+  - `git ls-remote --tags origin` lists what the server has.
+  - `git tag -a` creates annotated tags; `git tag -d` deletes locally.
+common_mistakes:
+  - "Using `git push --tags`, which also publishes `scratch-benchmark`."
+  - "Pushing tags one by one but forgetting the annotated `v1.2.0`."
+  - "Leaving the wildcard unquoted so the shell tries to expand it."
 validators:
-- type: script_passes
-  description: Remote tags exist
-  script: git -C ../remote.git rev-parse --verify refs/tags/v1.0 >/dev/null && git
-    -C ../remote.git rev-parse --verify refs/tags/v1.1 >/dev/null
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git tag -l | sort | tr '\n' ' ')" = "v1.0.0 v1.1.0 v1.2.0 "
+    description: The remote has exactly the three release tags
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git cat-file -t v1.2.0)" = tag
+    description: v1.2.0 is annotated on the remote
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse v1.1.0^{commit})" = "$(git rev-parse v1.1.0^{commit})"
+    description: Remote tags point at the same commits as yours
+  - type: tag_exists
+    tag: scratch-benchmark
+    description: The local scratch-benchmark tag still exists

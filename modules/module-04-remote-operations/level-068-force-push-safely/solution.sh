@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-git commit --amend -m "Rewrite local commit"
-git push --force-with-lease origin main
+git fetch
+git cherry-pick origin/feature/step-goals
+git push --force-with-lease

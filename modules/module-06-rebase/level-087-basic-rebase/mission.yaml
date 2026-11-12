@@ -4,40 +4,85 @@ level: level-087-basic-rebase
 order: 87
 difficulty: intermediate
 xp: 260
-expected_time: 12m
+expected_time: 10m
 concepts:
-- '`git rebase main` on a feature branch'
-common_mistakes:
-- Running commands related to `git rebase main` on a feature branch without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - rebase then fast-forward
+  - git merge --ff-only
+  - clean integration
+repo_path: markbook
+description: |
+  Markbook is a browser-extension bookmark manager. Your `feature/folders` branch (folder model and a
+  sidebar) is ready to ship, but `main` got two new commits since you branched. The project policy is
+  "linear history on main": no merge commits, only fast-forwards. Integrate your feature the way the
+  policy requires and finish on `main`.
+objective: |
+  - rebase `feature/folders` onto `main`
+  - fast-forward `main` to the rebased branch so `main` and `feature/folders` point to the same commit
+  - `main` must be checked out, have 5 commits in a straight line, and contain no merge commit
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows why a plain `git merge feature/folders` on main would create a merge commit."
+  - "First make your branch start at main's tip (rebase). After that, main is an ancestor, so main can fast-forward."
+  - "`git rebase main` on the feature branch, `git switch main`, then `git merge --ff-only feature/folders`."
+guide: |
+  ## 1. Why a plain merge is not allowed
+  ```bash
+  git log --oneline --graph --all
+  ```
+  Both branches have new commits, so merging would need a merge commit.
 
+  ## 2. Rebase the feature
+  ```bash
+  git rebase main
+  ```
+  Your two commits are replayed after main's newest commit.
 
-  **Basic Rebase**
+  ## 3. Fast-forward main
+  ```bash
+  git switch main
+  git merge --ff-only feature/folders
+  ```
+  Because main is now a direct ancestor, Git only moves the pointer. `--ff-only` refuses to do anything else.
 
+  ## 4. Check
+  ```bash
+  git log --oneline --graph
+  ```
+  One straight line of five commits.
+debrief: |
+  ## What happened
+  Rebase and fast-forward form the standard "linear history" workflow: the feature branch is brought up
+  to date by replaying its commits, then main is moved forward without any new commit being created.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## Why `--ff-only`
+  It is a safety belt. If someone sneaks a commit into main in the meantime, the command fails instead
+  of producing an unwanted merge commit, and you rebase again.
 
-  '
+  ## Variants
+  - `git merge --no-ff` keeps a merge bubble to mark where the feature landed.
+  - `git pull --rebase` and `git config merge.ff only` build the same policy into everyday commands.
+  - Hosting services offer "rebase and merge" buttons that do this server-side.
+
+  ## Related
+  - `git branch -d feature/folders` cleans up the finished branch.
+common_mistakes:
+  - "Merging the feature into main before rebasing, which creates a merge commit."
+  - "Rebasing main onto the feature branch, which rewrites the branch everyone else uses."
+  - "Forgetting to switch back to main and fast-forward it, leaving main behind."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: refs_equal
+    left: main
+    right: feature/folders
+    description: main and feature/folders point at the same commit
+  - type: no_merge_commit
+    branch: main
+    description: main contains no merge commit
+  - type: commit_count_eq
+    count: 5
+    branch: main
+    description: main has 5 commits
+  - type: script_passes
+    script: test "$(git log --reverse --format=%s -2 main | tr '\n' '|')" = "Add folder model|Add folder sidebar|"
+    description: Your two commits are on top of main

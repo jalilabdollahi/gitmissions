@@ -4,40 +4,96 @@ level: level-055-prevent-conflicts
 order: 55
 difficulty: intermediate
 xp: 220
-expected_time: 10m
+expected_time: 12m
 concepts:
-- short-lived branches
-- pull before merge
-common_mistakes:
-- Running commands related to short-lived branches, pull before merge without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main`, and the safe next step is to bring
-  it up to date before integration.
-objective: Rebase `feature/prevent` onto `main`, then merge it back cleanly.
+  - integrate main into the branch first
+  - resolve conflicts on the feature branch
+  - fast-forward main afterwards
+description: |
+  The community orchestra team has a rule: nobody resolves conflicts on `main`. A feature branch has to catch up with
+  `main` first, conflicts are fixed on the feature branch where they can be tested, and only then does `main` move
+  forward, always as a clean fast-forward. Dario's `feature/summer-programme` is ready, but `main` has moved on since he
+  branched (rehearsal hall change, and a second night of the carols evening, on the very same line Dario changed).
+  Follow the team's workflow.
+objective: |
+  1) Bring `main` into `feature/summer-programme` with a merge and resolve the conflict in `programme.md` there so that the
+  Winter line has **both** the brass guests and the second night, and the Summer line stays. 2) Then update `main` with a
+  fast-forward only merge of the feature branch (`main` must end up at exactly the feature branch's tip, with the
+  merge commit made on the feature branch, not on `main`). 3) End on `main` with a clean tree and no markers.
 hints:
-- Update the feature branch first.
-- Rebase it onto `main`.
-- Then merge from `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/prevent\n \
-  \  ```\n\n2.\n   ```bash\n   git rebase main\n   ```\n\n3.\n   ```bash\n   git switch\
-  \ main\n   ```\n\n4.\n   ```bash\n   git merge feature/prevent\n   ```"
-debrief: '## What Just Happened
+  - "Start on the feature branch: `git switch feature/summer-programme`, then `git merge main`. The conflict is the Winter line in `programme.md`."
+  - "Write one Winter line that mentions both `brass guests` and `second night`, keep `Autumn`, `Spring` and `Summer`, then `git add` and `git commit`."
+  - "Switch back with `git switch main` and run `git merge --ff-only feature/summer-programme`; it succeeds only because the branch already contains `main`."
+guide: |
+  ## 1. Catch the feature branch up
+  ```bash
+  git switch feature/summer-programme
+  git merge main
+  ```
+  Conflict in `programme.md`: Dario's "brass guests" vs. Clara's "second night".
 
+  ## 2. Resolve it on the branch
+  ```
+  Winter: carols evening with brass guests (sold out, add a second night)
+  ```
+  Keep the other lines. Then:
+  ```bash
+  git add programme.md
+  git commit -m "Merge main into feature/summer-programme"
+  ```
 
-  **Preventing Conflicts**
+  ## 3. Fast-forward main
+  ```bash
+  git switch main
+  git merge --ff-only feature/summer-programme
+  git log --oneline --graph
+  ```
+  `main` slides forward onto the already-tested merge commit.
+debrief: |
+  ## What happened
+  By merging in the direction `main -> feature` first, you moved the integration work to the feature branch,
+  where it is safe to experiment and test. Once the feature branch contains everything from `main`, merging it back is
+  trivially a fast-forward: `main` never sees a conflict or a half-tested state.
 
+  ## Why it matters
+  Conflicts are cheapest to fix early and in the right place. Short-lived branches, frequent syncs with
+  `main` (`git merge main` or `git rebase main`) and small changes prevent most big conflicts in the first place.
 
-  Keeping branches short-lived and up to date reduces the chance of painful conflicts
-  later.
+  ## Related
+  - `git rebase main` on the feature branch achieves the same integration with a linear history.
+  - `git config merge.ff only` or `pull.ff only` enforces the policy.
+  - CI that merges `main` into the pull request before testing catches conflicts even earlier.
 
-  '
+  ## Pitfalls
+  - If `main` moved again in the meantime, the fast-forward fails: merge `main` into the branch once more.
+  - Fast-forwarding hides the fact that a branch existed; use `--no-ff` if you want to keep it visible.
+common_mistakes:
+  - Merging the feature branch into `main` directly and resolving the conflict on `main`.
+  - Resolving by taking only one side and losing the brass guests or the second night.
+  - Finishing on the feature branch instead of switching back to `main`.
 validators:
-- type: file_exists
-  path: feature.txt
-  description: Feature work reached main
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: refs_equal
+    left: main
+    right: feature/summer-programme
+    description: main points at the feature branch tip (fast-forward)
+  - type: script_passes
+    script: |
+      test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3"
+      test "$(git log -1 --format=%s HEAD^1)" = "Add summer concert programme"
+      test "$(git log -1 --format=%s HEAD^2)" = "Update carols evening: second night"
+    description: The tip is the merge of main into the feature branch (feature first, main second)
+  - type: script_passes
+    script: |
+      grep -q '^Winter: .*brass guests' programme.md
+      grep -q '^Winter: .*second night' programme.md
+      grep -qx 'Summer: Gala in the park' programme.md
+      grep -qx 'Autumn: Brahms Symphony 2' programme.md
+      test "$(grep -c '^Winter:' programme.md)" = "1"
+    description: programme.md has one Winter line with both changes and keeps the other seasons
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: is_clean
+    description: Working tree is clean

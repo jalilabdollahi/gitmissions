@@ -6,41 +6,125 @@ difficulty: expert
 xp: 620
 expected_time: 18m
 concepts:
-- 5-commit interactive rebase abandoned midway
-common_mistakes:
-- Running commands related to 5-commit interactive rebase abandoned midway without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- git rebase --continue after a conflict
+- git stash pop with untracked files
+- git push --force-with-lease
+repo_path: work
+description: |
+  You are rebasing the five-commit branch `feature/nfa` of an open source regex engine onto `origin/main`, using `git rebase -i`, when your laptop was interrupted. The rebase is stopped at the third commit with a conflict in `src/nfa.c` (upstream added `nfa_add_epsilon` at the same place where your commit adds `nfa_add_range`). Before you started you stashed some benchmark notes (`notes/bench.txt`, an untracked file) so the rebase would run on a clean tree, and the branch had already been pushed in its old form. Everything must still end up as one tidy, pushed branch.
+objective: |
+  Finish the work.
+
+  1. Resolve `src/nfa.c` so that it contains both `nfa_add_epsilon` and `nfa_add_range`, and continue the rebase to the end (no `.git/rebase-merge` left).
+  2. `feature/nfa` must be checked out and contain, on top of `origin/main`, your five commits with their original subjects and order, followed by a sixth commit `bench: record nfa timings` that contains `notes/bench.txt` from the stash. The stash list ends empty.
+  3. Publish with `git push --force-with-lease origin feature/nfa` so that `origin/feature/nfa` equals your branch.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git status` tells you "interactive rebase in progress; onto ..." and the commit being applied. Fix
+  the file, `git add src/nfa.c`, then `git rebase --continue` (set `GIT_EDITOR=true` to keep the message).'
+- Once the rebase is done, `git stash list` shows the benchmark stash. `git stash pop` brings the untracked
+  file back (stash -u stored it separately).
+- The branch was published before, so a normal push is rejected as non-fast-forward. `--force-with-lease`
+  only overwrites if the remote is still where you last saw it.
+guide: |
+  ## 1. Resolve and continue
 
+  ```bash
+  git status                                    # rebase in progress, conflict in src/nfa.c
+  git diff                                      # both functions were appended at the same spot
+  # edit src/nfa.c: keep nfa_add_epsilon AND nfa_add_range, remove markers
+  git add src/nfa.c
+  GIT_EDITOR=true git rebase --continue         # replays commits 4 and 5
+  git log --oneline origin/main..HEAD           # five commits
+  ```
 
-  **Corrupted Rebase**
+  ## 2. Restore the stash
 
+  ```bash
+  git stash list                                 # stash@{0}: bench notes
+  git stash pop
+  git add notes/bench.txt
+  git commit -m "bench: record nfa timings"
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ## 3. Publish safely
 
-  '
+  ```bash
+  git push --force-with-lease origin feature/nfa
+  ```
+
+  The lease protects teammates' pushes to the branch: if somebody added a commit you never fetched, the push fails instead of erasing it.
+debrief: |
+  ## What was in the way
+
+  A rebase replays each commit on a new base and stops when a patch does not apply. In that state HEAD is detached, the remaining work is in `.git/rebase-merge/` and `git rebase --continue`, `--skip` or `--abort` are the only ways out. Your five commits are not lost while it is stopped; they are recorded in the todo list.
+
+  ## Stash and untracked files
+
+  `git stash -u` saves untracked files in an extra commit parent; `stash pop` restores them. A plain `git stash` would have left `bench.txt` behind and there would have been nothing to pop.
+
+  ## Force-with-lease
+
+  A rebase rewrites commits, so a branch that was already pushed must be force-updated. `--force-with-lease` compares the remote ref to your remote-tracking ref first, which makes it the safe default. Plain `--force` would delete someone else's work.
+
+  ## Related
+
+  - `git rebase --edit-todo`, `git rebase --skip` (drops the current commit).
+  - `git range-diff origin/feature/nfa feature/nfa` compares the old and new series.
+  - `git config rerere.enabled true` helps with repeated rebases.
+common_mistakes:
+- Running `git rebase --abort` and starting over, losing the conflict resolution time, or `--skip`, which
+  silently drops the third commit.
+- Using `git stash pop` in the middle of the rebase, where it can conflict with the half-applied state.
+- Using `git push --force`, which would overwrite any teammate commit on the branch.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: The rebase is finished
+  script: 'test ! -d "$(git rev-parse --git-path rebase-merge)"
+
+    test ! -d "$(git rev-parse --git-path rebase-apply)"
+
+    test "$(git symbolic-ref --short HEAD)" = feature/nfa
+
+    '
+- type: script_passes
+  description: The five original commits plus the bench commit sit on top of origin/main in order
+  script: 'git merge-base --is-ancestor origin/main feature/nfa
+
+    exp="regex: add char class parser
+
+    regex: anchors
+
+    nfa: add range transitions
+
+    nfa: epsilon closure cache
+
+    tests: nfa range cases
+
+    bench: record nfa timings"
+
+    test "$(git log --reverse --format=%s origin/main..feature/nfa)" = "$exp"
+
+    '
+- type: script_passes
+  description: nfa.c keeps both functions and has no markers
+  script: 'grep -q ''nfa_add_epsilon'' src/nfa.c
+
+    grep -q ''nfa_add_range'' src/nfa.c
+
+    ! grep -qE ''^(<<<<<<<|=======|>>>>>>>)'' src/nfa.c
+
+    '
+- type: script_passes
+  description: The benchmark notes are committed and the stash is empty
+  script: 'git show HEAD:notes/bench.txt | grep -q ''parse''
+
+    test -z "$(git stash list)"
+
+    '
+- type: script_passes
+  description: origin/feature/nfa equals the local branch
+  script: 'test "$(git --git-dir=../origin.git rev-parse feature/nfa)" = "$(git rev-parse feature/nfa)"
+
+    '
 - type: is_clean
   description: Working tree is clean

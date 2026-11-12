@@ -4,37 +4,74 @@ level: level-075-recover-detached-commits
 order: 75
 difficulty: intermediate
 xp: 280
-expected_time: 8m
+expected_time: 9m
 concepts:
-- '`git branch <name>` before switching away'
-common_mistakes:
-- Running commands related to `git branch <name>` before switching away without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A useful commit exists outside any branch, and you need to rescue it.
-objective: Create a branch named `rescue-detached` pointing at the detached commit.
+  - git reflog
+  - recovering orphaned commits
+  - git branch <name> <commit>
+repo_path: opsboard
+description: |
+  Yesterday you explored a CSV export for the Opsboard admin dashboard while HEAD was detached (you ran
+  `git switch --detach` to try it on a clean copy). You made two commits, then went back to `main` to do
+  something else, and now `git log` no longer shows your export work. The commits are not on any branch, but
+  Git has not forgotten them yet. Bring them back in one piece, under a branch name that protects them.
+objective: |
+  - create a branch named `rescue/csv-export` that contains both of your detached commits, on top of the current tip of main
+  - `main` itself must stay unchanged (3 commits) and HEAD must be on `main` when you are done
 hints:
-- Use `git branch rescue-detached` while at the detached commit, or find it with `git
-  reflog` first.
-- After the branch exists, you can switch back if you want.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git branch rescue-detached\n \
-  \  ```"
-debrief: '## What Just Happened
+  - "`git log` will not show them. `git reflog` records every place HEAD has been, including the detached commits."
+  - "Look for the two `commit:` entries about the CSV export. The newest of them is the tip you need. A branch can be created at any commit: `git branch <name> <commit>`."
+  - "`git reflog`, then `git branch rescue/csv-export HEAD@{1}` (HEAD@{1} is where HEAD was before the last switch)."
+guide: |
+  ## 1. Search the reflog
+  ```bash
+  git reflog
+  ```
+  The most recent lines show `checkout: moving from <hash> to main`, and below that the two `commit:`
+  entries for the export. The hash in the "moving from" line is the detached tip.
 
+  ## 2. Name it
+  ```bash
+  git branch rescue/csv-export HEAD@{1}
+  ```
+  `HEAD@{1}` means "where HEAD was one move ago", the tip of the export work.
 
-  **Recover Detached HEAD Commits**
+  ## 3. Confirm
+  ```bash
+  git log --oneline main..rescue/csv-export
+  git show rescue/csv-export:export.py
+  ```
+  Both commits are present, and `main` is unchanged.
+debrief: |
+  ## What happened
+  Commits are never attached to branches by themselves: a branch is a movable name for a tip.
+  Detached commits had only HEAD to point at, and when HEAD moved away they became unreachable. The
+  reflog, a local diary of every position of HEAD, still listed them, so a new branch name could be
+  attached to the tip.
 
+  ## How long does it last?
+  Unreachable commits survive until garbage collection, usually weeks (`gc.reflogExpire`, default 90 days
+  for reachable, 30 for unreachable). Reflogs are local: a fresh clone has no such diary.
 
-  Detached commits become safe as soon as a branch or tag points to them.
-
-  '
+  ## Related
+  - `git reflog show --all` includes branch reflogs.
+  - `git fsck --lost-found` finds dangling commits even without reflog entries.
+  - `git switch -c <name> <commit>` creates and switches in one step.
+common_mistakes:
+  - "Looking at `git log --all`, which does not show commits that no ref reaches."
+  - "Creating the branch at the wrong reflog entry, getting only one of the two commits."
+  - "Running `git gc --prune=now` before saving the work."
 validators:
-- type: branch_exists
-  branch: rescue-detached
-  description: rescue-detached exists
-- type: reflog_contains
-  text: Detached experiment
-  description: Reflog still records the detached commit
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: commit_count_eq
+    count: 3
+    branch: main
+    description: main still has its 3 commits
+  - type: script_passes
+    script: test "$(git rev-list --count main..rescue/csv-export)" = 2
+    description: rescue/csv-export has exactly the two export commits on top of main
+  - type: script_passes
+    script: git cat-file -e rescue/csv-export:export.py && git log --format=%s main..rescue/csv-export | grep -q 'export button'
+    description: The recovered branch contains the export endpoint and the button

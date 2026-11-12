@@ -6,40 +6,72 @@ difficulty: intermediate
 xp: 220
 expected_time: 9m
 concepts:
-- '`git push -u origin feature/xyz`'
-common_mistakes:
-- Running commands related to `git push -u origin feature/xyz` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Push `feature/ui` to `origin` and set upstream tracking.
+  - git push -u
+  - local:remote refspec
+  - different local and remote names
+repo_path: quipbot
+description: |
+  You prototyped slash-command support for the Quipbot chat bot on a local branch called `wip`, with
+  two commits. The team has a naming rule: everything on the server lives under `feature/`, `fix/` or
+  `chore/`, and a branch called `wip` would be deleted by the cleanup bot. You still prefer to keep
+  your local branch called `wip`. Publish the work under the right remote name and keep the branches linked.
+objective: |
+  - publish local `wip` as a branch named `feature/slash-commands` on `origin`
+  - `origin` must not get a branch named `wip`
+  - local `wip` must keep its name and have `origin/feature/slash-commands` as its upstream
+  - the remote branch must point to the same commit as `wip`
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git switch -c feature/ui\n   ```\n\n3.\n   ```bash\n   printf 'ui\n' > ui.txt\n\
-  \   ```\n\n4.\n   ```bash\n   git add ui.txt\n   ```\n\n5.\n   ```bash\n   git commit\
-  \ -m \"Add UI work\"\n   ```\n\n6.\n   ```bash\n   git push -u origin feature/ui\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "`git push origin wip` would create a remote branch with the same name, which is what we must avoid."
+  - "A push refspec has the form `<local>:<remote>`. Add `-u` to record the upstream."
+  - "`git push -u origin wip:feature/slash-commands`"
+guide: |
+  ## 1. Inspect
+  ```bash
+  git branch -vv
+  git log --oneline main..wip
+  ```
+  `wip` has two commits and no upstream.
 
+  ## 2. Push with a refspec
+  ```bash
+  git push -u origin wip:feature/slash-commands
+  ```
+  The part before the colon is the local branch, the part after it is the name to create on the remote.
 
-  **Push a New Branch**
+  ## 3. Verify the link
+  ```bash
+  git branch -vv
+  git ls-remote --heads origin
+  ```
+  `wip` now shows `[origin/feature/slash-commands]` and the server has only the feature branch.
+debrief: |
+  ## What happened
+  A push refspec decouples local and remote names. `-u` saved `branch.wip.remote=origin` and
+  `branch.wip.merge=refs/heads/feature/slash-commands`, so Git knows the pair even though the names differ.
 
+  ## Gotcha with plain `git push`
+  With `push.default=simple`, a bare `git push` refuses when the upstream branch has a different name.
+  Use `git push origin HEAD:feature/slash-commands`, or set `push.default upstream`, if you keep the
+  mismatched names.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Real-world use
+  Naming conventions, ticket numbers in branch names and forks all lead to local names that differ
+  from remote names. Renaming locally (`git branch -m`) and then pushing is the other option.
 
-  '
+  ## Related
+  - `git push origin HEAD` pushes the current branch under its own name.
+  - `git branch -u origin/<name>` can set the upstream afterwards.
+common_mistakes:
+  - "Running `git push -u origin wip`, which creates the forbidden `wip` branch on the server."
+  - "Renaming the local branch instead of using a refspec, then wondering why `wip` disappeared."
+  - "Pushing without `-u`, so the local branch is not linked to the remote one."
 validators:
-- type: branch_exists
-  branch: feature/ui
-  description: feature/ui exists locally
-- type: script_passes
-  description: Remote branch exists
-  script: git -C ../remote.git rev-parse --verify refs/heads/feature/ui >/dev/null
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/feature/slash-commands)" = "$(git rev-parse wip)"
+    description: origin has feature/slash-commands at the same commit as wip
+  - type: script_passes
+    script: "! git --git-dir=../origin.git rev-parse --verify -q refs/heads/wip"
+    description: origin has no branch called wip
+  - type: script_passes
+    script: test "$(git rev-parse --abbrev-ref wip@{upstream})" = origin/feature/slash-commands
+    description: Local wip tracks origin/feature/slash-commands

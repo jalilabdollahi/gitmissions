@@ -4,35 +4,88 @@ level: level-063-multiple-remotes
 order: 63
 difficulty: intermediate
 xp: 260
-expected_time: 9m
+expected_time: 10m
 concepts:
-- "`upstream` + `origin` \u2014 fork workflow"
-common_mistakes:
-- "Running commands related to `upstream` + `origin` \u2014 fork workflow without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This sandbox simulates a fork workflow with both `origin` and `upstream`.
-objective: Add a second remote named `upstream` that points to `../upstream.git`.
+  - multiple remotes
+  - git remote add upstream
+  - syncing a fork
+repo_path: pulse-sdk
+description: |
+  You contribute to the open-source Pulse analytics SDK through your personal fork. Your clone has a
+  single remote, `origin`, which is the fork. The maintainers have since merged new work into the
+  canonical repository (in this sandbox `../upstream.git`), so your fork's `main` is two commits
+  behind. Contributions should start from current code, so you will sync the fork through your
+  laptop: pull from the canonical repo and push to your fork.
+objective: |
+  - add a second remote named `upstream` that points to `../upstream.git`
+  - fetch it and bring your local `main` level with `upstream/main` (a fast-forward, no merge commit)
+  - push `main` to `origin` so your fork matches the canonical repo
 hints:
-- Check existing remotes first.
-- Use `git remote add upstream ../upstream.git`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git remote add upstream ../upstream.git\n   ```"
-debrief: '## What Just Happened
+  - "`git remote -v` shows only `origin`. A repository can have as many remotes as you like."
+  - "Add `upstream`, run `git fetch upstream`, then `git merge --ff-only upstream/main` on main."
+  - "`git remote add upstream ../upstream.git && git fetch upstream && git merge --ff-only upstream/main && git push origin main`"
+guide: |
+  ## 1. One remote so far
+  ```bash
+  git remote -v
+  ```
+  `origin` is your fork, which is why you cannot see the maintainers' newest commits.
 
+  ## 2. Add the canonical repository
+  ```bash
+  git remote add upstream ../upstream.git
+  git fetch upstream
+  git log --oneline main..upstream/main
+  ```
+  `upstream` is the conventional name for "the project I forked from".
 
-  **Multiple Remotes**
+  ## 3. Fast-forward main
+  ```bash
+  git switch main
+  git merge --ff-only upstream/main
+  ```
+  `--ff-only` refuses to create a merge commit, which is right for a fork that has no private commits.
 
+  ## 4. Update your fork
+  ```bash
+  git push origin main
+  ```
+debrief: |
+  ## What happened
+  Fetching a second remote created `upstream/*` tracking branches alongside `origin/*`. You moved
+  `main` along the maintainers' line and then pushed to a different remote than you pulled from.
 
-  Multiple remotes are common when you fork a project and also track the original
-  repository.
+  ## Why the names matter
+  Git does not know which remote is "the real one". By convention `origin` is where you push and
+  `upstream` is where you pull the project's truth from. Branch upstream settings can differ from that
+  when you configure them.
 
-  '
+  ## Real-world use
+  This is the standard fork workflow on every Git host. Keep `main` identical to upstream, and do your
+  own work on topic branches.
+
+  ## Related
+  - `git push upstream` normally fails for outside contributors; that is expected.
+  - `git remote set-url` and `git remote -v` verify addresses.
+  - `git fetch --all` updates all remotes at once.
+common_mistakes:
+  - "Merging with `git pull` from origin, which has nothing new because the fork itself is stale."
+  - "Pushing to `upstream` instead of `origin`."
+  - "Creating a merge commit when a fast-forward was possible."
 validators:
-- type: remote_exists
-  name: upstream
-  description: upstream remote exists
+  - type: remote_exists
+    name: upstream
+    description: A remote named upstream exists
+  - type: script_passes
+    script: git remote get-url upstream | grep -q 'upstream.git'
+    description: upstream points at the canonical repository
+  - type: refs_equal
+    left: main
+    right: upstream/main
+    description: main is level with upstream/main
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/main)" = "$(git rev-parse main)"
+    description: Your fork (origin) has been updated
+  - type: no_merge_commit
+    branch: main
+    description: main has no merge commits

@@ -4,50 +4,70 @@ level: level-013-compare-two-commits
 order: 13
 difficulty: beginner
 xp: 130
-expected_time: 5m
+expected_time: 7m
 concepts:
-- '`git diff <hash1> <hash2>`'
-common_mistakes:
-- Running commands related to `git diff <hash1> <hash2>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git diff
-  <hash1> <hash2>``.
-objective: 'Inspect the repository history and create `compare-report.txt` containing
-  exactly:
-
-
-  `difference=version line changed`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git diff <a> <b>
+  - comparing snapshots
+  - --name-only
+description: |
+  Elena is a wedding planner and keeps each event in a repository. The couple wants to know what is different
+  between the original plan (the commit `Plan wedding for 120 guests`) and the state at the commit `Add Emil`.
+  Along the way some files were changed and then changed back, and later commits added other files, so
+  reading the log alone will mislead you.
+objective: |
+  Compare the commit `Plan wedding for 120 guests` with the commit `Add Emil` using Git, and write the names of
+  all files whose **content differs** between those two snapshots to `changed-files.txt`, one path per line,
+  with nothing else. Do not change any history.
 hints:
-- Start with the Git command related to ``git diff <hash1> <hash2>``.
-- Write the exact expected answer into `compare-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > compare-report.txt <<'EOF'\n\
-  difference=version line changed\nEOF\n   ```\n\n2.\n   ```bash\n   git add compare-report.txt\n\
-  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline` lets you find the two commits' hashes. Note that a file touched in between may be identical at both ends."
+  - "`git diff <hash1> <hash2>` compares two snapshots directly, ignoring the steps between them. A flag can print only file names."
+  - "`git diff --name-only <hash1> <hash2> > changed-files.txt`"
+guide: |
+  ## 1. Find the hashes
+  ```bash
+  git log --oneline
+  ```
+  Note the hash of `Plan wedding for 120 guests` (the oldest) and of `Add Emil`.
 
+  ## 2. Compare
+  ```bash
+  git diff <old> <new> --stat
+  ```
+  Only files that really differ appear. `seating.md` was changed to tables of 10 and back, so it does not.
+  `todo.txt` was added after `Add Emil`, so it is not part of the comparison either.
 
-  **Compare Two Commits**
+  ## 3. Names only
+  ```bash
+  git diff --name-only <old> <new> > changed-files.txt
+  ```
+debrief: |
+  ## What happened
+  `git diff A B` ignores the path taken and compares two snapshots directly. That is why the temporary change
+  of `seating.md` cancelled out, while an inspection of every commit would have listed it.
 
+  ## Why it matters
+  Comparing two points in history answers "what is different in this release vs. the last one?" and is the basis of
+  code review, release notes and merge previews.
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Related
+  - `git diff A..B` is the same for two commits; `git diff A...B` compares B to the merge-base.
+  - `--stat`, `--name-status` (adds A/M/D letters) and `--shortstat` summarise.
+  - `git diff HEAD~3 HEAD -- guests.csv` limits to one path.
 
-  '
+  ## Pitfalls
+  - The order matters: `git diff old new` shows what you need to do to get from old to new.
+  - `git log --name-only` lists files per commit, which is a different question.
+common_mistakes:
+  - Using `git log --name-only` and including `seating.md`, which was reverted to its original content.
+  - Comparing against `HEAD` instead of the `Add Emil` commit, which wrongly includes `todo.txt`.
+  - Writing the file names with extra decoration such as `M` letters or colons.
 validators:
-- type: file_content_equals
-  path: compare-report.txt
-  text: difference=version line changed
-  description: compare-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test -f changed-files.txt && test "$(sort changed-files.txt)" = "$(git diff --name-only "$(git log --format=%h --grep='Plan wedding')" "$(git log --format=%h --grep='Add Emil')" | sort)"
+    description: changed-files.txt lists exactly the files that differ between the two commits
+  - type: script_passes
+    script: test "$(wc -l < changed-files.txt | tr -d ' ')" = "3"
+    description: Exactly three files differ
+  - type: commit_count_eq
+    count: 7
+    description: History is unchanged

@@ -4,48 +4,103 @@ level: level-197-write-tree
 order: 197
 difficulty: expert
 xp: 540
-expected_time: 12m
+expected_time: 14m
 concepts:
-- '`git write-tree`'
-common_mistakes:
-- Running commands related to `git write-tree` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git write-tree``.
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- temporary index with GIT_INDEX_FILE
+- git read-tree --prefix
+- git write-tree
+description: |
+  A partner wants a combined deliverable of the payments SDK: the public `api/` directory exactly as released in `api-v3` and the documentation exactly as released in `docs-v1`. Those two releases were tagged on different commits and `main` has moved on past both (an API v4 rewrite and a second doc revision), so no single commit contains the combination. The release engineer wants the combination as a standalone tree object, without disturbing your checkout, your index or your branches.
+objective: |
+  Assemble the tree with plumbing and tag it.
 
+  1. Build a tree whose top level has exactly two entries: `api` taken from tag `api-v3` and `docs` taken from tag `docs-v1`. Use a temporary index (`GIT_INDEX_FILE`) so that your real index is never touched.
+  2. Create the lightweight tag `bundle-tree` that points directly at that tree object (not at a commit).
 
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  `HEAD` stays on `main`, the working tree and the real index stay clean, and no commit is created.
 hints:
-- Start with the Git command related to ``git write-tree``.
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git read-tree --prefix=<dir>/ <tree-ish>` loads a tree under a directory name into whichever index
+  file is active. A path inside a tag works as a tree-ish: `api-v3:api`.'
+- Prefix the commands with `GIT_INDEX_FILE=<some path outside the working tree>` so that a fresh, separate
+  index is used; `git write-tree` then writes it out as a tree object and prints its SHA.
+- '`git tag bundle-tree <tree-sha>` accepts any object. Check with `git cat-file -t bundle-tree`, it must
+  print `tree`.'
+guide: |
+  ## A scratch index
 
+  ```bash
+  export GIT_INDEX_FILE=$PWD/.git/bundle-index
+  git read-tree --prefix=api/  api-v3:api
+  git read-tree --prefix=docs/ docs-v1:docs
+  git ls-files -s | head            # the scratch index holds both directories
+  ```
 
-  **Write a Tree Object**
+  Because `GIT_INDEX_FILE` points elsewhere, the real `.git/index` is not read or written.
 
+  ## Write and tag the tree
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  tree=$(git write-tree)
+  unset GIT_INDEX_FILE
+  rm -f .git/bundle-index
+  git tag bundle-tree "$tree"
+  git cat-file -t bundle-tree       # tree
+  git ls-tree bundle-tree           # api, docs
+  ```
 
-  '
+  You can also set the variable for a single command: `GIT_INDEX_FILE=... git read-tree ...`.
+debrief: |
+  ## Trees without commits
+
+  A tree is just an object and a commit only one possible way to reference it. Plumbing can build trees out of pieces of other trees: `read-tree --prefix` grafts a subtree under a name, `write-tree` serialises the index. Since subtrees are shared by SHA, nothing is copied; the new top-level tree simply points to the same `api` and `docs` objects as the tags do.
+
+  ## Why a temporary index
+
+  The index is the staging area for the real checkout. Playing with it would leave your working tree out of sync and surprise you at the next `git status`. `GIT_INDEX_FILE` lets plumbing use a private scratch area.
+
+  ## Verifying
+
+  `git rev-parse bundle-tree:api` equals `git rev-parse api-v3:api`: identical SHA means identical content, down to modes and nested files.
+
+  ## Related
+
+  - `git commit-tree <tree>` wraps such a tree into a commit (see the next levels).
+  - `git archive bundle-tree` can export a tree directly.
+  - `git ls-tree -r` lists everything inside.
+common_mistakes:
+- Using the real index and `git checkout api-v3 -- api`, which overwrites your working tree and stages
+  files.
+- Forgetting the trailing slash in `--prefix=api/`, so the entries become `apiclient.py` at the root.
+- Tagging the output of `git write-tree` with `git tag -a`, which wraps it in a tag object instead of
+  pointing at the tree.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: bundle-tree is a tree object with exactly the entries api and docs
+  script: 'test "$(git cat-file -t bundle-tree)" = tree
+
+    test "$(git ls-tree --name-only bundle-tree | tr ''\n'' '' '')" = "api docs "
+
+    '
+- type: script_passes
+  description: api comes from api-v3 and docs from docs-v1, identical down to the SHA
+  script: 'test "$(git rev-parse bundle-tree:api)" = "$(git rev-parse api-v3:api)"
+
+    test "$(git rev-parse bundle-tree:docs)" = "$(git rev-parse docs-v1:docs)"
+
+    test "$(git rev-parse bundle-tree:api)" != "$(git rev-parse main:api)"
+
+    '
+- type: script_passes
+  description: HEAD, branches and the real index are untouched
+  script: 'test "$(git symbolic-ref --short HEAD)" = main
+
+    test "$(git rev-list --count main)" = 4
+
+    git diff --cached --quiet
+
+    git diff --quiet
+
+    '
+- type: tag_exists
+  tag: bundle-tree
+  description: Tag bundle-tree exists

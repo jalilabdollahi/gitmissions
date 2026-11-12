@@ -4,42 +4,93 @@ level: level-115-stash-conflict
 order: 115
 difficulty: intermediate
 xp: 260
-expected_time: 7m
+expected_time: 13m
 concepts:
-- "stash pop conflicts \u2014 resolve like merge"
-common_mistakes:
-- "Running commands related to stash pop conflicts \u2014 resolve like merge without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Apply the stash, resolve the conflict so `app.txt` becomes `resolved stash`,
-  then commit the result and finish cleanly.
+  - stash pop conflict
+  - resolving and dropping the stash
+  - keeping both changes
+repo_path: tierprice
+description: |
+  In the Tierprice subscription pricing repo, you stashed a pricing edit (pro plan price lowered to 18 and a new
+  `enterprise` plan at 90) and then switched to other work. Meanwhile `main` received a commit raising the pro price
+  to 24. Popping the stash now collides on the pro line. Git will report the conflict and, to be safe, keep the stash
+  entry. Resolve it by keeping main's new pro price (24) together with your new enterprise plan, commit the combined
+  result and clean up the stash.
+objective: |
+  - run `git stash pop` and resolve the conflict in `pricing.yaml` so it contains both `  pro: 24` and `  enterprise: 90` (and `  team: 50`), without conflict markers
+  - commit the result with the message `Add enterprise plan with new pro price`
+  - make sure the stash list is empty afterwards (a conflicted pop does not drop the entry on its own)
+  - leave a clean working tree
 hints:
-- "Start with the Git command related to `stash pop conflicts \u2014 resolve like\
-  \ merge`."
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash pop || true\n   ```\n\
-  \n2.\n   ```bash\n   printf 'resolved stash\n' > app.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git add app.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"Resolve stash\
-  \ conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "After `git stash pop`, Git reports CONFLICT in `pricing.yaml`, and `git stash list` still shows the entry. That is intentional."
+  - "Fix the file by hand (keep the 24 from HEAD and your enterprise line), `git add pricing.yaml`, commit, and then remove the entry yourself with `git stash drop`."
+  - "`git stash pop`, edit `pricing.yaml`, `git add pricing.yaml && git commit -m \"Add enterprise plan with new pro price\" && git stash drop`"
+guide: |
+  ## 1. Pop and watch it fail halfway
+  ```bash
+  git stash pop
+  git status
+  git stash list
+  ```
+  The conflicted file is `pricing.yaml`. The stash is still listed because the pop did not fully succeed.
 
+  ## 2. Resolve the file
+  ```bash
+  cat pricing.yaml
+  ```
+  The `<<<<<<<` part (upstream/HEAD) has `pro: 24`, the stash part has `pro: 18`. Write the final file:
+  ```yaml
+  plans:
+    pro: 24
+    team: 50
+    enterprise: 90
+  ```
 
-  **Stash Pop Conflict**
+  ## 3. Mark resolved and commit
+  ```bash
+  git add pricing.yaml
+  git commit -m "Add enterprise plan with new pro price"
+  ```
 
+  ## 4. Drop the leftover stash
+  ```bash
+  git stash drop
+  git stash list
+  ```
+debrief: |
+  ## What happened
+  Applying a stash is a three-way merge between the stash's base, the stash content and your current HEAD.
+  The pro line changed on both sides, so Git left markers and kept the stash. After you resolved the file the
+  entry was redundant, but Git never drops it automatically in the conflict case.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Resolution rules
+  Stash conflicts look like merge conflicts (`<<<<<<< Updated upstream` / `>>>>>>> Stashed changes`).
+  Resolve, `git add` (or `git restore --staged` to leave them unstaged), then drop the entry yourself.
 
-  '
+  ## Avoiding it
+  Apply stashes soon, or promote them to branches with `git stash branch` (see the previous level) so
+  conflicts become ordinary merges.
+
+  ## Related
+  - `git stash apply` does the same but never drops.
+  - `git checkout --theirs/--ours` is available for whole-file choices (in a stash, "theirs" is the stash).
+common_mistakes:
+  - "Believing the stash is gone after the conflict and leaving a stale entry behind."
+  - "Taking the stash's side completely and losing the price increase to 24 from main."
+  - "Committing with conflict markers still in `pricing.yaml`."
 validators:
-- type: file_content_equals
-  path: app.txt
-  text: resolved stash
-  description: Conflict was resolved
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: |
+      grep -qx '  pro: 24' pricing.yaml && grep -qx '  enterprise: 90' pricing.yaml && grep -qx '  team: 50' pricing.yaml
+    description: pricing.yaml keeps main's pro price and the enterprise plan
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged files remain
+  - type: commit_message_equals
+    text: Add enterprise plan with new pro price
+    description: The combined result is committed
+  - type: stash_empty
+    description: The stash list is empty
+  - type: is_clean
+    description: Working tree is clean

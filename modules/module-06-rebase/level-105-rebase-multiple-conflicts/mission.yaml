@@ -4,40 +4,100 @@ level: level-105-rebase-multiple-conflicts
 order: 105
 difficulty: intermediate
 xp: 380
-expected_time: 12m
+expected_time: 18m
 concepts:
-- 4-step rebase with 3 conflict stops
-common_mistakes:
-- Running commands related to 4-step rebase with 3 conflict stops without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - multiple conflicts in one rebase
+  - git rebase --continue loop
+  - keeping both sides
+repo_path: wordly
+description: |
+  Wordly is a translation catalogue with one JSON file per language. On `feature/i18n-hints` you added a
+  `checkout_hint` line to each of `en.json`, `de.json` and `fr.json`, one commit per language, and you also changed
+  the `checkout` label in each. On `main`, someone replaced every `checkout` label with a shorter call to action
+  ("Pay now" and its translations) in one commit that touched all three files. Rebasing your branch conflicts three
+  times, once per commit. Keep main's new `checkout` wording and your `checkout_hint` in every file, and finish the
+  rebase.
+objective: |
+  - rebase `feature/i18n-hints` onto `main`, resolving every conflict so that each of `en.json`, `de.json`, `fr.json` has
+    main's `checkout` text (`Pay now`, `Jetzt bezahlen`, `Payer maintenant`) AND your `checkout_hint` line, and is valid JSON
+  - your three commits (`Add English checkout hint`, `Add German checkout hint`, `Add French checkout hint`) must remain on top of main in that order
+  - no rebase in progress, no conflict markers, stay on `feature/i18n-hints`
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "After `git rebase main`, `git status` shows which file conflicts in the current commit. After you fix it, stage it and run `git rebase --continue`. Expect to repeat it for three commits."
+  - "In each file, keep main's `checkout` line and your `checkout_hint` line. Mind the comma after the `checkout` line so the JSON stays valid."
+  - "Loop: edit the file, `git add <file>`, `git -c core.editor=true rebase --continue`; check `git status` each time until it says the rebase is finished."
+guide: |
+  ## 1. Start
+  ```bash
+  git rebase main
+  git status
+  ```
+  Conflict 1 of 3, in `en.json`.
 
+  ## 2. Resolve the English file
+  ```bash
+  cat en.json
+  ```
+  Combine both sides: main's `"checkout": "Pay now",` followed by your hint line. Remove the markers.
+  ```bash
+  git add en.json
+  git -c core.editor=true rebase --continue
+  ```
 
-  **Multi-Conflict Rebase**
+  ## 3. Repeat for the next commits
+  Git now stops on `de.json`, then on `fr.json`. Each time: fix, `git add`, `--continue`.
+  ```bash
+  git status        # tells you which step you are on ("Next command to run")
+  ```
 
+  ## 4. Verify
+  ```bash
+  git log --oneline main..feature/i18n-hints
+  python3 -m json.tool en.json >/dev/null && echo valid
+  ```
+debrief: |
+  ## What happened
+  Every commit is replayed separately, so conflicts are resolved commit by commit, even if the cause is the same
+  edit on main. Resolving the same kind of conflict three times is normal, if tedious.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## Reducing the pain
+  - `git config rerere.enabled true` records how you resolved a conflict and reuses it when the same
+    conflict appears again (for example when you retry a rebase).
+  - Squash the branch first (`git rebase -i` with fixups) if the commits do not need to stay separate.
+  - A merge would have shown the three files in a single resolution step.
 
-  '
+  ## Safety
+  `git rebase --abort` undoes everything at any stage. After `--continue` finishes, the old commits live in the
+  reflog.
+
+  ## Related
+  - `git status` shows "(all conflicts fixed: run git rebase --continue)".
+  - `git diff --check` finds leftover markers and whitespace errors.
+common_mistakes:
+  - "Resolving only the first conflict and assuming the rebase is over."
+  - "Forgetting the comma after the `checkout` line, producing invalid JSON."
+  - "Taking your side completely and losing main's new wording."
+  - "Running `git commit` instead of `git rebase --continue` between steps."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/i18n-hints
+    description: HEAD is on feature/i18n-hints
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && ! test -d .git/rebase-apply"
+    description: The rebase is finished
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/i18n-hints | tr '\n' '|')" = "Add English checkout hint|Add German checkout hint|Add French checkout hint|" && git merge-base --is-ancestor main HEAD
+    description: Your three commits sit on top of main
+  - type: script_passes
+    script: |
+      grep -qF '"checkout": "Pay now"' en.json && grep -qF '"checkout_hint"' en.json
+      grep -qF '"checkout": "Jetzt bezahlen"' de.json && grep -qF '"checkout_hint"' de.json
+      grep -qF '"checkout": "Payer maintenant"' fr.json && grep -qF '"checkout_hint"' fr.json
+    description: Each language keeps main's label and your hint
+  - type: script_passes
+    script: |
+      for f in en de fr; do python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$f.json"; done
+    description: All three files are valid JSON
+  - type: no_conflict_markers
+    description: No conflict markers remain

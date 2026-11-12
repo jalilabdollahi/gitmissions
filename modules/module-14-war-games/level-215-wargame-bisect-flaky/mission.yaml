@@ -4,43 +4,96 @@ level: level-215-wargame-bisect-flaky
 order: 215
 difficulty: expert
 xp: 680
-expected_time: 18m
+expected_time: 20m
 concepts:
-- '`git bisect run` with intermittent failures'
-common_mistakes:
-- Running commands related to `git bisect run` with intermittent failures without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- git bisect run with a flaky test
+- retrying inside the bisect command
+- tagging the real culprit
+description: |
+  The queue-worker's regression suite fails on `main`: jobs stall because the connection pool is empty. A new hire started `git bisect run ./test.sh` and the answer (a documentation commit) made no sense. The reason: `./test.sh` also fails randomly, a flaky network probe that fails the first time it runs on about half of the commits and passes when repeated. Every flaky failure looks exactly like a real regression to bisect. The real regression is deterministic, and it persists to the tip. A trustworthy answer is needed for the incident report.
+objective: |
+  Find the true first bad commit despite the flakiness.
+
+  1. Use `git bisect` between the root commit (good) and `main` (bad), with a test command that does not mistake a flaky failure for a regression (for example by retrying `./test.sh`).
+  2. Create the tag `regression-origin` on the first commit that really contains the regression (`pool_size=0` in `settings.conf` from that commit on).
+  3. End the session with `git bisect reset`: HEAD on `main`, no bisect state, and the working tree clean.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- 'Run `./test.sh` twice on the same commit: on a flaky commit the first run fails and the second passes,
+  on a truly bad commit both fail. The script keeps its own counters in `.runs/` (ignored by Git).'
+- '`git bisect run` takes any command. Wrap the retry: `git bisect run sh -c ''./test.sh || ./test.sh''`.
+  A single failure no longer counts as bad.'
+- 'Tag `refs/bisect/bad` before resetting: `git tag regression-origin refs/bisect/bad`. The commit message
+  of the true culprit does not mention the pool.'
+guide: |
+  ## See the flakiness
 
+  ```bash
+  ./test.sh; ./test.sh        # on some commits: first run "flaky: network timeout", second "ok"
+  git log --oneline | head
+  ```
 
-  **Bisect with Flaky Tests**
+  ## Bisect with a retry wrapper
 
+  ```bash
+  git bisect start
+  git bisect bad HEAD
+  git bisect good $(git rev-list --max-parents=0 HEAD)
+  git bisect run sh -c './test.sh || ./test.sh'
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  A commit counts as bad only if the test fails twice in a row. The cost is a second run on bad commits, which is cheap compared with a wrong answer.
 
-  '
+  ## Record and clean up
+
+  ```bash
+  git tag regression-origin refs/bisect/bad
+  git show regression-origin            # the real culprit
+  git bisect reset
+  ```
+
+  Cross-check: `git grep pool_size regression-origin~1 regression-origin -- settings.conf`.
+debrief: |
+  ## Flaky tests break the bisect assumption
+
+  Bisect assumes a monotone history: good, good, ..., bad, bad. A flaky failure on an early commit looks like a bad commit and sends the search into the wrong half. The result is a plausible but wrong commit, which is worse than no answer.
+
+  ## Strategies
+
+  - **Retry** the test and call it bad only if it fails every time (as here).
+  - **Repeat to prove good**: run N times and require all to pass when you expect a rare failure (flaky regressions).
+  - **Test the cause, not the symptom**: grep the configuration, or run a smaller deterministic test.
+  - Mark an untestable commit with exit 125 so bisect skips it.
+
+  ## Verifying the answer
+
+  Check that the commit before the culprit really is good (`git checkout regression-origin~1` and test it several times) and that the culprit is bad every time. Reporting a bisect result without that check is how wrong blame lands in postmortems.
+
+  ## Related
+
+  - `git bisect log` documents the session, `git bisect replay` reruns it.
+  - `git bisect skip` for commits that cannot be built.
+common_mistakes:
+- Running `git bisect run ./test.sh` unchanged and trusting the first flaky failure.
+- Retrying only the good side (accepting a pass on any run), which hides a flaky regression.
+- Forgetting `git bisect reset`, leaving a detached HEAD in the middle of history.
 validators:
+- type: script_passes
+  description: regression-origin is the first commit that really has pool_size=0
+  script: "want=\"\"\nfor c in $(git rev-list --reverse main); do\n  if git show \"$c:settings.conf\"\
+    \ | grep -q 'pool_size=0'; then want=$c; break; fi\ndone\ntest -n \"$want\"\ntest \"$(git rev-parse\
+    \ regression-origin^{commit})\" = \"$want\"\n"
 - type: is_on_branch
   branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+  description: HEAD is back on main
+- type: script_passes
+  description: No bisect session is in progress
+  script: 'test ! -f "$(git rev-parse --git-path BISECT_START)"
+
+    '
+- type: script_passes
+  description: History is untouched
+  script: 'test "$(git rev-list --count main)" = 30
+
+    '
 - type: is_clean
   description: Working tree is clean

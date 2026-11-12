@@ -6,41 +6,117 @@ difficulty: expert
 xp: 680
 expected_time: 18m
 concepts:
-- detached HEAD + staged changes + no reflog entry
-common_mistakes:
-- Running commands related to detached HEAD + staged changes + no reflog entry without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- detached HEAD with commits and staged work
+- git switch -c / git stash
+- pushing a hotfix branch and annotated tag
+repo_path: work
+description: |
+  A matchmaking server in production runs `v2.3.0`. You checked out the tag to reproduce a bug, found two fixes (lobby size and duplicate join tokens) and committed both while HEAD was detached. Then, in the same terminal, you started editing the ops runbook for a different reason and staged that change as well. Git has been warning "You are in 'detached HEAD' state" for an hour. If you switch to `main` now, your fix commits would be orphaned; if you commit the runbook here, it would ship inside a hotfix it does not belong to. Nothing has been pushed.
+objective: |
+  Sort out the pieces.
+
+  1. Put the two fix commits on a new branch `hotfix/2.3.1` that sits directly on top of `v2.3.0` (exactly two commits above the tag).
+  2. Create the annotated tag `v2.3.1` on the tip of that branch, and push both branch and tag to `origin`.
+  3. The staged runbook change (`docs/runbook.md`) must not be part of the hotfix: commit it on `main` with a message starting `docs:` and leave `main` otherwise untouched (it must not contain the fix commits).
+  4. End on `main` with a clean working tree and an empty stash.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git status` says HEAD detached at `v2.3.0` plus the number of commits you made. `git switch -c <name>`
+  on a detached HEAD turns the current state into a branch without losing commits.'
+- The staged change would travel with `switch -c`. Park it first with `git stash`, then restore it on
+  `main` with `git stash pop`.
+- '`git tag -a v2.3.1 -m "..."` creates an annotated tag; `git push origin hotfix/2.3.1 v2.3.1` pushes
+  both.'
+guide: |
+  ## Understand where you are
 
+  ```bash
+  git status                       # HEAD detached at v2.3.0
+  git log --oneline v2.3.0..HEAD    # your two fixes
+  git diff --cached --stat          # docs/runbook.md staged
+  ```
 
-  **Full Detached HEAD Disaster**
+  ## Park the unrelated change, then anchor the commits
 
+  ```bash
+  git stash                         # takes the runbook edit out of the way
+  git switch -c hotfix/2.3.1        # the detached commits get a name
+  git tag -a v2.3.1 -m "Hotfix 2.3.1"
+  git push origin hotfix/2.3.1 v2.3.1
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ## Put the runbook where it belongs
 
-  '
+  ```bash
+  git switch main
+  git stash pop
+  git add docs/runbook.md
+  git commit -m "docs: add failover steps to the runbook"
+  git stash list                     # empty
+  ```
+debrief: |
+  ## Detached HEAD
+
+  Commits made on a detached HEAD are reachable from nothing but HEAD itself and its reflog. As soon as you switch away, they only live in the reflog for a while and then get garbage collected. The cure is trivial and must come *before* you leave: give them a branch or a tag.
+
+  ## Keeping unrelated work apart
+
+  A branch is a line of intent. Mixing the runbook edit into the hotfix would have changed what v2.3.1 means. Stash is the right tool when you need a clean tree for a moment; `git switch -c` would have carried the staged change over silently.
+
+  ## Tags and hotfixes
+
+  Hotfix lines start at the released tag, not at `main`, so exactly the bug fixes ship. Annotated tags (with tagger, date and message) are the right kind for releases. Pushing the tag explicitly matters, because `git push` does not send tags by default.
+
+  ## Related
+
+  - `git reflog` finds orphaned detached commits within 90 days.
+  - `git switch --detach <tag>` is the explicit way into this state.
+  - `git cherry-pick` forward-ports the fixes to `main` afterwards.
+common_mistakes:
+- Running `git switch main` first and then hunting for the lost commits in the reflog.
+- Using `git switch -c hotfix/2.3.1` without stashing and then committing the runbook into the hotfix.
+- Forgetting to push the tag; `git push origin hotfix/2.3.1` alone does not send it.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: hotfix/2.3.1 is exactly the two fix commits on top of v2.3.0
+  script: 'test "$(git rev-parse hotfix/2.3.1~2)" = "$(git rev-parse ''v2.3.0^{commit}'')"
+
+    test "$(git log --reverse --format=%s v2.3.0..hotfix/2.3.1)" = "fix: cap lobby size at 8
+
+    fix: reject duplicate join tokens"
+
+    ! git diff --name-only v2.3.0 hotfix/2.3.1 | grep -q runbook
+
+    '
+- type: script_passes
+  description: v2.3.1 is an annotated tag on the hotfix tip
+  script: 'test "$(git cat-file -t v2.3.1)" = tag
+
+    test "$(git rev-parse ''v2.3.1^{commit}'')" = "$(git rev-parse hotfix/2.3.1)"
+
+    '
+- type: script_passes
+  description: Branch and tag are on origin
+  script: 'o="git --git-dir=../origin.git"
+
+    test "$($o rev-parse hotfix/2.3.1)" = "$(git rev-parse hotfix/2.3.1)"
+
+    test "$($o cat-file -t v2.3.1)" = tag
+
+    '
+- type: script_passes
+  description: The runbook commit is on main and the fixes are not
+  script: 'test "$(git symbolic-ref --short HEAD)" = main
+
+    git log -1 --format=%s main | grep -q ''^docs:''
+
+    git show main --name-only --format= | grep -qx ''docs/runbook.md''
+
+    ! git merge-base --is-ancestor hotfix/2.3.1 main
+
+    git show main:docs/runbook.md | grep -qi failover
+
+    '
+- type: stash_empty
+  description: The stash is empty
 - type: is_clean
   description: Working tree is clean

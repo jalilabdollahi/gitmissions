@@ -4,50 +4,108 @@ level: level-187-git-archive
 order: 187
 difficulty: expert
 xp: 400
-expected_time: 14m
+expected_time: 12m
 concepts:
-- "`git archive` \u2014 export without `.git/`"
-common_mistakes:
-- "Running commands related to `git archive` \u2014 export without `.git/` without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ archive` \u2014 export without `.git/``."
-objective: 'Inspect the repository history and create `advanced-report.txt` containing
-  exactly:
+- git archive with a tag
+- --prefix and export-ignore
+- git get-tar-commit-id
+repo_path: docsite
+description: |
+  The documentation site of an open source SDK is released as a tarball. `main` has already moved on to unreleased 1.5 work, but the packager must produce exactly what was tagged as `v1.4`. The repo's `.gitattributes` marks tests, CI config and design sources with `export-ignore`, so they must stay out of the archive. Separately, the API reference (`docs/api`) is requested as a zip by a partner, taken from current `main`.
+objective: |
+  Produce two files in `dist/` (it is git-ignored) without cloning and without the `.git` directory.
 
+  1. `dist/docsite-1.4.tar.gz` is a gzip-compressed tar archive of the tag `v1.4`, with every path under the prefix `docsite-1.4/`. Files marked `export-ignore` must not be in it.
+  2. `dist/api-docs.zip` is a zip of the directory `docs/api` taken from `main`, with the paths inside the zip starting with `docs/api/`.
 
-  `done=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  Do not commit anything.
 hints:
-- "Start with the Git command related to ``git archive` \u2014 export without `.git/``."
-- Write the exact expected answer into `advanced-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > advanced-report.txt <<'EOF'\n\
-  done=1\nEOF\n   ```\n\n2.\n   ```bash\n   git add advanced-report.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git archive` writes any tree-ish as tar or zip. The output format can come from `-o` extension or
+  `--format`.'
+- 'The prefix option takes a trailing slash: `--prefix=docsite-1.4/`. A path argument after the tree-ish
+  limits what is exported.'
+- '`git archive --format=tar.gz --prefix=docsite-1.4/ -o dist/docsite-1.4.tar.gz v1.4` and `git archive
+  -o dist/api-docs.zip main docs/api`. Create `dist/` first.'
+guide: |
+  ## Tarball of a tag
 
+  ```bash
+  mkdir -p dist
+  git archive --format=tar.gz --prefix=docsite-1.4/ -o dist/docsite-1.4.tar.gz v1.4
+  tar -tzf dist/docsite-1.4.tar.gz | head
+  ```
 
-  **Archive a Snapshot**
+  `export-ignore` in `.gitattributes` is honoured automatically, so `tests/`, `.github/` and `design/` are missing from the listing.
 
+  ## Zip of a subtree
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git archive -o dist/api-docs.zip main docs/api
+  unzip -l dist/api-docs.zip
+  ```
 
-  '
+  ## Prove which commit it came from
+
+  A tar produced from a commit stores that commit id in the archive header:
+
+  ```bash
+  gunzip -c dist/docsite-1.4.tar.gz | git get-tar-commit-id
+  git rev-parse v1.4^{commit}     # same SHA
+  ```
+
+  That is how a package can be traced back to the exact source commit.
+debrief: |
+  ## Export versus copy
+
+  `git archive` reads from the object database, not the working tree. Uncommitted files and ignored files never leak into a release, and it works from a bare repository.
+
+  ## Attributes
+
+  `export-ignore` removes paths from archives; `export-subst` expands placeholders such as `$Format:%H$` inside files. Because the attribute file is read from the tree being exported, an old tag keeps the rules it had when it was tagged.
+
+  ## Tags versus branches
+
+  Archiving `main` would have shipped 1.5 content in a "1.4" tarball. Archiving a tag is reproducible: you get the same bytes every time (Git even normalises timestamps to the commit time).
+
+  ## Related
+
+  - `git archive --remote=<url>` fetches an archive from a server that allows it.
+  - `git archive --worktree-attributes` uses attributes from the working tree.
+  - `-9` and `--format=zip -0` control compression.
+common_mistakes:
+- Archiving `HEAD` instead of the tag, so 1.5 content leaks into the 1.4 tarball.
+- Forgetting the trailing slash in `--prefix`, producing files named `docsite-1.4README.md`.
+- Making a zip of the whole repository and filtering by hand instead of passing the path to `git archive`.
 validators:
-- type: file_content_equals
-  path: advanced-report.txt
-  text: done=1
-  description: advanced-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: docsite-1.4.tar.gz holds exactly the v1.4 tree under docsite-1.4/ (export-ignore respected)
+  script: 't=$(mktemp -d); mkdir "$t/got" "$t/want"
+
+    tar -xzf dist/docsite-1.4.tar.gz -C "$t/got"
+
+    git archive --prefix=docsite-1.4/ v1.4 | tar -x -C "$t/want"
+
+    diff -r "$t/got" "$t/want"
+
+    test ! -e "$t/got/docsite-1.4/tests"
+
+    rm -rf "$t"
+
+    '
+- type: script_passes
+  description: The tarball was made from the commit of tag v1.4
+  script: 'test "$(gzip -dc dist/docsite-1.4.tar.gz | git get-tar-commit-id)" = "$(git rev-parse ''v1.4^{commit}'')"
+
+    '
+- type: script_passes
+  description: api-docs.zip contains exactly the docs/api files of main
+  script: "test \"$(unzip -Z1 dist/api-docs.zip | grep -v '/$' | sort)\" = \"$(git ls-tree -r --name-only\
+    \ main docs/api | sort)\"\nfor f in $(git ls-tree -r --name-only main docs/api); do\n  unzip -p dist/api-docs.zip\
+    \ \"$f\" | cmp -s - <(git show \"main:$f\")\ndone\n"
+- type: file_ignored
+  path: dist/docsite-1.4.tar.gz
+  description: dist/ is ignored and nothing was committed
+- type: commit_count_eq
+  count: 4
+  branch: main
+  description: No new commits were made

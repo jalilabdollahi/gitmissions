@@ -6,34 +6,74 @@ difficulty: beginner
 xp: 120
 expected_time: 5m
 concepts:
-- '`git restore <file>`'
-common_mistakes:
-- Running commands related to `git restore <file>` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: '`config.ini` was edited locally, but the change should be discarded.'
-objective: Throw away the unstaged change in `config.ini` and leave the repo clean.
+  - git restore <file>
+  - discarding working-tree changes
+description: |
+  Giulia runs the website of the Sweet Crumb bakery. A search-and-replace meant to fix one price went wrong and
+  set every price in `menu.html` to 0.00. She has not committed or staged it. In the same session she also added
+  a hover effect to `style.css`, which is good work she wants to keep for later.
+objective: |
+  Throw away the damaged edits in `menu.html` so it matches the last commit again, without touching
+  `style.css`. The hover rule in `style.css` must still be there as an uncommitted change, and no new commit
+  may be created.
 hints:
-- Start with the Git command related to ``git restore <file>``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git restore config.ini\n   ```"
-debrief: '## What Just Happened
+  - "`git status` and `git diff` show which file is damaged and which one holds the change you want."
+  - Discarding working-tree changes of one path is done with `git restore <path>`. Be careful, it cannot be undone.
+  - "`git restore menu.html`. Do not run `git restore .` or `git checkout .`, those would erase the hover rule too."
+guide: |
+  ## 1. Inspect
+  ```bash
+  git diff
+  ```
+  `menu.html` has four lines changed to `0.00`, `style.css` has one new rule.
 
+  ## 2. Restore only the bad file
+  ```bash
+  git restore menu.html
+  ```
+  Git overwrites the file on disk with the version from the index (here identical to `HEAD`).
 
-  **Discard Unstaged Changes**
+  ## 3. Confirm
+  ```bash
+  git status --short
+  ```
+  Only ` M style.css` remains.
+debrief: |
+  ## What happened
+  Unstaged edits exist only in your working directory. `git restore <file>` replaces the file with the
+  staged version (or `HEAD`'s version if nothing is staged), erasing the edit.
 
+  ## Why it matters
+  It is the quickest way back to a known-good file. But it is one of the few Git commands that
+  permanently destroys work, because uncommitted changes are not stored anywhere else.
 
-  This level focused on `git restore <file>`.
+  ## Related
+  - `git restore --staged <file>` only unstages, it does not discard.
+  - `git restore --source=HEAD~2 <file>` brings back an older version.
+  - `git stash` keeps uncommitted work safely instead of destroying it.
+  - Older equivalent: `git checkout -- <file>`.
 
-  '
+  ## Pitfalls
+  - Run `git diff <file>` first so you know exactly what you are about to lose.
+  - `git restore .` affects every file below the current directory.
+common_mistakes:
+  - Running `git restore .`, which also deletes the valuable `style.css` change.
+  - Committing the damaged `menu.html` and trying to repair it later.
+  - Confusing `restore --staged` (keeps the damage in the file) with plain `restore`.
 validators:
-- type: file_content_equals
-  path: config.ini
-  text: mode=stable
-  description: config.ini matches the committed version
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: git diff --quiet HEAD -- menu.html
+    description: menu.html matches the last commit
+  - type: script_passes
+    script: grep -q 'Sourdough loaf - 6.50' menu.html && grep -q 'Rye baguette - 4.10' menu.html
+    description: The original prices are back
+  - type: file_content_contains
+    path: style.css
+    text: ".menu li:hover { background: #ffe9c7; }"
+    description: The hover rule in style.css is still there
+  - type: commit_count_eq
+    count: 1
+    description: No new commit was created
+  - type: script_passes
+    script: test -z "$(git diff --cached --name-only)"
+    description: Nothing is staged

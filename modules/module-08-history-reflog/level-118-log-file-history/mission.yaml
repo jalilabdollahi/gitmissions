@@ -4,51 +4,83 @@ level: level-118-log-file-history
 order: 118
 difficulty: advanced
 xp: 290
-expected_time: 10m
+expected_time: 9m
 concepts:
-- '`git log -- <file>`'
-- '`git log -p <file>`'
-common_mistakes:
-- Running commands related to `git log -- <file>`, `git log -p <file>` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log
-  -- <file>`, `git log -p <file>``.
-objective: 'Inspect the repository history and create `file-history.txt` containing
-  exactly:
-
-
-  `app_changes=2`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --follow
+  - history across renames
+description: |
+  An auditor wants every change ever made to Germany's VAT rule in the tax-rule library, because last year's
+  reduced rate for books was applied wrongly. The file is now `rules/de/vat.yaml`, but it has been renamed twice,
+  and a normal `git log -- rules/de/vat.yaml` seems to start in March, as if the rule did not exist before.
+objective: |
+  Using the history of the *current* file `rules/de/vat.yaml`, follow it through its renames and:
+  1. write the number of commits that ever touched it (including the renames) into `history-count.txt`;
+  2. write the full hash of the commit that first created the file under its original name into `first-commit.txt`.
 hints:
-- Start with the Git command related to ``git log -- <file>`, `git log -p <file>``.
-- Write the exact expected answer into `file-history.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > file-history.txt <<'EOF'\n\
-  app_changes=2\nEOF\n   ```\n\n2.\n   ```bash\n   git add file-history.txt\n   ```\n\
-  \n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Compare `git log --oneline -- rules/de/vat.yaml` with the same command plus an option that follows renames."
+  - "`git log --follow -- <path>` keeps tracking the file contents back across renames. Use `--format=%H` to get plain hashes."
+  - "`git log --follow --format=%H -- rules/de/vat.yaml` lists newest first, so the last line is the first commit. Count lines with `wc -l`."
+guide: |
+  ## A path is not a file
 
+  `git log -- <path>` only shows commits where that exact path existed. After a rename git treats history
+  before the rename as belonging to another path:
 
-  **File Change History**
+  ```bash
+  git log --oneline -- rules/de/vat.yaml
+  ```
 
+  Two commits. Now ask git to follow the content instead:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git log --oneline --follow -- rules/de/vat.yaml
+  ```
 
-  '
+  Rename commits appear and the older commits (with the old name) come back. For scripts, print only hashes:
+
+  ```bash
+  git log --follow --format=%H -- rules/de/vat.yaml
+  ```
+
+  The number of lines is the commit count, and the last line is the oldest commit:
+
+  ```bash
+  git log --follow --format=%H -- rules/de/vat.yaml | wc -l > history-count.txt
+  git log --follow --format=%H -- rules/de/vat.yaml | tail -1 > first-commit.txt
+  ```
+debrief: |
+  ## What you learned
+
+  git does not store renames. It stores snapshots, and detects a rename afterwards by comparing content
+  similarity. `--follow` turns that detection on for a log of a single file, so you get one continuous story
+  even through `git mv` or folder reorganisations.
+
+  ## Real-world use
+
+  Audits, compliance questions and "why does this rule look like this?" investigations all need the full life
+  of a file. The same idea powers the history view on hosting sites.
+
+  ## Pitfalls
+
+  - `--follow` works on **one** path only; you cannot follow a whole directory.
+  - A rename combined with a large edit in the same commit may fall below the similarity threshold, and the trail is lost.
+  - You must pass the path that exists in the commit range you start from (here: the new name).
+  - For blame across renames use `git blame -C` or `-M`, a different but related flag.
+common_mistakes:
+  - "Counting the commits of `git log -- rules/de/vat.yaml` without `--follow`, which gives only 2."
+  - "Writing the newest commit hash instead of the oldest one into first-commit.txt."
+  - "Writing an abbreviated hash with a typo, or the commit that created `fr_tva.yaml` instead."
 validators:
-- type: file_content_equals
-  path: file-history.txt
-  text: app_changes=2
-  description: file-history.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: history-count.txt holds the number of commits that touched the file through its renames
+    script: |
+      want=$(git log --follow --format=%H -- rules/de/vat.yaml | wc -l | tr -d ' ')
+      test "$(tr -d ' \r\n' < history-count.txt)" = "$want"
+  - type: script_passes
+    description: first-commit.txt holds the hash of the commit that created the file under its original name
+    script: |
+      want=$(git log --follow --format=%H -- rules/de/vat.yaml | tail -1)
+      got=$(git rev-parse --verify "$(tr -d ' \r\n' < first-commit.txt)^{commit}")
+      test "$got" = "$want"
+      test "$(tr -d ' \r\n' < first-commit.txt | wc -c | tr -d ' ')" -ge 7
+

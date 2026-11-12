@@ -4,49 +4,80 @@ level: level-150-show-tag
 order: 150
 difficulty: intermediate
 xp: 210
-expected_time: 7m
+expected_time: 8m
 concepts:
-- '`git show v1.0`'
-common_mistakes:
-- Running commands related to `git show v1.0` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git show
-  v1.0``.
-objective: 'Inspect the repository history and create `show-tag.txt` containing exactly:
-
-
-  `tag=v1.0`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git show <tag>
+  - tag metadata
+  - git for-each-ref
+description: |
+  An auditor is reviewing the audit-log shipper and asks about release `v3.2.0`: who published it, what the release
+  note said, and which exact commit the tag points to. The commit that the tag points to is **not**
+  the branch tip, and the person who made the tag is not necessarily the author of the commits. Everything
+  is stored in the tag object, so you do not need to ask anyone.
+objective: |
+  Inspect the annotated tag `v3.2.0` and record:
+  1. `tagger.txt`: the name of the person who created the tag;
+  2. `target.txt`: the full hash of the commit that the tag points to;
+  3. `note.txt`: the first line of the tag's message.
 hints:
-- Start with the Git command related to ``git show v1.0``.
-- Write the exact expected answer into `show-tag.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > show-tag.txt <<'EOF'\ntag=v1.0\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add show-tag.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git show` on a tag prints the tag object first (who, when, message) and then the commit it points to."
+  - "To get just one field, `git for-each-ref` and `git tag --format` can print `%(taggername)`, `%(contents:subject)` and similar fields."
+  - "`git rev-list -n 1 v3.2.0` resolves a tag to the commit hash. For the tagger: `git for-each-ref --format='%(taggername)' refs/tags/v3.2.0`."
+guide: |
+  ## Reading a tag
 
+  Start with the human-readable view:
 
-  **Show Tag Details**
+  ```bash
+  git show v3.2.0
+  ```
 
+  The top block is the tag object: `Tagger: ...`, the date and a message. Below it comes the tagged commit. For scripting use
+  the formatted outputs:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git for-each-ref --format='%(taggername)' refs/tags/v3.2.0 > tagger.txt
+  git tag -l v3.2.0 --format='%(contents:subject)' > note.txt
+  git rev-list -n 1 v3.2.0 > target.txt
+  ```
 
-  '
+  `git rev-list -n 1 <tag>` follows the tag to its commit. `git rev-parse v3.2.0` would give the hash of the *tag object*
+  instead, which is not what the auditor wants. (`git rev-parse v3.2.0^{commit}` also works.)
+debrief: |
+  ## What you learned
+
+  An annotated tag is a separate object: `object <commit>`, `type commit`, `tag <name>`, `tagger <ident>` and
+  a message. `git cat-file -p v3.2.0` shows the raw form. The peeled commit (`v3.2.0^{commit}`) and the tag
+  object (`git rev-parse v3.2.0`) have **different hashes**, a common source of confusion in scripts.
+
+  ## Real-world use
+
+  Audit trails for who released what and when. For signed tags, `git tag -v <tag>` additionally verifies the signature.
+
+  ## Pitfalls
+
+  - `git log -1 v3.2.0` shows the commit's author, not the tagger.
+  - Lightweight tags have no tagger fields, so the format placeholders come back empty.
+  - The tag may point to an older commit than the one you expect (here: not `HEAD`).
+common_mistakes:
+  - "Writing the author of the tagged commit instead of the tagger."
+  - "Using `git rev-parse v3.2.0`, which gives the hash of the tag object, not of the commit."
+  - "Reading `v3.2.1` or `v3.3.0`, whose taggers and messages are different."
 validators:
-- type: file_content_equals
-  path: show-tag.txt
-  text: tag=v1.0
-  description: show-tag.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: tagger.txt names who created v3.2.0
+    script: |
+      want=$(git for-each-ref --format='%(taggername)' refs/tags/v3.2.0)
+      test "$want" = "Priya Nair"
+      test "$(sed 's/[[:space:]]*$//' tagger.txt | sed '/^$/d')" = "$want"
+  - type: script_passes
+    description: target.txt is the commit hash the tag points to
+    script: |
+      want=$(git rev-list -n 1 v3.2.0)
+      test "$(tr -d ' \r\n' < target.txt)" = "$want"
+  - type: script_passes
+    description: note.txt is the first line of the tag message
+    script: |
+      want=$(git tag -l v3.2.0 --format='%(contents:subject)')
+      test "$(sed 's/[[:space:]]*$//' note.txt | sed '/^$/d')" = "$want"
+

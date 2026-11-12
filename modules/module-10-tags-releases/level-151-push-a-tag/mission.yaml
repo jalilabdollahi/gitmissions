@@ -4,35 +4,82 @@ level: level-151-push-a-tag
 order: 151
 difficulty: intermediate
 xp: 220
-expected_time: 7m
+expected_time: 6m
 concepts:
-- '`git push origin v1.0`'
-common_mistakes:
-- Running commands related to `git push origin v1.0` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
+  - git push <remote> <tag>
+  - tags are not pushed automatically
 repo_path: local
-objective: Push tag `v1.0` to `origin`.
+description: |
+  The ledger sync agent's release 1.4.0 is tagged locally (`v1.4.0`), but the packaging server only builds from
+  tags it finds on `origin`. You also have a private tag `v1.5.0-beta` that marks an experiment on your
+  machine; it must **not** be published yet. `git push` on its own did nothing for tags, and you have not pushed
+  `main` either, so the branch on the server is still two commits behind.
+objective: |
+  Publish only the tag `v1.4.0` to `origin`. After that, `origin` must have `v1.4.0` but not `v1.5.0-beta`, and the remote
+  `main` branch must remain where it is (do not push it). Your local tags stay as they are.
 hints:
-- Start with the Git command related to ``git push origin v1.0``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag v1.0\n   ```\n\n2.\n \
-  \  ```bash\n   git push origin v1.0\n   ```"
-debrief: '## What Just Happened
+  - "Remember that tags are separate refs. See what the remote has: `git ls-remote --tags origin`."
+  - "`git push origin <ref>` pushes one ref. A tag name works as a ref."
+  - "`git push origin v1.4.0`, then verify with `git ls-remote --tags origin`."
+guide: |
+  ## Publishing a single tag
 
+  Check what each side has:
 
-  **Push a Tag**
+  ```bash
+  git tag
+  git ls-remote --tags origin
+  ```
 
+  The remote has no tags at all. Push just the release tag:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git push origin v1.4.0
+  ```
 
-  '
+  Git sends the tag object and the commits it needs (the "Raise batch size for 1.4" commit), but does **not** move the remote branch.
+  Verify:
+
+  ```bash
+  git ls-remote --tags origin
+  git ls-remote origin refs/heads/main
+  ```
+
+  Only `v1.4.0` is listed, and `main` on the remote still points to the old commit.
+debrief: |
+  ## What you learned
+
+  Tags live in their own namespace, `refs/tags/*`, and a normal `git push` sends branches only. You choose which
+  tags to publish. Pushing a tag uploads the objects it needs, but a remote branch moves only when you push that
+  branch. So a tag can exist on the server on a commit that is not (yet) on any remote branch, which is valid but unusual.
+
+  ## Real-world use
+
+  Release tags are pushed at release time; private bookmarks stay local. CI pipelines often trigger on
+  `refs/tags/v*`, so pushing a tag is *the* act of releasing.
+
+  ## Pitfalls
+
+  - `git push --tags` would also publish the private `v1.5.0-beta`.
+  - Pushing a tag that already exists on the remote with a different target is rejected unless forced; never force a published release tag.
+  - Remember to push the branch too, so that teammates can see the tagged code in the branch history.
+common_mistakes:
+  - "Using `git push --tags` or `git push --follow-tags`, which would publish the beta tag as well (or, in the follow-tags case, nothing since lightweight tags are skipped)."
+  - "Running `git push` and assuming that tags went along with it."
+  - "Pushing `main` as well, which was not part of the request."
 validators:
-- type: script_passes
-  description: Remote tag exists
-  script: git -C ../remote.git rev-parse --verify refs/tags/v1.0 >/dev/null
+  - type: script_passes
+    description: origin has the tag v1.4.0 pointing at the tagged release commit
+    script: |
+      r=$(git ls-remote --tags origin 'refs/tags/v1.4.0^{}' | cut -f1)
+      test "$r" = "$(git rev-parse 'v1.4.0^{commit}')"
+  - type: script_passes
+    description: the private beta tag was not published
+    script: |
+      test -z "$(git ls-remote --tags origin 'refs/tags/v1.5.0-beta')"
+      git rev-parse -q --verify refs/tags/v1.5.0-beta >/dev/null
+  - type: script_passes
+    description: the remote main branch has not moved
+    script: |
+      test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(cat .git/gm-remote-main)"
+

@@ -6,38 +6,83 @@ difficulty: intermediate
 xp: 260
 expected_time: 12m
 concepts:
-- when to use which
-common_mistakes:
-- Running commands related to when to use which without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is behind `main` and should be replayed on top of the
-  latest main history.
-objective: Rebase `feature/rebase` onto `main` and keep history linear.
+  - rebase vs merge
+  - private vs shared branches
+  - never rewrite pushed history
+repo_path: tiergate
+description: |
+  The Tiergate pricing-page repository has two branches waiting to land in `main`. `feature/pricing-toggle` is
+  your private work, only on your laptop, with two commits. `release/pricing-v2` was already pushed to `origin` and
+  two other developers have pulled it. `main` moved on in the meantime, so neither branch is a fast-forward.
+  Your lead's rule: private work is rebased for a clean line, shared branches are merged so their commits
+  keep their identity.
+objective: |
+  Integrate both branches into `main` following the rule:
+  - `release/pricing-v2` must be merged with a merge commit and its pushed tip (`origin/release/pricing-v2`) must be an ancestor of `main`
+  - `feature/pricing-toggle` must be rebased so its two commits (`Add billing toggle`, `Persist toggle choice`) land on `main` without a merge commit of their own
+  - `main` therefore has exactly one merge commit, and `main` is checked out
 hints:
-- Switch to the feature branch first.
-- Use `git rebase main`.
-- A successful result has no merge commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git rebase main\n   ```"
-debrief: '## What Just Happened
+  - "`git branch -vv` and `git branch -r` show which branch exists on origin. Pushed branch means merge; local-only branch means rebase."
+  - "Merge the release branch first. Then rebase the private feature onto the new main, and fast-forward main to it."
+  - "`git merge --no-edit origin/release/pricing-v2`, then `git rebase main feature/pricing-toggle`, then `git switch main && git merge --ff-only feature/pricing-toggle`."
+guide: |
+  ## 1. Classify the branches
+  ```bash
+  git branch -vv
+  git log --oneline --graph --all
+  ```
+  `release/pricing-v2` has a counterpart on origin: others depend on its commit ids. The toggle is yours alone.
 
+  ## 2. Merge the shared branch
+  ```bash
+  git switch main
+  git merge --no-edit release/pricing-v2
+  ```
+  Existing hashes stay untouched. A merge commit records the join.
 
-  **Rebase vs Merge Decision**
+  ## 3. Rebase the private branch
+  ```bash
+  git rebase main feature/pricing-toggle
+  ```
+  This checks out the feature branch and replays its commits on top of main, which now includes the release.
 
+  ## 4. Fast-forward main
+  ```bash
+  git switch main
+  git merge --ff-only feature/pricing-toggle
+  git log --oneline --graph
+  ```
+debrief: |
+  ## What happened
+  You applied each strategy where it belongs. Merging is non-destructive and safe for commits other
+  people hold. Rebasing creates new commits, which is harmless only while nobody else has the old ones.
 
-  Rebase rewrites commits so they appear as if they were created on top of a new base.
+  ## Why this matters
+  If you rebased `release/pricing-v2`, your branch would contain different hashes than the ones colleagues
+  have. Their next pull would show duplicated commits and conflicts, and you would need a force push.
 
-  '
+  ## The decision checklist
+  1. Is the branch on a remote that others use? Merge.
+  2. Is it only local (or only yours)? Rebase is fine and gives linear history.
+  3. Do you need to mark that a feature landed? Use `--no-ff` merges.
+
+  ## Related
+  - `git branch -r --contains <commit>` tells whether a commit is already published.
+  - `git merge --no-ff` and `git rebase --rebase-merges` handle shapes that need merge bubbles.
+common_mistakes:
+  - "Rebasing `release/pricing-v2`, which rewrites commits that colleagues already have."
+  - "Merging the private feature as well, which yields two merge commits instead of one."
+  - "Rebasing the toggle onto main before the release was merged, so it must be rebased again."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is on feature/rebase
-- type: no_merge_commit
-  branch: HEAD
-  description: History is linear
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --merges --count main)" = 1
+    description: main has exactly one merge commit
+  - type: script_passes
+    script: git merge-base --is-ancestor origin/release/pricing-v2 main
+    description: The pushed release tip is part of main unchanged
+  - type: script_passes
+    script: test "$(git log --first-parent --format=%s main | grep -c -e 'Add billing toggle' -e 'Persist toggle choice')" = 2
+    description: Both toggle commits sit on main's first-parent line (rebased, not merged)

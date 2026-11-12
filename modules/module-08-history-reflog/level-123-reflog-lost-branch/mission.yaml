@@ -4,40 +4,86 @@ level: level-123-reflog-lost-branch
 order: 123
 difficulty: advanced
 xp: 360
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git reflog` + `git checkout -b`'
-common_mistakes:
-- Running commands related to `git reflog` + `git checkout -b` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Useful history was made unreachable, and your job is to recover it.
-objective: 'Recover the lost work so `recovered.txt` exists in the current branch,
-  then commit it with `chore: recover history`.'
+  - git branch <name> <commit>
+  - finding a deleted branch in the reflog
+description: |
+  You maintain the versioned documentation site. A teammate cleaned up local branches with `git branch -D` and
+  deleted `docs/v2-migration`, which had three commits of unpublished migration work and was never merged or pushed.
+  Git refused to warn about it because they used the capital `-D`. The work is still wanted by tomorrow's docs sprint.
+objective: |
+  Recreate the branch `docs/v2-migration` so that it points to the **same tip commit** it had before it was deleted
+  (with all three migration commits). `main` must remain untouched and you must end up on `main`.
 hints:
-- Use `git reflog` or `git fsck --lost-found` to find the lost commit.
-- Restore the file or reset to the right commit.
-- Commit the recovered file when needed.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reflog\n   ```\n\n2.\n   ```bash\n\
-  \   git checkout <lost-commit> -- recovered.txt\n   ```\n\n3.\n   ```bash\n   git\
-  \ add recovered.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: recover\
-  \ history\"\n   ```"
-debrief: '## What Just Happened
+  - "A branch is only a name for a commit. Deleting the name does not delete the commits yet."
+  - "The reflog remembers the last commit of that branch because you committed on it and switched away from it."
+  - "Find the hash of the commit 'Rewrite API reference headings' with `git reflog`, then `git branch docs/v2-migration <hash>`."
+guide: |
+  ## A branch is just a pointer
 
+  Confirm it is gone:
 
-  **Recover a Deleted Branch**
+  ```bash
+  git branch
+  git log --oneline --all
+  ```
 
+  Look for the last commit made on that branch in the reflog:
 
-  Reflog and object recovery tools are the difference between panic and a calm recovery.
+  ```bash
+  git reflog
+  ```
 
-  '
+  You should spot the three migration commits (`commit: Port install guide...`, `commit: Add redirects...`,
+  `commit: Rewrite API reference headings`). The newest of those three is the old tip. Note its hash and recreate the name:
+
+  ```bash
+  git branch docs/v2-migration <hash>
+  ```
+
+  Verify that all three commits are on the branch again:
+
+  ```bash
+  git log --oneline main..docs/v2-migration
+  ```
+debrief: |
+  ## What you learned
+
+  `git branch -D` removes only the ref. The commits stay in the object database, and the reflog lists
+  them, so you can point a new branch at the old tip. Git even prints the abbreviated hash when deleting
+  (`Deleted branch x (was abc1234)`), which is the easiest way to recover when you still see that output.
+
+  ## Real-world use
+
+  Cleaning up merged branches is healthy, but it is also how work gets lost. `git branch -d` (lowercase)
+  refuses to delete unmerged branches; the uppercase `-D` forces it. Use `-d` by default and treat
+  `-D` as a deliberate decision.
+
+  ## Pitfalls
+
+  - Do not try to `git checkout -b` a branch name from an abbreviation that has since become ambiguous; use the full hash if git complains.
+  - Branch-specific reflogs (`git reflog show <branch>`) are deleted with the branch, but the HEAD reflog still has the entries.
+  - If you waited more than 30 days and ran `git gc`, the commits may be gone for good.
+common_mistakes:
+  - "Recreating the branch from `main` (`git branch docs/v2-migration`) so it exists but has none of the migration commits."
+  - "Choosing the hash of the middle commit, so only two of the three commits come back."
+  - "Merging the recovered work into `main` instead of restoring it as its own branch."
 validators:
-- type: file_content_equals
-  path: recovered.txt
-  text: rescued
-  description: Recovered file is present
-- type: is_clean
-  description: Working tree is clean
+  - type: branch_exists
+    branch: docs/v2-migration
+    description: the branch docs/v2-migration exists again
+  - type: script_passes
+    description: the branch points to the original tip with all three commits
+    script: |
+      test "$(git rev-parse docs/v2-migration)" = "$(cat .git/gm-orig-tip)"
+      test "$(git rev-list --count main..docs/v2-migration)" = 3
+  - type: script_passes
+    description: main is untouched and the work was not merged into it
+    script: |
+      test "$(git rev-list --count main)" = 3
+      ! git merge-base --is-ancestor docs/v2-migration main
+  - type: is_on_branch
+    branch: main
+    description: you are on main
+

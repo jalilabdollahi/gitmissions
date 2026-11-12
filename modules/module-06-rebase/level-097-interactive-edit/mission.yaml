@@ -6,33 +6,85 @@ difficulty: intermediate
 xp: 320
 expected_time: 12m
 concepts:
-- "`edit` / `e` \u2014 amend a commit in history"
-common_mistakes:
-- "Running commands related to `edit` / `e` \u2014 amend a commit in history without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest feature commit message should be rewritten to something cleaner.
-objective: 'Change the latest commit message to `feat: polished commit`.'
+  - edit
+  - amending a commit in the middle
+  - git rebase --continue
+repo_path: hookpay
+description: |
+  Hookpay processes payment webhooks. On `feature/webhooks` the first commit, `Add webhook receiver`, hard-coded the
+  staging URL (`https://staging.hookpay.dev`) in `config.py` and the two following commits (`Add signature check`,
+  `Add retry queue`) never touched that file. The CI bisect job checks out every commit separately, so the staging URL
+  breaks it for each of them. Fix the URL inside the first commit itself, not in a new commit on top.
+objective: |
+  - change `API_URL` to `https://api.hookpay.dev` in the commit `Add webhook receiver`, so that every one of the three
+    commits has the production URL in `config.py`, and none has the staging URL
+  - keep all three commit messages and their order; exactly 3 commits on top of main; stay on `feature/webhooks`
 hints:
-- '`git commit --amend -m ...` works for the latest commit.'
-- Interactive rebase is another valid option.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git commit --amend -m \"feat:\
-  \ polished commit\"\n   ```"
-debrief: '## What Just Happened
+  - "A new fixup commit on the tip would only fix the last commit. You need to stop at the first commit and change it."
+  - "In `git rebase -i main`, mark the first commit with `edit`. Git stops right after applying it, and you can change files and amend."
+  - "Edit `config.py`, `git add config.py`, `git commit --amend --no-edit`, then `git rebase --continue`."
+guide: |
+  ## 1. Start and mark the commit
+  ```bash
+  git rebase -i main
+  ```
+  Change the first line from `pick` to `edit`, save and close. Git replays the commit and stops.
 
+  ## 2. Change it
+  ```bash
+  git status
+  # edit config.py: API_URL = "https://api.hookpay.dev"
+  git add config.py
+  git commit --amend --no-edit
+  ```
+  `--no-edit` keeps the message untouched.
 
-  **Edit a Commit Mid-Rebase**
+  ## 3. Carry on
+  ```bash
+  git rebase --continue
+  ```
+  The two later commits are replayed on top of the amended one. They do not touch `config.py`, so there is no conflict.
 
+  ## 4. Verify all commits
+  ```bash
+  for c in $(git rev-list main..HEAD); do git show $c:config.py | grep API_URL; done
+  ```
+debrief: |
+  ## What happened
+  `edit` pauses the rebase after a commit is applied. At that moment HEAD is that commit, and anything you
+  amend becomes part of it. When you continue, later commits are replayed on top of the changed one.
 
-  Rewording improves commit history without changing the snapshot itself.
+  ## Edit vs fixup
+  - `fixup` squashes a separate "fix" commit you already made into its target.
+  - `edit` stops so that you can change the target directly, or even split it into several commits.
 
-  '
+  ## Why per-commit correctness
+  Bisect, cherry-pick and revert all treat commits as independent units. A commit with a broken
+  configuration makes `git bisect` land on false positives.
+
+  ## Related
+  - `git commit --amend` changes the commit at HEAD.
+  - `git reset HEAD^` at an `edit` stop splits a commit into smaller ones.
+  - `git rebase --abort` restores the original history.
+common_mistakes:
+  - "Adding a new commit on top, which leaves the first two commits with the staging URL."
+  - "Running `git commit -m ...` instead of `--amend`, which adds an extra commit mid-rebase."
+  - "Forgetting `git rebase --continue`, leaving the rebase paused."
 validators:
-- type: commit_message_contains
-  text: 'feat: polished commit'
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/webhooks
+    description: HEAD is on feature/webhooks
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && test \"$(git rev-list --count main..feature/webhooks)\" = 3"
+    description: The rebase is finished and 3 commits are on top of main
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/webhooks | tr '\n' '|')" = "Add webhook receiver|Add signature check|Add retry queue|"
+    description: The three commits keep their messages and order
+  - type: script_passes
+    script: |
+      for c in $(git rev-list main..feature/webhooks); do
+        git show "$c:config.py" | grep -qF 'https://api.hookpay.dev'
+        ! git show "$c:config.py" | grep -q staging
+      done
+    description: Every commit has the production URL and no commit mentions staging

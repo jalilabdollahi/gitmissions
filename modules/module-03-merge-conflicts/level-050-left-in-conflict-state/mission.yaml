@@ -4,45 +4,94 @@ level: level-050-left-in-conflict-state
 order: 50
 difficulty: intermediate
 xp: 270
-expected_time: 10m
+expected_time: 12m
 concepts:
-- "someone else left conflicts \u2014 clean it up"
-common_mistakes:
-- "Running commands related to someone else left conflicts \u2014 clean it up without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - recognising a half-finished merge
+  - git status in a merge
+  - stray .orig files
+description: |
+  You open a shared lab-notebook repository that Ben left in a mess before going on holiday. `git status` says
+  "All conflicts fixed but you are still merging" for one file and "Unmerged paths" for another. Ben had started to merge
+  Mei's `recheck` branch into `main`, fixed `notebook/week3.md` by hand but never staged it, left `notebook/results.csv`
+  with conflict markers, and dropped a `week3.md.orig` backup file in the folder. The lab wants the merge finished properly:
+  Mei's re-measured pH for sample B (6.8) is the correct value, and the new samples D (from Mei) and E (from Ben)
+  must both be in the results.
+objective: |
+  Finish the merge of `recheck` into `main`: `notebook/results.csv` must contain the header and rows for samples A, B, C,
+  D and E exactly once each, with B equal to 6.8, and no markers. `notebook/week3.md` keeps Ben's resolved text. The
+  stray `week3.md.orig` must not be committed. Create the merge commit (a message is yours to choose).
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` and `git diff --name-only --diff-filter=U` show what is still unresolved. Files you have already fixed on disk still need `git add`."
+  - "Look at `notebook/results.csv` for markers: keep both new rows and use Mei's B value. Then `git add` it."
+  - "Remove or ignore the `.orig` file (do not `git add` it), then `git commit` to complete the merge."
+guide: |
+  ## 1. Understand the state
+  ```bash
+  git status
+  ```
+  You are in the middle of a merge (`MERGE_HEAD` exists). `notebook/week3.md` is "both modified" and `results.csv` too;
+  `week3.md.orig` is untracked.
 
+  ## 2. Check each file
+  ```bash
+  grep -n '^<<<<<<<\|^=======\|^>>>>>>>' notebook/*
+  ```
+  `week3.md` is clean (Ben fixed it), `results.csv` still has markers.
 
-  **Repo Left in Conflict State**
+  ## 3. Resolve the CSV
+  Final file:
+  ```
+  sample,ph
+  A,6.1
+  B,6.8
+  C,7.0
+  D,5.9
+  E,6.6
+  ```
 
+  ## 4. Stage, clean up, commit
+  ```bash
+  git add notebook/week3.md notebook/results.csv
+  rm notebook/week3.md.orig
+  git commit -m "Complete merge of recheck"
+  ```
+debrief: |
+  ## What happened
+  A merge is a multi-step operation: Git writes the conflicted state, you edit, `git add` each file, and `git commit`
+  records the result. Ben stopped after editing one file; editing is not the same as resolving until the file is staged.
+  `git status` always tells you which step you are in.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Why it matters
+  Inheriting a half-finished merge is common. Read `git status` first, never `git commit -a` blindly, and check
+  every file for markers (`git diff --check` also finds them). Stray backup files made by merge tools (`*.orig`) must not be committed.
 
-  '
+  ## Related
+  - `git merge --abort` is the alternative if the merge should be redone from scratch.
+  - `git config mergetool.keepBackup false` stops `.orig` files from being created.
+  - Add `*.orig` to `.gitignore` for the whole project.
+
+  ## Pitfalls
+  - `git commit -am` would stage the file with markers and complete the merge incorrectly.
+  - `git add .` would also add the `.orig` file.
+common_mistakes:
+  - Running `git add .` and committing the `week3.md.orig` backup.
+  - Staging `results.csv` without removing the markers.
+  - Taking `git checkout --theirs notebook/results.csv`, which loses Ben's sample E.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor recheck HEAD
+    description: The merge of recheck is completed
+  - type: script_passes
+    script: test "$(sort notebook/results.csv | tr '\n' ' ')" = "A,6.1 B,6.8 C,7.0 D,5.9 E,6.6 sample,ph "
+    description: results.csv has the header and samples A to E once, with B = 6.8
+  - type: file_content_contains
+    path: notebook/week3.md
+    text: 'Sample B pH: 6.8 (rechecked with new probe)'
+    description: week3.md keeps Ben's resolved text
+  - type: script_passes
+    script: test -z "$(git ls-files | grep '\.orig$')"
+    description: No .orig backup file was committed
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain

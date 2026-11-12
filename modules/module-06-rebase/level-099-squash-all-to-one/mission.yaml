@@ -4,43 +4,83 @@ level: level-099-squash-all-to-one
 order: 99
 difficulty: intermediate
 xp: 320
-expected_time: 12m
+expected_time: 10m
 concepts:
-- clean up before merging
-common_mistakes:
-- Running commands related to clean up before merging without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The feature branch has several tiny commits that should become one clean
-  commit.
-objective: Squash the feature branch history so only one feature commit remains on
-  top of `main`.
+  - squashing a whole branch
+  - git reset --soft
+  - one commit per feature
+repo_path: giftlist
+description: |
+  The Giftlist wedding-registry app has a long feature branch `feature/registry-sharing` with seven small commits,
+  including "wip" ones and several edits of the same file. The maintainers merge features as one commit
+  titled with the pull-request number. Turn the whole branch into one commit on top of `main`, with the final
+  contents exactly as they are now, titled `Add registry sharing (#412)`.
+objective: |
+  - `feature/registry-sharing` must have exactly one commit on top of `main`, with the message `Add registry sharing (#412)`
+  - the file contents must stay as they are now: `registry.py` (final `STEP = 7`), `share.py`, `notify.py` and `test_registry.py`
+  - stay on `feature/registry-sharing`; `main` must not change
 hints:
-- An interactive rebase is the usual approach.
-- Any valid Git method is okay if the final history has one feature commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git reset --soft main\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Squashed feature work\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline main..feature/registry-sharing` shows seven commits. Their combined result is the tip's file content."
+  - "You could mark six todo lines as squash/fixup in an interactive rebase. A shorter way is to move the branch pointer back to main while keeping all changes staged."
+  - "`git reset --soft main && git commit -m \"Add registry sharing (#412)\"`"
+guide: |
+  ## 1. Review
+  ```bash
+  git log --oneline main..feature/registry-sharing
+  git diff --stat main
+  ```
+  The second command is what the single commit must contain.
 
+  ## 2. Move the branch back, keep the work
+  ```bash
+  git reset --soft main
+  git status
+  ```
+  `--soft` moves the branch pointer only. The index still holds everything from the seven commits, ready to commit.
 
-  **Squash Feature to One Commit**
+  ## 3. Commit once
+  ```bash
+  git commit -m "Add registry sharing (#412)"
+  git log --oneline main..feature/registry-sharing
+  ```
+  An interactive rebase with `squash`/`fixup` gives the same result and lets you keep parts of the old messages.
+debrief: |
+  ## What happened
+  `git reset --soft main` repointed the branch at main without touching the index or working tree, so
+  the sum of all your changes shows up as "staged". One commit then captures it.
 
+  ## Reset or rebase?
+  Soft reset is quick when you want a brand-new message. Interactive rebase is better when some commits
+  should survive or the messages should be combined.
 
-  Squashing is a history-cleanup step that trades granular checkpoints for a simpler
-  review story.
+  ## Squash-merge
+  Many hosts offer "squash and merge" that does the equivalent when merging a pull request.
+  Locally, `git merge --squash feature` stages the combined change on the target branch.
 
-  '
+  ## Pitfalls
+  - `reset --soft` works from a base that is an ancestor. If main moved, rebase first.
+  - The old seven commits remain in the reflog if you want them back.
+
+  ## Related
+  - `git reset --mixed` (default) unstages, `--hard` also discards the working tree.
+common_mistakes:
+  - "Using `git reset --hard main`, which throws away all the work."
+  - "Squashing only part of the branch, leaving two or three commits."
+  - "Committing with the old message or without the `(#412)` suffix."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 3
-  description: Feature branch has one rebased feature commit plus main history
-- type: commit_message_contains
-  text: Squashed feature work
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/registry-sharing
+    description: HEAD is on feature/registry-sharing
+  - type: script_passes
+    script: |
+      test "$(git rev-list --count main..feature/registry-sharing)" = 1 && git merge-base --is-ancestor main HEAD
+    description: Exactly one commit sits on top of main
+  - type: commit_message_equals
+    text: "Add registry sharing (#412)"
+    description: The commit message matches
+  - type: script_passes
+    script: |
+      grep -qx 'STEP = 7' registry.py && test -f share.py && test -f notify.py && test -f test_registry.py
+    description: All files are present with their final contents
+  - type: is_clean
+    description: Working tree is clean

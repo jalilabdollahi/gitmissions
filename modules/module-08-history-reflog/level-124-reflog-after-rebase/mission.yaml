@@ -6,38 +6,87 @@ difficulty: advanced
 xp: 380
 expected_time: 10m
 concepts:
-- "rebase changed history \u2014 reflog to undo"
-common_mistakes:
-- "Running commands related to rebase changed history \u2014 reflog to undo without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Useful history was made unreachable, and your job is to recover it.
-objective: 'Recover the lost work so `recovered.txt` exists in the current branch,
-  then commit it with `chore: recover history`.'
+  - git reflog
+  - ORIG_HEAD
+  - undoing a rebase
+description: |
+  In the firmware release repo you rebased `feature/ota-update` onto the freshly bumped `main` with an interactive
+  rebase. While tidying the todo list you dropped one line too many: the commit that adds the rollback partition
+  table has vanished, and the bootloader team's flashing tool now crashes. You do not want to redo the rebase
+  by hand; you want the branch back exactly as it was before the rebase started.
+objective: |
+  Restore `feature/ota-update` to **precisely** the four commits it had before the rebase, including
+  "Add rollback partition table", on its original base (the commit before the version bump). You must end with
+  `feature/ota-update` checked out, a clean working tree, and `main` unchanged.
 hints:
-- Use `git reflog` or `git fsck --lost-found` to find the lost commit.
-- Restore the file or reset to the right commit.
-- Commit the recovered file when needed.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reflog\n   ```\n\n2.\n   ```bash\n\
-  \   git checkout <lost-commit> -- recovered.txt\n   ```\n\n3.\n   ```bash\n   git\
-  \ add recovered.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: recover\
-  \ history\"\n   ```"
-debrief: '## What Just Happened
+  - "A rebase builds new commits and then moves the branch. The old branch tip is remembered by the reflog and by a special ref."
+  - "Run `git reflog` and find the entry just before `rebase (start)`. Git also saved the previous tip as `ORIG_HEAD`."
+  - "`git reset --hard ORIG_HEAD`, or `git reset --hard feature/ota-update@{1}` after you have verified it with `git reflog`."
+guide: |
+  ## Reading the rebase in the reflog
 
+  Compare what you have with what you expect:
 
-  **Recover Before-Rebase State**
+  ```bash
+  git log --oneline main..feature/ota-update    # only 3 commits, rollback missing
+  git reflog -10
+  ```
 
+  The reflog shows `rebase (start)`, a few `rebase (pick)` lines, `rebase (finish)`. The entry **just below**
+  `rebase (start)` is where the branch was before. Git also keeps that tip as `ORIG_HEAD`:
 
-  Reflog and object recovery tools are the difference between panic and a calm recovery.
+  ```bash
+  git show --oneline -s ORIG_HEAD
+  ```
 
-  '
+  If it is the "Add OTA progress LED" commit, you are done searching. Reset the branch there:
+
+  ```bash
+  git reset --hard ORIG_HEAD
+  ```
+
+  Verify:
+
+  ```bash
+  git log --oneline main..feature/ota-update
+  git merge-base main feature/ota-update    # the commit before the version bump
+  ```
+debrief: |
+  ## What you learned
+
+  A rebase never edits commits: it copies them onto a new base and finally moves the branch label. The old
+  chain is untouched, only unreferenced. `ORIG_HEAD` is set by rebase, reset and merge to the previous HEAD, so
+  `git reset --hard ORIG_HEAD` is the quickest undo of "that operation I just did". The reflog entry
+  `<branch>@{n}` gives the same result and survives later operations.
+
+  ## Real-world use
+
+  Because a rebase is reversible, you can experiment fearlessly with `rebase -i` on local branches. Before
+  a complicated one, a throwaway branch (`git branch backup/ota`) makes it even clearer.
+
+  ## Pitfalls
+
+  - `ORIG_HEAD` is overwritten by the next merge, reset or rebase. If you did anything since, use `branch@{n}`.
+  - A rebase that already was **pushed** with `--force` is not undone for others by your local reset.
+  - Never `git rebase --abort` after a finished rebase: abort only works while one is in progress.
+common_mistakes:
+  - "Running `git rebase main` again or cherry-picking the missing commit, which creates a *new* commit instead of restoring the old state."
+  - "Resetting `main` instead of `feature/ota-update`, or resetting while on main."
+  - "Using `git reset --hard main@{1}` or an entry from another branch's reflog."
 validators:
-- type: file_content_equals
-  path: recovered.txt
-  text: rescued
-  description: Recovered file is present
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/ota-update
+    description: feature/ota-update is checked out
+  - type: script_passes
+    description: the branch tip is the original pre-rebase commit
+    script: |
+      test "$(git rev-parse feature/ota-update)" = "$(cat .git/gm-orig-tip)"
+  - type: script_passes
+    description: the dropped rollback commit is back and the branch is based before the version bump
+    script: |
+      git log --format=%s feature/ota-update | grep -qx 'Add rollback partition table'
+      test "$(git merge-base main feature/ota-update)" = "$(git rev-parse main~1)"
+      test "$(git rev-list --count main..feature/ota-update)" = 4
+  - type: is_clean
+    description: working tree is clean
+

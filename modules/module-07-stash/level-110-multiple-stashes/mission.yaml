@@ -4,37 +4,90 @@ level: level-110-multiple-stashes
 order: 110
 difficulty: intermediate
 xp: 230
-expected_time: 7m
+expected_time: 9m
 concepts:
-- '`git stash list`'
-- '`git stash apply stash@{2}`'
-common_mistakes:
-- Running commands related to `git stash list`, `git stash apply stash@{2}` without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Apply the older stash so `app.txt` ends with `first`.
+  - multiple stashes
+  - git stash list / show
+  - stash@{n}
+repo_path: pedalpoint
+description: |
+  Your Pedalpoint bike-share repo has accumulated four stashes over the week, all with the default message
+  ("WIP on main: ..."), so the list tells you nothing. You remember that one of them contains an experiment with
+  surge pricing in `pricing.py`. Find that stash among the four by looking at what each one changes, and bring only
+  its changes back into your working tree. The other three must stay in the stash list for now.
+objective: |
+  - restore the stash that changes `pricing.py` with `git stash pop stash@{n}` (the right index n is for you to find)
+  - `pricing.py` must contain the experiment's surge multiplier in the working tree
+  - exactly three stashes must remain and none of them may touch `pricing.py`
 hints:
-- Start with the Git command related to ``git stash list`, `git stash apply stash@{2}``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash apply stash@{1}\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "`git stash list` shows four identical-looking entries. `git stash show stash@{N}` lists the files of entry N, and `-p` shows the diff."
+  - "Check each index from 0 to 3. The right one is neither the newest nor the oldest. Pop it by its reference, not blindly with a bare `git stash pop`."
+  - "`git stash pop stash@{2}`, after you have verified with `git stash show stash@{2}`."
+guide: |
+  ## 1. Look at the stack
+  ```bash
+  git stash list
+  ```
+  Newest is `stash@{0}`.
 
+  ## 2. Inspect every entry
+  ```bash
+  git stash show stash@{0}
+  git stash show stash@{1}
+  git stash show stash@{2}
+  git stash show stash@{3}
+  ```
+  Each prints the changed file names with a diffstat. One names `pricing.py`.
 
-  **Multiple Stashes**
+  ## 3. Pop that entry only
+  ```bash
+  git stash pop stash@{N}
+  git stash list
+  ```
+  After the pop, the entries above it keep their order and numbering shifts to fill the gap.
 
+  ## 4. Verify
+  ```bash
+  git diff pricing.py
+  ```
+debrief: |
+  ## What happened
+  The stash is a stack, but you can address any entry as `stash@{n}`. `show` lets you inspect without side
+  effects, and `pop stash@{n}` restores and removes exactly that one.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Naming saves time
+  `git stash push -m "pricing experiment"` would have made this a one-glance job. For unnamed entries,
+  `git stash show -p` is the way to find out.
 
-  '
+  ## Numbers shift
+  Entry numbers change whenever an entry is added or removed. Re-list before each operation that
+  uses an index.
+
+  ## Related
+  - `git stash list --stat` shows the files for every entry at once.
+  - `git stash apply stash@{n}` keeps the entry.
+common_mistakes:
+  - "Running a bare `git stash pop`, which restores the newest entry (the station map) instead."
+  - "Not re-checking the index after a pop and then popping the wrong entry."
+  - "Using `git stash drop` on the right entry, which deletes the experiment instead of restoring it."
 validators:
-- type: file_content_equals
-  path: app.txt
-  text: first
-  description: The older stash was applied
+  - type: script_passes
+    script: |
+      grep -qx 'SURGE = 1.5' pricing.py
+    description: pricing.py has the surge experiment in the working tree
+  - type: stash_count_eq
+    count: 3
+    description: Three stashes remain
+  - type: script_passes
+    script: |
+      n=$(git stash list | wc -l)
+      i=0
+      while [ "$i" -lt "$n" ]; do
+        ! git stash show --name-only "stash@{$i}" | grep -qx pricing.py
+        i=$((i + 1))
+      done
+    description: None of the remaining stashes touches pricing.py
+  - type: script_passes
+    script: |
+      git diff --quiet -- stations.py search.py tiles.py
+    description: The other stashes' files were not restored

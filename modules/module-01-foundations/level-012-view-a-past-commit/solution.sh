@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > past-commit.txt <<'EOF'
-subject=Initial scaffold
-EOF
-git add past-commit.txt
-git commit -m "docs: add report"
+# Priya made exactly one commit; find it, then read the file as it was in that commit.
+sha=$(git log --author=Priya --format=%H)
+git show "$sha"
+git show "$sha:rules/scoring.md" | grep -o '[0-9][0-9]* points' | grep -o '[0-9]*' > winning-score.txt

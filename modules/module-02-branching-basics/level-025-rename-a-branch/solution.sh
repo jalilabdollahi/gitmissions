@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
 set -e
-
-git branch -m old-name feature/docs
+# Renaming the branch you are on: -m <new-name>
+git branch -m fix/password-reset
+# Renaming another branch: -m <old> <new>
+git branch -m master main
+git branch

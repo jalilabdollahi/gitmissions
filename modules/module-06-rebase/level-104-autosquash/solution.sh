@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-git switch feature/rebase
-git reset --soft main
-git commit -m "Squashed feature work"
+GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main

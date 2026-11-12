@@ -6,34 +6,82 @@ difficulty: intermediate
 xp: 230
 expected_time: 9m
 concepts:
-- '`git remote prune origin`'
-common_mistakes:
-- Running commands related to `git remote prune origin` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Prune stale remote-tracking references for `origin`.
+  - git fetch --prune
+  - stale remote-tracking branches
+  - fetch.prune
+repo_path: staybridge
+description: |
+  In the Staybridge hotel-booking repository teammates delete their branches on the server after merging.
+  Your clone still lists them: `git branch -r` shows `origin/feature/late-checkout` and
+  `origin/feature/pet-fees`, yet both are gone from the server, and your local `feature/late-checkout`
+  still points at a dead upstream. `feature/spa-addons` is alive and unmerged, so it must stay both on
+  the remote and locally. Clean up your clone and stop this from happening again.
+objective: |
+  - remove the stale remote-tracking branches so that only `origin/main` and `origin/feature/spa-addons` remain
+  - delete the local branch `feature/late-checkout` (its work is merged), but keep `feature/spa-addons`
+  - make this repo prune automatically on every fetch (`fetch.prune` set to `true` locally)
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git remote prune origin\n   ```"
-debrief: '## What Just Happened
+  - "`git branch -vv` marks local branches whose upstream no longer exists with `: gone]`."
+  - "`git fetch --prune` (or `git remote prune origin`) removes remote-tracking refs that no longer exist on the server."
+  - "`git fetch --prune`, then `git branch -d feature/late-checkout`, then `git config fetch.prune true`."
+guide: |
+  ## 1. Spot the stale refs
+  ```bash
+  git branch -r
+  git branch -vv
+  git remote show origin
+  ```
+  `remote show` labels the dead ones as "stale".
 
+  ## 2. Prune them
+  ```bash
+  git fetch --prune
+  git branch -r
+  ```
+  Only the refs that vanished from the server are removed.
 
-  **Prune Stale Remote Refs**
+  ## 3. Delete the local branch whose upstream is gone
+  ```bash
+  git branch -d feature/late-checkout
+  ```
+  `-d` is allowed because the work is merged into `main`.
 
+  ## 4. Automate
+  ```bash
+  git config fetch.prune true
+  ```
+debrief: |
+  ## What happened
+  Deleting a branch on the server does not notify your clone. Its `origin/*` pointer stays until a
+  prune removes it. Pruning only touches remote-tracking refs, never your own local branches.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why it matters
+  Stale refs make tab completion noisy and let you branch from work that no longer exists. They also
+  hide the real list of active branches when you search.
 
-  '
+  ## Settings
+  `fetch.prune true` prunes on every fetch or pull. `remote.origin.prune` limits it to one remote, and
+  `git config --global fetch.prune true` makes it universal.
+
+  ## Related
+  - `git remote prune origin --dry-run` previews what would go.
+  - `git branch -vv | grep ': gone]'` lists local branches to clean up.
+  - `git branch -D` forces deletion when the branch is not merged.
+common_mistakes:
+  - "Deleting local branches with `git branch -D` before checking which ones are really merged."
+  - "Assuming `git fetch` alone removes the stale refs; without `--prune` it does not."
+  - "Removing `feature/spa-addons`, which is still alive on the server."
 validators:
-- type: script_passes
-  description: origin/feature/old was pruned
-  script: '! git rev-parse --verify refs/remotes/origin/feature/old >/dev/null 2>&1'
+  - type: script_passes
+    script: test "$(git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep -v '^origin$' | sort | tr '\n' ' ')" = "origin/feature/spa-addons origin/main "
+    description: Only origin/main and origin/feature/spa-addons remain as remote-tracking branches
+  - type: branch_not_exists
+    branch: feature/late-checkout
+    description: Local feature/late-checkout is deleted
+  - type: branch_exists
+    branch: feature/spa-addons
+    description: Local feature/spa-addons is kept
+  - type: config_equals
+    key: fetch.prune
+    value: "true"
+    description: fetch.prune is true

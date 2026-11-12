@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
 set -e
-
-cat > tags.txt <<'EOF'
-tags=2
-EOF
-git add tags.txt
-git commit -m "docs: add report"
+git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 > latest-stable.txt
+git tag -l 'v1.*' --sort=v:refname > v1-tags.txt

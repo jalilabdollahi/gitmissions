@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > reflog.txt <<'EOF'
-entries>=3
-EOF
-git add reflog.txt
-git commit -m "docs: add report"
+v1=$(git log -g --format=%H --grep='(draft)' -1)
+echo "$v1" > first-draft.txt
+git show "$v1:census.csv" | head -1 > draft-header.txt

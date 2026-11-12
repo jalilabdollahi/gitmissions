@@ -4,49 +4,111 @@ level: level-205-plumbing-vs-porcelain
 order: 205
 difficulty: expert
 xp: 500
-expected_time: 12m
+expected_time: 15m
 concepts:
-- the two layers of the Git CLI
-common_mistakes:
-- Running commands related to the two layers of the Git CLI without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `the two
-  layers of the Git CLI`.
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- plumbing commands end to end
+- hash-object, update-index, write-tree, commit-tree, update-ref
+- symbolic-ref
+description: |
+  A game-modding team claims that `git commit` is "just five plumbing commands in a trench coat". Prove it. In the `luamod` repo you must add a manifest and a generator script to a new branch, `lab/plumbing`, without ever running `git add`, `git commit`, `git branch` or `git switch -c`. The audit checks the reflog: porcelain commands leave tell-tale entries such as `commit:` and `branch: Created from`, whereas the plumbing route leaves none.
+objective: |
+  Create the branch `lab/plumbing` using only plumbing commands.
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. Its tip is a new commit with message `Add plugin manifest and generator` whose only parent is the current tip of `main`.
+  2. Compared with `main`, the tree adds exactly two files: `manifest.json` (mode 100644, JSON containing a `"name"` key) and `tools/gen.sh` (mode 100755). Create their content with `git hash-object -w --stdin`.
+  3. `HEAD` is attached to `lab/plumbing`, the working tree and index match its tip (clean), `main` is unchanged, and the branch's reflog has no `commit:` or `branch:` entry.
 hints:
-- Start with the Git command related to `the two layers of the Git CLI`.
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- 'Pipeline: `hash-object -w --stdin` for each file, `update-index --add --cacheinfo <mode>,<sha>,<path>`,
+  `write-tree`, `commit-tree <tree> -p main -m "..."`, `update-ref refs/heads/lab/plumbing <commit>`.'
+- '`git symbolic-ref HEAD refs/heads/lab/plumbing` attaches HEAD without touching files. The index already
+  matches the new tree, but the two new files are not on disk yet.'
+- '`git checkout-index -a -f` writes the files of the index to disk. Check `git status` and `git reflog
+  show lab/plumbing`.'
+guide: |
+  ## Content to objects
 
+  ```bash
+  m=$(printf '{"name": "luamod", "version": "1.0.0", "entry": "plugin.lua"}\n' | git hash-object -w --stdin)
+  g=$(printf '#!/bin/sh\ncat manifest.json\n' | git hash-object -w --stdin)
+  ```
 
-  **Plumbing vs Porcelain**
+  ## Objects to index to tree
 
+  ```bash
+  git update-index --add --cacheinfo 100644,"$m",manifest.json
+  git update-index --add --cacheinfo 100755,"$g",tools/gen.sh
+  tree=$(git write-tree)
+  git ls-tree -r "$tree"
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Tree to commit to branch
 
-  '
+  ```bash
+  c=$(git commit-tree "$tree" -p main -m "Add plugin manifest and generator")
+  git update-ref refs/heads/lab/plumbing "$c"
+  git symbolic-ref HEAD refs/heads/lab/plumbing
+  git checkout-index -a -f          # put the two new files on disk
+  git status --short                 # clean
+  git reflog show lab/plumbing       # no "commit:" entry
+  ```
+
+  Every porcelain command is a wrapper around steps like these: `git add` is hash-object + update-index, `git commit` is write-tree + commit-tree + update-ref.
+debrief: |
+  ## Layers
+
+  Porcelain commands (`add`, `commit`, `switch`) are designed for people: they update the working tree, print summaries and write reflog messages. Plumbing commands do one narrow thing and are stable enough to script against. Hosting platforms, IDEs and tools such as `git filter-repo` are built on them.
+
+  ## What each step did
+
+  `hash-object -w` stored two blobs, `update-index` turned them into index entries, `write-tree` serialised the index as a tree, `commit-tree` wrapped it in a commit object that nobody references, and `update-ref` created the branch. `symbolic-ref` moved HEAD. None of them touched the working tree, which is why the final `checkout-index` was needed.
+
+  ## Reflog messages
+
+  `update-ref` records the message you give with `-m` (empty here). Porcelain writes `commit: <subject>`, `branch: Created from ...`, `checkout: moving from ...`. That is how an audit can tell the routes apart.
+
+  ## Related
+
+  - `git read-tree`, `git ls-files -s`, `git cat-file`, `git rev-parse` complete the toolbox.
+  - `git update-ref -m "reason"` adds a reflog message; prefer it in real scripts.
+  - `git for-each-ref` and `git show-ref` are the plumbing way to list branches.
+common_mistakes:
+- Using `git commit` after `update-index`, which is exactly what the audit forbids.
+- Forgetting `-p main`, creating a parentless root commit.
+- Updating the ref but never attaching HEAD or syncing the working tree, leaving `git status` full of
+  phantom changes.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: is_on_branch
+  branch: lab/plumbing
+  description: HEAD is attached to lab/plumbing
+- type: script_passes
+  description: The tip is a single commit on top of main with the required message
+  script: 'test "$(git rev-parse lab/plumbing^)" = "$(git rev-parse main)"
+
+    test "$(git rev-list --count main..lab/plumbing)" = 1
+
+    test "$(git log -1 --format=%s lab/plumbing)" = "Add plugin manifest and generator"
+
+    test "$(git rev-list --count main)" = 3
+
+    '
+- type: script_passes
+  description: The tree adds exactly manifest.json (100644) and tools/gen.sh (100755)
+  script: 'test "$(git diff --name-status main lab/plumbing | sort | tr ''\t'' '' '' | tr ''\n'' '','')"
+    = "A manifest.json,A tools/gen.sh,"
+
+    git ls-tree lab/plumbing manifest.json | grep -q ''^100644 ''
+
+    git ls-tree -r lab/plumbing tools/gen.sh | grep -q ''^100755 ''
+
+    git show lab/plumbing:manifest.json | grep -q ''"name"''
+
+    '
+- type: script_passes
+  description: The branch reflog has no porcelain entries
+  script: '! git reflog show lab/plumbing | grep -Eq '': (commit|branch)''
+
+    ! git reflog show HEAD | grep -q ''commit: Add plugin manifest''
+
+    '
 - type: is_clean
-  description: Working tree is clean
+  description: Working tree and index match the new tip

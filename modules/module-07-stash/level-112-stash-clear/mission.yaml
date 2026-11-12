@@ -4,33 +4,79 @@ level: level-112-stash-clear
 order: 112
 difficulty: intermediate
 xp: 210
-expected_time: 7m
+expected_time: 9m
 concepts:
-- '`git stash clear`'
-common_mistakes:
-- Running commands related to `git stash clear` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Clear all stash entries.
+  - git stash clear
+  - git stash show -p
+  - exporting a patch before deleting
+repo_path: throttlr
+description: |
+  The Throttlr API rate limiter repository has five stashes from different experiments. Your lead wants the stash
+  list emptied before the audit, but one entry is valuable: it raises the burst limit in `rate_limit.py`, which the
+  team may still adopt. Save that one as a patch file you can apply later, then wipe the stash list.
+objective: |
+  - find the stash that changes `rate_limit.py` and write its diff to `keep.patch` (just that stash: the patch must contain only the `rate_limit.py` change)
+  - then remove all stash entries so the list is empty
+  - `keep.patch` must still apply cleanly to the current HEAD
 hints:
-- Start with the Git command related to ``git stash clear``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash clear\n   ```"
-debrief: '## What Just Happened
+  - "`git stash show --name-only stash@{n}` tells which files an entry touches; look through all five."
+  - "`git stash show -p stash@{n}` prints the entry as a patch that you can redirect to a file. Clearing comes last."
+  - "`git stash show -p stash@{n} > keep.patch && git stash clear`"
+guide: |
+  ## 1. Find the valuable entry
+  ```bash
+  git stash list
+  git stash show --name-only stash@{0}   # repeat for 1..4
+  ```
 
+  ## 2. Save it as a patch
+  ```bash
+  git stash show -p stash@{N} > keep.patch
+  cat keep.patch
+  git apply --check keep.patch && echo "applies"
+  ```
+  `--check` tests the patch without changing anything.
 
-  **Clear All Stashes**
+  ## 3. Clear the stack
+  ```bash
+  git stash clear
+  git stash list
+  ```
+  The list is now empty. This cannot be undone with a Git command (only by fishing out unreachable commits).
 
+  ## 4. Later
+  `git apply keep.patch` brings the burst-limit change back whenever you like.
+debrief: |
+  ## What happened
+  A patch file is a portable, durable copy of one stash. Clearing the stack afterwards removed the other
+  four entries in one go, but the one you wanted lives on in `keep.patch`.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Why a patch and not a branch?
+  Either works. A branch (`git stash branch`) keeps the original base commit; a patch is easy to send to
+  colleagues or attach to a ticket. Pick what fits the follow-up.
 
-  '
+  ## Danger of clear
+  `git stash clear` deletes every entry without confirmation. Always look at `git stash list --stat`
+  first, and save anything you might want.
+
+  ## Related
+  - `git stash show -p --include-untracked` also shows untracked files stored in a stash.
+  - `git apply --3way keep.patch` copes better when the base has moved.
+common_mistakes:
+  - "Clearing the stash first and then realising the patch is gone."
+  - "Redirecting the wrong entry (for example `stash@{0}`) into keep.patch."
+  - "Writing `git stash list` output (a one-line description) into the file instead of the diff."
 validators:
-- type: stash_empty
-  description: Stash list is empty
+  - type: stash_empty
+    description: The stash list is empty
+  - type: script_passes
+    script: |
+      grep -qF 'BURST = 40' keep.patch && test "$(grep -c '^diff --git' keep.patch)" = 1 && grep -q 'rate_limit.py' keep.patch
+    description: keep.patch holds the rate_limit.py change and nothing else
+  - type: script_passes
+    script: |
+      git apply --check keep.patch
+    description: keep.patch applies cleanly to the current code
+  - type: is_clean
+    ignore_untracked: true
+    description: Tracked files are unchanged

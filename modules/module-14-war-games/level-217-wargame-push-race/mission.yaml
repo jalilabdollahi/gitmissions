@@ -4,43 +4,127 @@ level: level-217-wargame-push-race
 order: 217
 difficulty: expert
 xp: 680
-expected_time: 18m
+expected_time: 20m
 concepts:
-- "two devs diverged \u2014 reconcile both without losing work"
-common_mistakes:
-- "Running commands related to two devs diverged \u2014 reconcile both without losing\
-  \ work without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- rejected push, rebase onto origin
+- three conflicts in one rebase
+- regenerating a lockfile instead of merging it
+repo_path: work
+description: |
+  Bob and you both worked on the Airflow DAG repo today. Bob pushed first; your push of three local commits is rejected as non-fast-forward. The team policy is a linear history (no merge commits on `main`). Replaying your commits on top of Bob's runs into conflicts on the nightly schedule, in `requirements.in` (both of you added a dependency at the end) and in the generated `requirements.lock`, where merging text is meaningless because the file is derived by `./gen-lock.sh` from the input file. Both your and Bob's work must end up on the server.
+objective: |
+  Reconcile and push.
+
+  1. Rebase your three local commits onto `origin/main` and push; the result on the server is linear (no merge commits) and contains Bob's two commits and your three, with the old server tip as an ancestor (no force).
+  2. `dags/nightly.py` must have `schedule = "30 1 * * *"` (your decision stands).
+  3. `requirements.in` must contain both `pandas` (Bob) and `requests` (you), and `requirements.lock` must be the unmodified output of `./gen-lock.sh` for the final input file (regenerate it, do not hand-merge).
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git pull --rebase origin main` (or `git fetch` and `git rebase origin/main`) replays your commits
+  one at a time and stops at each conflict. `git status` shows which commit is being applied.'
+- 'Resolve source files by hand, but never merge `requirements.lock`: fix `requirements.in` first, then
+  run `./gen-lock.sh` and `git add requirements.lock`.'
+- Continue with `git rebase --continue` (`GIT_EDITOR=true` keeps the message). Check with `git log --oneline
+  --graph` that nothing is a merge.
+guide: |
+  ## Rebase
 
+  ```bash
+  git fetch origin
+  git rebase origin/main
+  ```
 
-  **Push Race Condition**
+  ## Commit 1, the schedule
 
+  Edit `dags/nightly.py` so that it reads `schedule = "30 1 * * *"`, then:
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ```bash
+  git add dags/nightly.py
+  GIT_EDITOR=true git rebase --continue
+  ```
 
-  '
+  ## Commit 2, requirements
+
+  `requirements.in` has two added lines in conflict. Keep both, then regenerate the derived file:
+
+  ```bash
+  printf 'apache-airflow\npandas\npsycopg2\nrequests\n' > requirements.in
+  ./gen-lock.sh
+  git add requirements.in requirements.lock
+  GIT_EDITOR=true git rebase --continue
+  ```
+
+  ## Push
+
+  ```bash
+  git log --oneline --graph origin/main..HEAD     # three commits, linear
+  git push origin main
+  ```
+debrief: |
+  ## Why rebase here
+
+  A merge would have recorded the reconciliation as one commit, but the team wants linear history so that `git bisect` and `git log` stay simple. A rebase redoes each of your commits on the new base; conflicts appear commit by commit, each at the place it truly belongs.
+
+  ## Derived files
+
+  Lockfiles, generated code and compiled assets conflict constantly and merging them textually is wrong even when it succeeds. The right resolution is to resolve the *source* and regenerate. Some teams automate that with a `merge=` driver in `.gitattributes`.
+
+  ## The race
+
+  Two people pushing to the same branch is normal; Git protects the server by refusing a push that would drop commits. The cure is always "integrate first, then push", never force.
+
+  ## Related
+
+  - `git config pull.rebase true` makes `git pull` rebase by default.
+  - `git rebase --abort` returns to the state before the rebase if you get lost.
+  - `git rerere` remembers resolutions when you redo the rebase.
+common_mistakes:
+- Pushing with `--force` to get past the rejection, deleting Bob's work.
+- Hand-editing `requirements.lock` conflict hunks, producing a lock that does not match the input.
+- Running `git pull` (merge) and ending with a merge commit on a branch that must stay linear.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: The server history is linear and contains all five commits
+  script: "o=\"git --git-dir=../origin.git\"\ntest -z \"$($o rev-list --merges main)\"\nfor s in \"dag:\
+    \ nightly at 01:30\" \"deps: add requests\" \"dag: add cleanup job\" \"dag: nightly at 03:00\" \"\
+    deps: add pandas\"; do\n  $o log --format=%s main | grep -qx \"$s\"\ndone\n"
+- type: script_passes
+  description: The push was a fast-forward over Bob's work
+  script: 'o="git --git-dir=../origin.git"
+
+    bob=$($o log main --format=%H --grep=''^deps: add pandas$'' -1)
+
+    $o merge-base --is-ancestor "$bob" main
+
+    test "$($o rev-parse main)" = "$(git rev-parse main)"
+
+    '
+- type: script_passes
+  description: Schedule, requirements and the regenerated lockfile are right
+  script: 'grep -qx ''schedule = "30 1 \* \* \*"'' dags/nightly.py
+
+    grep -qx pandas requirements.in
+
+    grep -qx requests requirements.in
+
+    cp requirements.lock /tmp/gm217.lock.$$
+
+    sh ./gen-lock.sh
+
+    cmp requirements.lock /tmp/gm217.lock.$$
+
+    rm -f /tmp/gm217.lock.$$
+
+    git diff --quiet
+
+    '
+- type: script_passes
+  description: No rebase is in progress and nothing is conflicted
+  script: 'test ! -d "$(git rev-parse --git-path rebase-merge)"
+
+    test ! -d "$(git rev-parse --git-path rebase-apply)"
+
+    ! git grep -qE ''^(<<<<<<<|=======|>>>>>>>)''
+
+    '
 - type: is_clean
   description: Working tree is clean

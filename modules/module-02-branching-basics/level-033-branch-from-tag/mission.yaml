@@ -4,33 +4,88 @@ level: level-033-branch-from-tag
 order: 33
 difficulty: beginner
 xp: 150
-expected_time: 6m
+expected_time: 8m
 concepts:
-- '`git switch -c <name> <tag>`'
-common_mistakes:
-- Running commands related to `git switch -c <name> <tag>` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A release tag marks the point where the new branch should begin.
-objective: Create a branch named `hotfix` from tag `v1.0`.
+  - git switch -c <name> <tag>
+  - tags as stable start points
+description: |
+  Pavel's flashcard app shipped version 2.0, tagged `v2.0`. Since then `main` has moved on with a half-finished
+  German deck and a translation tweak that has not been tested. A customer on 2.0 found a wrong translation:
+  "au revoir" must read "bye for now" in the French deck. The fix has to land on a maintenance branch that
+  starts exactly at the release tag, so it can be shipped as 2.0.1.
+objective: |
+  Create a branch `support/2.0` from the tag `v2.0` and switch to it. On it, change the `au revoir` row of
+  `decks/french.csv` to `au revoir,bye for now` and commit with the message `Fix au revoir translation in 2.0`.
+  The branch must be exactly one commit ahead of the tag, must not contain the German deck, and `main` must stay unchanged.
 hints:
-- List tags if needed.
-- Use `git switch -c hotfix v1.0`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch -c hotfix v1.0\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "`git tag` lists tags and `git log --oneline --decorate` shows where they point."
+  - "Anything that names a commit can be the start point: `git switch -c <branch> <tag>`."
+  - "`git switch -c support/2.0 v2.0`, edit the line, `git commit -am \"Fix au revoir translation in 2.0\"`."
+guide: |
+  ## 1. Find the tag
+  ```bash
+  git log --oneline --decorate
+  ```
+  `v2.0` sits on "French: add cafe", two commits below `main`.
 
+  ## 2. Branch from it
+  ```bash
+  git switch -c support/2.0 v2.0
+  ls decks
+  ```
+  There is no `german.csv` here: the branch looks like the release.
 
-  **Create Branch from Tag**
+  ## 3. Fix and commit
+  Edit `decks/french.csv`, then:
+  ```bash
+  git commit -am "Fix au revoir translation in 2.0"
+  ```
 
+  ## 4. Verify
+  ```bash
+  git log --oneline --graph --all --decorate
+  ```
+  The tag stays on the release commit; the branch is one step ahead of it.
+debrief: |
+  ## What happened
+  A tag is a permanent name for a commit, so it is a reliable start point. Your new branch begins exactly at
+  the released snapshot and moves forward with the fix, while the tag itself stays where it is.
 
-  Tags are fixed pointers, but you can branch from them whenever work needs to resume.
+  ## Why it matters
+  Release (support) branches let you patch old versions while development continues. The tag guarantees that the
+  base is exactly what customers have.
 
-  '
+  ## Related
+  - Fixes are usually merged or cherry-picked back to `main`.
+  - `git switch --detach v2.0` inspects a release without creating a branch.
+  - Annotated tags (`git tag -a`) carry a message and author; lightweight tags are only names.
+
+  ## Pitfalls
+  - Branch and tag names live in separate namespaces but can clash (`v2.0` branch and tag). Avoid it.
+  - Committing on a detached HEAD at the tag without creating a branch makes the work easy to lose.
+common_mistakes:
+  - Branching from `main` and reverting the unreleased changes manually.
+  - Moving or deleting the tag instead of branching from it.
+  - Fixing the translation on `main` only.
 validators:
-- type: branch_exists
-  branch: hotfix
-  description: hotfix exists
+  - type: is_on_branch
+    branch: support/2.0
+    description: HEAD is on support/2.0
+  - type: ahead_of
+    branch: support/2.0
+    other: v2.0
+    count: 1
+    behind: 0
+    description: support/2.0 is exactly one commit ahead of v2.0
+  - type: commit_message_equals
+    text: Fix au revoir translation in 2.0
+    description: Latest commit message is "Fix au revoir translation in 2.0"
+  - type: script_passes
+    script: grep -qx 'au revoir,bye for now' decks/french.csv && ! test -e decks/german.csv && grep -qx 'merci,thank you' decks/french.csv
+    description: The fix is in, and no unreleased work is present
+  - type: script_passes
+    script: test "$(git rev-list --count main)" = "5" && git show main:decks/french.csv | grep -q '^merci,thanks'
+    description: main is unchanged
+  - type: tag_exists
+    tag: v2.0
+    description: The v2.0 tag still exists

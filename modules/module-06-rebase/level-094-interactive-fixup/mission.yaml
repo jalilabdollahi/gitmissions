@@ -4,43 +4,85 @@ level: level-094-interactive-fixup
 order: 94
 difficulty: intermediate
 xp: 300
-expected_time: 12m
+expected_time: 10m
 concepts:
-- "`fixup` / `f` \u2014 squash without keeping message"
-common_mistakes:
-- "Running commands related to `fixup` / `f` \u2014 squash without keeping message\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The feature branch has several tiny commits that should become one clean
-  commit.
-objective: Squash the feature branch history so only one feature commit remains on
-  top of `main`.
+  - fixup
+  - folding a forgotten file
+  - keeping the original message
+repo_path: calendrix
+description: |
+  On Calendrix, a calendar-sync service, you committed the iCal export and then realised the export imports
+  `tz.py`, a file you forgot to add. You fixed it with a commit called "oops forgot timezone file". Nobody
+  should see that embarrassing commit, and the iCal commit must work on its own. Fold the forgotten file
+  into the iCal commit and keep that commit's message exactly as it is.
+objective: |
+  - rewrite `feature/ical` so it has exactly two commits on top of `main`: `Add calendar sync job` and `Add iCal export`
+  - the latest commit (`Add iCal export`) must include `tz.py`
+  - no commit with "oops" in its message may remain; stay on `feature/ical`
 hints:
-- An interactive rebase is the usual approach.
-- Any valid Git method is okay if the final history has one feature commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git reset --soft main\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Squashed feature work\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline main..feature/ical` shows three commits. The last one only adds `tz.py` and belongs to the one before it."
+  - "In an interactive rebase, `fixup` melts a commit into the previous one and discards its message."
+  - "`git rebase -i main`, change `pick` to `fixup` on the third line (the oops commit)."
+guide: |
+  ## 1. Inspect
+  ```bash
+  git log --stat --oneline main..feature/ical
+  ```
+  The last commit adds only `tz.py`.
 
+  ## 2. Open the todo list
+  ```bash
+  git rebase -i main
+  ```
+  ```
+  pick 111 Add calendar sync job
+  pick 222 Add iCal export
+  pick 333 oops forgot timezone file
+  ```
 
-  **Fixup Commits**
+  ## 3. Change the last line
+  ```
+  fixup 333 oops forgot timezone file
+  ```
+  Save and close. No message editor opens, as `fixup` keeps the upper commit's message.
 
+  ## 4. Verify
+  ```bash
+  git log --stat --oneline main..feature/ical
+  ```
+  `tz.py` now appears in the iCal commit.
+debrief: |
+  ## What happened
+  `fixup` applies the change of the marked commit onto the one above it and drops its message. Both commits
+  become one with the first commit's message.
 
-  Squashing is a history-cleanup step that trades granular checkpoints for a simpler
-  review story.
+  ## When to use it
+  Forgotten files, typo fixes and review feedback belong to the commit they fix. Clean history makes
+  `git bisect`, `git revert` and code review easier: every commit builds and tests on its own.
 
-  '
+  ## Shortcut
+  `git commit --fixup <hash>` creates a commit named `fixup! <subject>`, and
+  `git rebase -i --autosquash` places and marks it automatically (see the autosquash level).
+
+  ## Related
+  - `git commit --amend` does the same for the very last commit, no rebase needed.
+  - `git rebase -i` with `squash` keeps the messages.
+common_mistakes:
+  - "Using `squash`, which opens the editor and keeps the oops message unless you delete it."
+  - "Folding the commit into the wrong parent (the first one) by reordering lines."
+  - "Marking the first line as fixup, which has nothing above it."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 3
-  description: Feature branch has one rebased feature commit plus main history
-- type: commit_message_contains
-  text: Squashed feature work
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/ical
+    description: HEAD is on feature/ical
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/ical | tr '\n' '|')" = "Add calendar sync job|Add iCal export|"
+    description: Two commits remain, with their original messages
+  - type: script_passes
+    script: |
+      git show --name-only --format= HEAD | grep -qx tz.py
+    description: The iCal commit now contains tz.py
+  - type: script_passes
+    script: "! git log --format=%s main..feature/ical | grep -qi oops"
+    description: The oops commit is gone

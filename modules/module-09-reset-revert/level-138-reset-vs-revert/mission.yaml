@@ -4,38 +4,100 @@ level: level-138-reset-vs-revert
 order: 138
 difficulty: advanced
 xp: 300
-expected_time: 10m
+expected_time: 12m
+repo_path: work
 concepts:
-- 'public history: revert. Local: reset.'
-common_mistakes:
-- 'Running commands related to public history: revert. Local: reset. without checking
-  `git status` first, which hides the actual repository state.'
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest commit should be removed while preserving work according to
-  the reset mode.
-objective: Run `git reset --soft HEAD~1` and leave the repo in the expected state.
+  - git reset vs git revert
+  - shared vs local history
+  - git push
+description: |
+  Two bad commits in the loan ledger need undoing, and they are not the same kind of problem. "Switch rounding to
+  floor" has been pushed to `origin/main` and the team has already pulled it. On your local `feature/fx-fees`
+  branch the commit "WIP: hardcode test API key" was never pushed, and nobody must ever see that key.
+  You are standing on the feature branch right now.
+objective: |
+  1. On `main`: undo "Switch rounding to floor" **without rewriting history** and publish the result to `origin`, so that
+     `origin/main` contains a revert commit, the audit log remains, and the bad commit stays an ancestor.
+  2. On `feature/fx-fees`: remove the "WIP: hardcode test API key" commit entirely (no `keys.py` anywhere in the branch history), keeping "Add FX fee table".
+     Do not push this branch.
 hints:
-- Look at `git status` before and after the reset.
-- Use `git reset --soft HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --soft HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "Ask yourself for each commit: has anyone else got it? Shared history is only ever added to. Private history may be rewritten."
+  - "For `main`: switch to it, use `git revert`, then `git push origin main`. For the feature branch: a reset that moves the branch back one commit and discards the commit."
+  - "`git switch main && git revert <hash> && git push origin main`, then `git switch feature/fx-fees && git reset --hard HEAD~1`."
+guide: |
+  ## Choose the tool by who has the commit
 
+  Check which commits are where:
 
-  **Reset vs Revert Decision**
+  ```bash
+  git log --oneline --graph --all
+  ```
 
+  **Shared commit (already on origin/main): revert.**
 
-  Reset moves the branch pointer; the mode determines what happens to the index and
-  working tree.
+  ```bash
+  git switch main
+  git revert <hash-of-Switch-rounding-to-floor>
+  git push origin main
+  ```
 
-  '
+  A normal push works because history only grew. Do not use `git reset` + `--force`: the teammates who pulled would
+  have to repair their clones.
+
+  **Private commit (only on your branch): reset.**
+
+  ```bash
+  git switch feature/fx-fees
+  git reset --hard HEAD~1
+  git log --oneline
+  ```
+
+  The WIP commit and `keys.py` are gone from the branch. As it was never pushed, no clone elsewhere has it.
+debrief: |
+  ## What you learned
+
+  The decision rule is *published or not*. `git revert` is additive and safe for any commit that others may have
+  based work on. `git reset` rewrites the branch, which is only safe for commits that exist in your repository
+  only. Mixing them up is the cause of most "force-push disasters".
+
+  ## Real-world use
+
+  Teams protect `main` from force pushes (branch protection), which makes `revert` the only option there. Feature branches
+  are fair game for reset, amend and rebase until the moment they are pushed and shared.
+
+  ## Pitfalls
+
+  - `git push` would be rejected after a reset of an already-pushed branch, tempting people into `--force`.
+  - A secret that was pushed even once must be rotated; deleting the commit later is too late.
+  - Use `git push --force-with-lease` rather than `--force` on your own pushed feature branches.
+common_mistakes:
+  - "Resetting `main` and force-pushing it, which rewrites history other people already pulled."
+  - "Reverting the WIP key commit on the feature branch: the commit and the key stay in the branch history forever."
+  - "Pushing the feature branch before cleaning it, which publishes the key."
+  - "Forgetting to push `main`, so only your local copy has the revert."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 1
-  description: Branch has one commit after reset
-- type: script_passes
-  description: Status matches the reset mode
-  script: git status --porcelain | grep -q '^M  change.txt'
+  - type: script_passes
+    description: origin/main has a revert commit, the audit log and the original history
+    script: |
+      remote=$(git ls-remote origin refs/heads/main | cut -f1)
+      test "$remote" = "$(git rev-parse main)"
+      git merge-base --is-ancestor "$(cat .git/gm-bad)" "$remote"
+      git merge-base --is-ancestor "$(cat .git/gm-orig)" "$remote"
+      git log "$remote" --format=%s | grep -q '^Revert "Switch rounding to floor"'
+  - type: script_passes
+    description: main's ledger rounds again and keeps the audit module
+    script: |
+      git show main:ledger.py | grep -q 'round(amount'
+      ! git show main:ledger.py | grep -q floor
+      git show main:audit.py | grep -q AUDIT
+  - type: script_passes
+    description: feature/fx-fees keeps the FX fee table but the key commit is gone from its history
+    script: |
+      git log --format=%s feature/fx-fees | grep -qx 'Add FX fee table'
+      test -z "$(git log feature/fx-fees --format=%H -- keys.py)"
+      ! git log feature/fx-fees --format=%s | grep -q WIP
+  - type: script_passes
+    description: the key was never pushed to origin
+    script: |
+      test -z "$(git --git-dir=../origin.git log --all --format=%H -- keys.py)"
+

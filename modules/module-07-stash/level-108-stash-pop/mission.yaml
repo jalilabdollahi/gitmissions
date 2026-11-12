@@ -4,37 +4,80 @@ level: level-108-stash-pop
 order: 108
 difficulty: intermediate
 xp: 200
-expected_time: 7m
+expected_time: 8m
 concepts:
-- '`git stash pop`'
-common_mistakes:
-- Running commands related to `git stash pop` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Pop the stash back into the working tree.
+  - git stash pop
+  - returning to a branch
+  - finishing stashed work
+repo_path: cardloop
+description: |
+  Cardloop is a flashcards app. Two days ago you stashed your half-written shuffle mode while on
+  `feature/shuffle` to ship a quick typo fix on `main`. The fix is done, so now you can come back. Go back to
+  the feature branch, restore the stashed work (so that the stash list is empty again), and finish
+  the feature with a commit.
+objective: |
+  - switch to `feature/shuffle` and restore the stashed changes with `git stash pop`
+  - commit the restored work with the message `Add shuffle mode`
+  - the stash list must be empty afterwards and the working tree clean
 hints:
-- Start with the Git command related to ``git stash pop``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash pop\n   ```"
-debrief: '## What Just Happened
+  - "`git stash list` shows what is stored. The entry remembers which branch it came from, but Git will apply it to wherever you are."
+  - "Switch to the feature branch first, then `git stash pop`: it applies the changes and removes the entry in one step."
+  - "`git switch feature/shuffle && git stash pop && git commit -am \"Add shuffle mode\"`"
+guide: |
+  ## 1. Look at the stack
+  ```bash
+  git stash list
+  git branch
+  ```
+  The entry says `On feature/shuffle: WIP shuffle implementation`.
 
+  ## 2. Go back and restore
+  ```bash
+  git switch feature/shuffle
+  git stash pop
+  git status -sb
+  ```
+  `pop` = `apply` + `drop`. Your edits are back in the working tree.
 
-  **Pop the Stash**
+  ## 3. Finish
+  ```bash
+  git commit -am "Add shuffle mode"
+  git stash list
+  ```
+  The list is empty again.
+debrief: |
+  ## What happened
+  A stash is not tied to the branch it was created on. `pop` replays the saved diff on the current
+  HEAD and removes the entry if it applied without conflict. Because you returned to the original
+  branch, the diff applied cleanly.
 
+  ## Pop on the wrong branch
+  Popping onto a different branch can conflict or silently put changes where they do not belong.
+  Check `git stash list` to see where the entry came from.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## If pop conflicts
+  The entry is kept (not dropped) so that you do not lose it. Resolve, then `git stash drop` yourself.
+  A later level covers that.
 
-  '
+  ## Related
+  - `git stash apply` keeps the entry.
+  - `git stash pop stash@{1}` pops a specific entry.
+common_mistakes:
+  - "Popping while still on `main`, which puts the shuffle code on the wrong branch."
+  - "Using `git stash apply` and leaving a stale entry behind."
+  - "Forgetting to commit after the pop, so the work stays uncommitted."
 validators:
-- type: stash_empty
-  description: Stash is empty
-- type: file_content_equals
-  path: app.txt
-  text: stashed change
-  description: app.txt contains the restored change
+  - type: is_on_branch
+    branch: feature/shuffle
+    description: HEAD is on feature/shuffle
+  - type: stash_empty
+    description: The stash list is empty
+  - type: commit_message_equals
+    text: Add shuffle mode
+    description: The shuffle work is committed
+  - type: script_passes
+    script: |
+      grep -q 'Math.random' shuffle.js
+    description: The stashed implementation is in shuffle.js
+  - type: is_clean
+    description: Working tree is clean

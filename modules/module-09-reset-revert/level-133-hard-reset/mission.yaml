@@ -4,39 +4,86 @@ level: level-133-hard-reset
 order: 133
 difficulty: advanced
 xp: 320
-expected_time: 10m
+expected_time: 7m
 concepts:
-- "`git reset --hard HEAD~1` \u2014 DANGER: destroys changes"
-common_mistakes:
-- "Running commands related to `git reset --hard HEAD~1` \u2014 DANGER: destroys changes\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest commit should be discarded completely.
-objective: Hard reset to `HEAD~1` so `change.txt` goes back to `one`.
+  - git reset --hard
+  - discarding commits and uncommitted edits
+description: |
+  The metrics aggregator config was switched to an experimental 5-second window, which overloaded the staging
+  collector within minutes. It was never pushed. You also added `debug: true` to the file in your working tree
+  while investigating. You want the repo back as it was after "Set retention to 30 days", with every trace of the
+  experiment gone from the branch and from `metrics/aggregator.yaml`. However, you exported some samples into
+  `scratch-export.csv` for the postmortem, and that file must survive.
+objective: |
+  Make `main` end at "Set retention to 30 days" and make `metrics/aggregator.yaml` match that commit exactly
+  (no 5-second window, no `debug: true`). Keep the untracked file `scratch-export.csv`.
 hints:
-- This is destructive, but the sandbox is safe.
-- Use `git reset --hard HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --hard HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "You need to throw away a commit and local modifications of a tracked file, but not an untracked file."
+  - "Think about which `git reset` mode rewrites the working tree. Untracked files are not touched by it."
+  - "`git reset --hard HEAD~1`. Do not use `git clean`, which would delete the export."
+guide: |
+  ## Throwing work away on purpose
 
+  Review what you will discard:
 
-  **Hard Reset**
+  ```bash
+  git status --short
+  git log --oneline
+  git diff
+  ```
 
+  Be sure that you want to lose the 5-second commit and the `debug: true` line. `--hard` rewrites the
+  branch, index **and** working tree:
 
-  Hard reset moves the branch, index, and working tree together.
+  ```bash
+  git reset --hard HEAD~1
+  ```
 
-  '
+  Check the outcome:
+
+  ```bash
+  cat metrics/aggregator.yaml
+  git status --short
+  ```
+
+  `scratch-export.csv` is untracked, so `reset --hard` leaves it alone. To delete untracked files you would need
+  `git clean` (here you must not).
+debrief: |
+  ## What you learned
+
+  `git reset --hard <commit>` makes branch, index and working tree equal to `<commit>`. Tracked file edits are
+  lost; untracked files are not touched. It is the right tool when you really want the last commit and every
+  uncommitted change gone.
+
+  ## Real-world use
+
+  Abandoning an experiment, dropping a bad local merge, resetting a throwaway branch to the upstream state.
+
+  ## Pitfalls
+
+  - Uncommitted tracked changes destroyed by `--hard` **cannot** be recovered via the reflog.
+  - Committed work can be recovered through the reflog for a while, so a mistaken `--hard` on commits is not the end.
+  - Never use `--hard` on commits you already pushed to a shared branch, because it requires a force push to publish.
+  - Add `git stash` first if you are unsure about local edits.
+common_mistakes:
+  - "Using `git reset --soft` or the default mixed reset: the 5s window and debug line then remain in the file."
+  - "Running `git clean -fd` to 'tidy up', which deletes scratch-export.csv."
+  - "Resetting to `HEAD~2`, which also drops the retention commit that you wanted to keep."
 validators:
-- type: commit_count_eq
-  branch: HEAD
-  count: 1
-  description: Branch has one commit
-- type: file_content_equals
-  path: change.txt
-  text: one
-  description: File content rolled back
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: main ends at "Set retention to 30 days"
+    script: |
+      test "$(git log -1 --format=%s)" = "Set retention to 30 days"
+      test "$(git rev-list --count HEAD)" = 2
+  - type: script_passes
+    description: aggregator.yaml matches the commit exactly (60s window, no debug line)
+    script: |
+      git diff --quiet HEAD -- metrics/aggregator.yaml
+      grep -q '^window: 60s' metrics/aggregator.yaml
+      ! grep -q debug metrics/aggregator.yaml
+  - type: script_passes
+    description: the untracked scratch-export.csv survived
+    script: |
+      grep -q '^2,12' scratch-export.csv
+      test -z "$(git ls-files scratch-export.csv)"
+

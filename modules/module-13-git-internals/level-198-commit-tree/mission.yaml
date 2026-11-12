@@ -4,50 +4,105 @@ level: level-198-commit-tree
 order: 198
 difficulty: expert
 xp: 560
-expected_time: 12m
+expected_time: 15m
 concepts:
-- "`git commit-tree` \u2014 commit without porcelain"
-common_mistakes:
-- "Running commands related to `git commit-tree` \u2014 commit without porcelain without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ commit-tree` \u2014 commit without porcelain`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git commit-tree
+- git update-ref with an old value
+- building a merge commit by hand
+description: |
+  The bootloader firmware repo must absorb a vendor update, `vendor/openssl-3.0.14`, but its patch collides with a hand-tuned change on `main` in `crypto/tls.c`. Someone already did the merge offline on a build machine and kept only the result: the tag `resolved` points at the merged tree. Nobody has a merge commit though, and the audit trail needs one with a fixed author and date, signed off as the release bot. You will create the merge commit by hand, from the tree, without `git merge` or `git commit`.
+objective: |
+  Turn the tree behind the tag `resolved` into a merge commit on `main`.
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. Create a commit whose tree is the one tagged `resolved` and whose parents are, in this order, the current tip of `main` and the tip of `vendor/openssl-3.0.14`. Use `git commit-tree`.
+  2. Author it as `Release Bot <release-bot@fw.dev>` with the date `2025-06-01T12:00:00+0000`, subject starting `Merge vendor/openssl-3.0.14`.
+  3. Move `main` to the new commit with `git update-ref`, passing the old tip as the expected old value, then bring index and working tree in line so that `git status` is clean.
 hints:
-- "Start with the Git command related to ``git commit-tree` \u2014 commit without\
-  \ porcelain`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git commit-tree <tree> -p <parent1> -p <parent2> -m "<message>"` prints the new commit SHA and changes
+  no ref. A tag that points at a tree can be used as `<tree>`.'
+- 'The author comes from the environment: `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_AUTHOR_DATE`, set
+  only for that command.'
+- '`git update-ref refs/heads/main <new> <old>` refuses to move if the ref is no longer `<old>`. Since
+  the index still has the old tree, finish with `git reset --hard`.'
+guide: |
+  ## Look at the pieces
 
+  ```bash
+  git cat-file -t resolved                   # tree
+  git log --oneline --graph --all
+  git diff main resolved --stat              # what the merge result adds
+  ```
 
-  **Create a Commit Object**
+  ## Create the commit object
 
+  ```bash
+  old=$(git rev-parse main)
+  new=$(GIT_AUTHOR_NAME="Release Bot" GIT_AUTHOR_EMAIL=release-bot@fw.dev \
+        GIT_AUTHOR_DATE="2025-06-01T12:00:00+0000" \
+        git commit-tree resolved -p main -p vendor/openssl-3.0.14 \
+        -m "Merge vendor/openssl-3.0.14 with offline resolution")
+  git cat-file -p "$new"
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  The order of `-p` matters: the first parent is the line you are merging into.
 
-  '
+  ## Move the branch safely
+
+  ```bash
+  git update-ref refs/heads/main "$new" "$old"
+  git reset --hard          # make index and files match the new tip
+  ```
+
+  The three-argument form is a compare-and-swap: if somebody advanced main in between, nothing is changed.
+debrief: |
+  ## A commit is a pointer to a tree plus metadata
+
+  `commit-tree` only writes the object. It does not move any branch, so you can inspect the result with `cat-file -p` before it becomes reachable. `update-ref` is what publishes it.
+
+  ## Safe ref updates
+
+  `update-ref <ref> <new> <old>` verifies the old value atomically, the same mechanism `git push --force-with-lease` and every porcelain command rely on. Plain `echo sha > .git/refs/heads/main` skips that safety and the reflog.
+
+  ## Why do this by hand
+
+  Merge results created elsewhere (a build server, a patch review) arrive as trees. Tools that import foreign history, such as `git filter-repo` and svn bridges, all use this recipe. It also shows that a merge commit is nothing special: it is just a commit with two `parent` lines.
+
+  ## Related
+
+  - `git merge -s ours` creates the same graph shape with the old tree.
+  - `git write-tree` plus `commit-tree` is how `git commit` works internally.
+common_mistakes:
+- Passing the parents in the wrong order, so `main^1` is the vendor branch and `--first-parent` history
+  breaks.
+- Updating the ref with `update-ref` but leaving the index at the old tree, so `git status` shows a reverse
+  diff.
+- Forgetting the author variables and getting the player's identity and the current time.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: script_passes
+  description: main is a merge of the old main and the vendor branch, in that order
+  script: 'test "$(git rev-list --parents -1 main | wc -w | tr -d '' '')" = 3
+
+    test "$(git rev-parse main^2)" = "$(git rev-parse vendor/openssl-3.0.14)"
+
+    test "$(git log -1 --format=%s main^1)" = "bootloader: enable secure boot"
+
+    '
+- type: script_passes
+  description: The merge commit uses the tree behind the tag resolved
+  script: 'test "$(git rev-parse ''main^{tree}'')" = "$(git rev-parse ''resolved^{tree}'')"
+
+    test "$(git cat-file -t resolved)" = tree
+
+    '
+- type: script_passes
+  description: Author, date and subject are as specified
+  script: 'test "$(git log -1 --format=''%an|%ae|%at'' main)" = "Release Bot|release-bot@fw.dev|1748779200"
+
+    git log -1 --format=%s main | grep -q ''^Merge vendor/openssl-3.0.14''
+
+    '
+- type: is_on_branch
+  branch: main
+  description: HEAD is on main
 - type: is_clean
-  description: Working tree is clean
+  description: Index and working tree match the new tip

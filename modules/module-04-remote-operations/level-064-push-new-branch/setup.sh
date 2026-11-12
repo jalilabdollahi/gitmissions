@@ -1,29 +1,19 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init --bare remote.git
-
-git clone remote.git local
-
-cd local
-
-git config user.email "player@gitmissions.local"
-
+git init -q --bare -b main origin.git
+git clone -q origin.git quipbot 2>/dev/null
+cd quipbot
 git config user.name "Player"
-
-cat > README.md <<'EOF'
-remote sandbox
-EOF
-
-git add README.md
-
-git commit -m "Initial scaffold"
-
-git branch -M main
-
-git push origin main
-
-git -C ../remote.git symbolic-ref HEAD refs/heads/main
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf 'def reply(msg):\n    return "echo: " + msg\n' > bot.py
+git add . && git commit -q -m "Echo bot"
+git push -q origin main
+git switch -q -c wip
+printf 'COMMANDS = {"/help": "help text"}\n' > commands.py
+git add . && git commit -q -m "Register /help slash command"
+printf 'COMMANDS["/joke"] = "tell joke"\n' >> commands.py
+git add . && git commit -q -m "Register /joke slash command"

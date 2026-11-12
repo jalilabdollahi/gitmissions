@@ -4,49 +4,106 @@ level: level-196-update-index
 order: 196
 difficulty: expert
 xp: 540
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`git update-index` \u2014 plumbing"
-common_mistakes:
-- "Running commands related to `git update-index` \u2014 plumbing without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ update-index` \u2014 plumbing`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git update-index --cacheinfo
+- --chmod=+x and --skip-worktree
+- staging without the working tree
+description: |
+  You maintain the Helm charts of a platform team. Three things must go into one commit, and none of them can be done with a plain `git add`. A production values file was prepared by a colleague on another machine and stored in this repository's object database as a blob; its SHA is in `NOTES.txt`, but the file does not exist in your working tree. The certificate rotation script was committed without its executable bit. And your local `config/local.env` has a private override (`DB_HOST=localhost`) that must neither be committed nor show up as a modification every time you run `git status`.
+objective: |
+  Use `git update-index` to prepare the index, then make a single commit with plain `git commit`.
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. Put the blob from `NOTES.txt` into the index at `charts/values-prod.yaml` with mode `100644`, without creating the file first.
+  2. Give `bin/rotate-certs.sh` the executable bit in the index.
+  3. Mark `config/local.env` as skip-worktree so that your local `DB_HOST=localhost` edit stays in the file, stays out of the commit and is hidden from `git status`.
+  4. Commit (message starting `Add prod values`), then bring the files on disk in line with the index (`charts/values-prod.yaml` is missing, `bin/rotate-certs.sh` has the old mode) so the working tree is clean (ignoring the untracked `NOTES.txt`).
 hints:
-- "Start with the Git command related to ``git update-index` \u2014 plumbing`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git update-index --add --cacheinfo <mode>,<sha>,<path>` creates an index entry from an existing object.
+  The line in `NOTES.txt` has the SHA.'
+- '`git update-index --chmod=+x <path>` changes the mode only in the index. `git update-index --skip-worktree
+  <path>` tells Git to ignore local edits of a tracked file.'
+- 'After the commit `git status` shows the new file as deleted from disk and the script as mode-changed:
+  `git restore <paths>` rewrites them from the index. `git ls-files -v` shows `S` for skip-worktree entries.'
+guide: |
+  ## Index entries from objects
 
+  ```bash
+  sha=$(sed -n 's/^values-prod blob: //p' NOTES.txt)
+  git cat-file -t "$sha"                       # blob
+  git update-index --add --cacheinfo 100644,"$sha",charts/values-prod.yaml
+  ```
 
-  **Low-Level Staging**
+  The index is a list of `mode, SHA, path` entries. `--cacheinfo` writes one directly; no file is read from disk.
 
+  ## Mode and local overrides
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git update-index --chmod=+x bin/rotate-certs.sh
+  git update-index --skip-worktree config/local.env
+  git ls-files -v | grep -E '^S|rotate|values'
+  ```
 
-  '
+  ## Commit and sync the disk
+
+  ```bash
+  git commit -m "Add prod values and make rotate script executable"
+  git restore charts/values-prod.yaml bin/rotate-certs.sh
+  git status --short            # clean, local.env hidden
+  ```
+
+  `git diff --cached` before the commit should show exactly the new file and the mode change.
+debrief: |
+  ## The index is plumbing too
+
+  `git add` hashes a file, writes a blob and updates an index entry. `update-index --cacheinfo` skips the first two steps because the blob already exists, which is how tools stage content that has no file on disk.
+
+  ## `--chmod` versus the file system
+
+  The executable bit recorded in the index decides what other people get on checkout. Changing it with `update-index` works even on file systems that do not track permissions (Windows).
+
+  ## Skip-worktree versus assume-unchanged
+
+  `--skip-worktree` is for files you need to keep modified locally (it is what sparse checkout uses). `--assume-unchanged` is a performance hint that Git may undo. Neither protects against upstream changes: if the file changes upstream, a pull will complain.
+
+  ## Related
+
+  - `git ls-files -s` prints modes and SHAs, `git ls-files -v` the flags.
+  - `git update-index --no-skip-worktree <path>` reverts.
+  - `git hash-object -w --stdin` creates the blob in the first place.
+common_mistakes:
+- Creating `charts/values-prod.yaml` by hand and adding it, which hashes different bytes than the blob
+  the colleague prepared.
+- Using `git commit -a`, which tries to include the local.env override (skip-worktree stops this, but
+  only if it was set first).
+- Setting `--assume-unchanged` instead of `--skip-worktree` and losing the flag after a checkout.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
+- type: script_passes
+  description: HEAD contains the prepared blob at charts/values-prod.yaml with mode 100644
+  script: 'sha=$(sed -n ''s/^values-prod blob: //p'' NOTES.txt)
+
+    test "$(git rev-parse HEAD:charts/values-prod.yaml)" = "$(git rev-parse "$sha")"
+
+    git ls-tree HEAD charts/values-prod.yaml | grep -q ''^100644 ''
+
+    '
+- type: script_passes
+  description: bin/rotate-certs.sh is executable in HEAD
+  script: 'git ls-tree HEAD bin/rotate-certs.sh | grep -q ''^100755 ''
+
+    '
+- type: script_passes
+  description: config/local.env is skip-worktree, still has the local override and the commit does not
+  script: 'git ls-files -v config/local.env | grep -q ''^S''
+
+    grep -q ''DB_HOST=localhost'' config/local.env
+
+    ! git show HEAD:config/local.env | grep -q localhost
+
+    '
 - type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+  text: Add prod values
+  description: The commit message starts with Add prod values
 - type: is_clean
-  description: Working tree is clean
+  ignore_untracked: true
+  description: Working tree is clean and the new file is on disk

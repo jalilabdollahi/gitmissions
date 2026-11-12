@@ -4,35 +4,90 @@ level: level-136-revert-no-commit
 order: 136
 difficulty: advanced
 xp: 320
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git revert --no-commit`'
-common_mistakes:
-- Running commands related to `git revert --no-commit` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A commit introduced a bad change that should be undone safely.
-objective: Revert the latest commit so `bad.txt` disappears from the working tree.
+  - git revert --no-commit
+  - reverting several commits as one
+description: |
+  The invoice engine's finance owner has decided to scrap the loyalty and seasonal discount experiments before
+  they reach customers, but she wants the rollback to be **one single, reviewable commit** in the history rather than two. In
+  between, a colleague added a billing contact to the invoice footer, which has to stay. All of this is already on
+  the shared `main`, so rewriting history is not allowed.
+objective: |
+  Add exactly **one** new commit on top of the current tip, with the message `Roll back discount experiments`, that
+  removes both discount modules (`discounts/loyalty.py` and `discounts/seasonal.py`). The footer change
+  must remain, and no existing commit may be rewritten or removed.
 hints:
-- Use `git revert` to create a new inverse commit.
-- Keep the repo clean when you finish.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git revert --no-edit HEAD\n  \
-  \ ```"
-debrief: '## What Just Happened
+  - "A plain `git revert` creates one commit per reverted commit. There is a flag that applies the inverse change but lets you decide when to commit."
+  - "`git revert --no-commit` (or `-n`) stages the result and stops. You can give it several commits."
+  - "`git revert --no-commit HEAD~1 HEAD~2`, then `git commit -m \"Roll back discount experiments\"`."
+guide: |
+  ## Two reverts, one commit
 
+  Find the two commits and check the order:
 
-  **Revert Without Committing**
+  ```bash
+  git log --oneline
+  ```
 
+  Revert both, but do not let git commit after each one:
 
-  Revert is the safe undo tool for history that may already be shared.
+  ```bash
+  git revert --no-commit HEAD~1 HEAD~2
+  git status
+  ```
 
-  '
+  Both discount files show up as staged deletions and `footer.txt` is untouched. Take a look:
+
+  ```bash
+  git diff --cached --stat
+  ```
+
+  Create the single rollback commit yourself:
+
+  ```bash
+  git commit -m "Roll back discount experiments"
+  git log --oneline
+  ```
+  If something looks wrong before committing, `git revert --abort` cancels the whole operation.
+debrief: |
+  ## What you learned
+
+  `git revert -n` (`--no-commit`) applies the inverse of the given commits to your working tree and index
+  and leaves the commit to you. That lets you combine several reverts into one commit, adjust files
+  before committing, or revert and then fix up the result.
+
+  ## Real-world use
+
+  A feature that shipped in several commits is withdrawn in one reviewable "Revert feature X" commit; this is much
+  easier to cherry-pick onto release branches than a stack of reverts.
+
+  ## Pitfalls
+
+  - When reverting several commits give them **newest first**, because later commits may depend on earlier ones.
+  - A conflicted `--no-commit` revert leaves you in the middle of a sequencer operation; finish with `git revert --continue` or cancel with `--abort`.
+  - A range works too: `git revert -n HEAD~2..HEAD~1`.
+common_mistakes:
+  - "Running two plain `git revert` commands, which creates two commits and fails the 'exactly one new commit' requirement."
+  - "Reverting HEAD, the footer commit, because it is the newest."
+  - "Resetting to before the experiments, which erases the footer change and rewrites shared history."
 validators:
-- type: file_not_exists
-  path: bad.txt
-  description: bad.txt was reverted away
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: exactly one new commit with the requested message sits on top of the previous tip
+    script: |
+      test "$(git rev-parse HEAD~1)" = "$(cat .git/gm-tip)"
+      test "$(git log -1 --format=%s)" = "Roll back discount experiments"
+      test "$(git rev-list --count HEAD)" = 5
+  - type: script_passes
+    description: both discount modules are gone but the footer change stays
+    script: |
+      test ! -e discounts/loyalty.py
+      test ! -e discounts/seasonal.py
+      grep -q 'billing@example.dev' footer.txt
+  - type: script_passes
+    description: the experiment commits are still in history (revert, not reset) and the tree is clean
+    script: |
+      git log --format=%s | grep -qx 'Add loyalty discount experiment'
+      git log --format=%s | grep -qx 'Add seasonal discount experiment'
+      test -z "$(git status --porcelain)"
+

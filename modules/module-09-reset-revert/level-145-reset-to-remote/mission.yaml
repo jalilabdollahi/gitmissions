@@ -5,37 +5,93 @@ order: 145
 difficulty: advanced
 xp: 330
 expected_time: 10m
-concepts:
-- '`git reset --hard origin/main`'
-common_mistakes:
-- Running commands related to `git reset --hard origin/main` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
 repo_path: local
-description: The local branch drifted away from the remote and should be reset back
-  to the remote state.
-objective: Hard reset `main` to `origin/main`.
+concepts:
+  - git fetch
+  - git reset --hard origin/main
+  - backing up before discarding
+description: |
+  Your local clone of the trading-bot config has drifted. You made two throwaway commits to test live tick data
+  ("Test dump of live ticks" and "Temporarily trade a test symbol") that were never meant to be pushed. Meanwhile Omar
+  pushed two real commits to `origin/main`. `git pull` would now try to merge your test junk with his work. You want local `main` to be
+  an exact copy of the remote, but you still want to look at your debug commits next week, so keep them
+  safe on a branch first. Your local `origin/main` is stale: you have not fetched since Omar pushed.
+objective: |
+  1. Preserve your two local test commits on a branch named `scratch-backup`.
+  2. Make local `main` identical to the **current** `origin/main` (as it is on the remote right now, so fetch first), with a clean working tree.
 hints:
-- Fetch if you need to refresh origin first.
-- Use `git reset --hard origin/main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reset --hard origin/main\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "Compare `git log --oneline` with `git log --oneline origin/main`. Then ask yourself whether your remote-tracking branch is up to date."
+  - "Create the backup branch *before* you reset, and refresh the remote-tracking branches with fetch."
+  - "`git fetch origin`, `git branch scratch-backup main`, `git reset --hard origin/main`."
+guide: |
+  ## Make main match the remote, keep a safety copy
 
+  See how far you are from the remote and fetch the latest state:
 
-  **Reset Branch to Remote**
+  ```bash
+  git fetch origin
+  git log --oneline --graph --all
+  ```
 
+  The graph shows two branches that diverged: your two test commits and Omar's two. Save your junk first, a branch is only a pointer so it
+  costs nothing:
 
-  Resetting to a remote ref discards local-only commits and makes your branch match
-  the remote exactly.
+  ```bash
+  git branch scratch-backup main
+  ```
 
-  '
+  Now throw away the local state of `main` and take the remote one:
+
+  ```bash
+  git reset --hard origin/main
+  git log --oneline
+  ```
+
+  Verify equality with `git status` (it says "up to date with 'origin/main'") and take a look at the backup:
+
+  ```bash
+  git log --oneline main..scratch-backup
+  ```
+debrief: |
+  ## What you learned
+
+  `git reset --hard origin/main` is the standard way to say "my local branch should be exactly what the remote has".
+  The resulting `main` has the same hash as `origin/main`. It differs from `git pull` because it never
+  merges: it discards. A backup branch before a hard reset is a cheap insurance policy.
+
+  ## Real-world use
+
+  Cleaning up a local `main` that you accidentally committed to, or resetting after a messy pull. Many teams document this as the "get back to a known state" command:
+  `git fetch origin && git reset --hard origin/main`.
+
+  ## Pitfalls
+
+  - Without `git fetch` first, `origin/main` is only what you last fetched, so you reset to stale state.
+  - `--hard` also discards uncommitted changes in tracked files.
+  - Never do this to a branch that other people are working on without telling them; it is only safe for *your local* copy.
+  - `git branch -f main origin/main` does the same without touching the working tree, but only if `main` is not checked out.
+common_mistakes:
+  - "Resetting to `origin/main` without fetching first, so `main` ends up at Omar's old state or still at your own commits."
+  - "Doing `git pull`, which creates a merge commit that mixes the throwaway test commits with the real history."
+  - "Resetting before creating `scratch-backup`, then having to dig the commits out of the reflog."
+  - "Force-pushing `main` to the remote, which would destroy Omar's work."
 validators:
-- type: script_passes
-  description: Local HEAD matches origin/main
-  script: test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: local main equals the remote's current main
+    script: |
+      remote=$(git ls-remote origin refs/heads/main | cut -f1)
+      test "$(git rev-parse main)" = "$remote"
+      test "$(git branch --show-current)" = main
+  - type: script_passes
+    description: scratch-backup keeps both throwaway commits
+    script: |
+      git log --format=%s scratch-backup | grep -qx 'Test dump of live ticks'
+      git log --format=%s scratch-backup | grep -qx 'Temporarily trade a test symbol'
+      test "$(git rev-list --count main..scratch-backup)" = 2
+  - type: script_passes
+    description: main has Omar's commits and none of the test junk, tree is clean
+    script: |
+      git log --format=%s main | grep -qx 'Lower max position size'
+      ! git log --format=%s main | grep -q 'Test dump'
+      test ! -e debug_ticks.py
+      test -z "$(git status --porcelain)"

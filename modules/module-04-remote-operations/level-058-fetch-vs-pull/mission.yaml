@@ -6,33 +6,82 @@ difficulty: intermediate
 xp: 220
 expected_time: 9m
 concepts:
-- '`git fetch` + `git merge` vs `git pull`'
-common_mistakes:
-- Running commands related to `git fetch` + `git merge` vs `git pull` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: The remote has new work, but the local repo has not fetched it yet.
-objective: Fetch from `origin` so the local repo sees `origin/main` move forward.
+  - git fetch
+  - origin/main vs main
+  - inspecting before merging
+repo_path: apiclient
+description: |
+  You work on the Android API client library for the Pocketly app. A teammate, Ines, told you she
+  pushed some networking changes to `main` this morning. Your clone is still at yesterday's state.
+  Before touching your own work you want to know exactly what she changed, but you do not want your
+  local `main` or your working files to move yet. The release lead will review your list first.
+objective: |
+  - download the new commits with `git fetch` (do not use `git pull` or merge anything)
+  - write the subjects of the commits that are on `origin/main` but not on your `main` into
+    `incoming.txt`, one per line, oldest first
+  - your local `main` must stay exactly where it was, with a clean working tree
 hints:
-- Work in `local/`.
-- Use `git fetch origin`.
-- After fetching, inspect `origin/main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git fetch origin\n   ```"
-debrief: '## What Just Happened
+  - "A plain `git log` shows only your local history. The new commits live on `origin/main` after a fetch."
+  - "`git log main..origin/main` lists commits reachable from origin/main but not from main. `--reverse` flips the order."
+  - "`git fetch origin && git log --reverse --format=%s main..origin/main > incoming.txt`"
+guide: |
+  ## 1. Fetch, do not pull
+  ```bash
+  git fetch origin
+  ```
+  Fetch updates `origin/main` (a read-only bookmark of the server) and leaves `main` and your files alone.
+  `git pull` would be fetch plus merge, which is exactly what you want to avoid for now.
 
+  ## 2. Compare the two branches
+  ```bash
+  git log --oneline main..origin/main
+  git diff --stat main origin/main
+  ```
+  `A..B` means "commits in B that are not in A".
 
-  **Fetch vs Pull**
+  ## 3. Record the subjects
+  ```bash
+  git log --reverse --format=%s main..origin/main > incoming.txt
+  ```
+  `%s` prints only the subject line, and `--reverse` puts the oldest commit first.
 
+  ## 4. Confirm nothing moved
+  ```bash
+  git status -sb
+  ```
+  Your branch should now say "behind 2".
+debrief: |
+  ## What happened
+  `git fetch` copied the new objects and moved `origin/main`. Your `main` stayed behind, so
+  `main..origin/main` became a list of what is waiting for you. That is the safe way to review
+  teammates' work before integrating it.
 
-  Fetching updates remote-tracking refs without changing your current branch.
+  ## Fetch vs pull
+  `git pull` is shorthand for `git fetch` followed by `git merge` (or rebase). Pulling blindly can create
+  surprise merges or conflicts in the middle of your work, while fetching never touches your files.
 
-  '
+  ## Real-world use
+  Run `git fetch` often. It is cheap and makes `git status`, `git branch -vv` and IDE indicators accurate.
+  Many people fetch, read `git log main..origin/main`, and only then merge or rebase.
+
+  ## Related
+  - `git diff main...origin/main` shows what the remote added since you diverged.
+  - `git fetch --all` updates every remote.
+  - `git merge --ff-only origin/main` integrates safely once you have reviewed.
+common_mistakes:
+  - "Running `git pull`, which merges the new commits into main immediately."
+  - "Listing the commits newest first, or including your own older commits in the file."
+  - "Forgetting `git fetch`, so `origin/main` is still the stale copy and the list is empty."
 validators:
-- type: script_passes
-  description: origin/main points at the newest remote commit
-  script: test "$(git log origin/main -1 --pretty=%s)" = "Remote update"
+  - type: script_passes
+    script: test "$(git rev-list --count main..origin/main)" = 2
+    description: origin/main has been fetched (it is 2 commits ahead of main)
+  - type: script_passes
+    script: test "$(git log -1 --format=%s main)" = "Add request logging interceptor"
+    description: Local main did not move
+  - type: is_clean
+    ignore_untracked: true
+    description: Working tree is clean
+  - type: script_passes
+    script: test "$(cat incoming.txt)" = "$(git log --reverse --format=%s main..origin/main)"
+    description: incoming.txt lists the incoming commit subjects, oldest first

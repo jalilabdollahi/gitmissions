@@ -4,51 +4,74 @@ level: level-007-see-the-diff
 order: 7
 difficulty: beginner
 xp: 100
-expected_time: 5m
+expected_time: 6m
 concepts:
-- '`git diff`'
-- '`git diff --staged`'
-common_mistakes:
-- Running commands related to `git diff`, `git diff --staged` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git diff`,
-  `git diff --staged``.
-objective: 'Inspect the repository history and create `diff-report.txt` containing
-  exactly:
-
-
-  `changed_line=version=2`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git diff
+  - git diff --staged
+  - staged vs unstaged changes
+description: |
+  Ines tracks the family budget in `budget.csv`. Before bed she updated several numbers, staged one of the edits
+  and then kept editing. Her partner asks for a review: "show me exactly what is already staged, and exactly what
+  is still pending". Both questions are about the same file, but they have different answers.
+objective: |
+  Save the two views as patch files in the repository folder. `staged.patch` must contain the output of
+  `git diff --staged` and `unstaged.patch` the output of `git diff`. Do not stage, unstage or commit anything
+  while doing it.
 hints:
-- Start with the Git command related to ``git diff`, `git diff --staged``.
-- Write the exact expected answer into `diff-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > diff-report.txt <<'EOF'\n\
-  changed_line=version=2\nEOF\n   ```\n\n2.\n   ```bash\n   git add diff-report.txt\n\
-  \   ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git diff` and `git diff --staged` compare different pairs of snapshots. Run both and compare their output."
+  - Redirect the output of each command into its file with `>`.
+  - "`git diff > unstaged.patch` and `git diff --staged > staged.patch` (`--cached` is a synonym)."
+guide: |
+  ## 1. What is still pending?
+  ```bash
+  git diff
+  ```
+  Compares the working tree with the index. It shows only edits that have **not** been staged.
 
+  ## 2. What will be committed?
+  ```bash
+  git diff --staged
+  ```
+  Compares the index with `HEAD`: the content of the next commit.
 
-  **See the Diff**
+  ## 3. Save both
+  ```bash
+  git diff > unstaged.patch
+  git diff --staged > staged.patch
+  ```
+  The patch files are new untracked files, so they do not change either diff.
+debrief: |
+  ## What happened
+  The same file existed in three versions: the committed one, the staged one and the one on disk.
+  `git diff` shows disk vs. staged; `git diff --staged` shows staged vs. committed. `git diff HEAD` would
+  show both combined.
 
+  ## Why it matters
+  Reviewing your own diff before committing is the cheapest code review you will ever get. Knowing which
+  command shows which layer avoids the classic confusion "I staged it, why is `git diff` empty?".
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ## Related
+  - `git diff HEAD` combines staged and unstaged changes.
+  - `git diff --stat` summarises; `git diff --word-diff` highlights words.
+  - A patch file can be applied elsewhere with `git apply`.
 
-  '
+  ## Pitfalls
+  - Right after `git add`, plain `git diff` prints nothing for that file.
+  - `git diff` does not show untracked files at all.
+common_mistakes:
+  - Swapping the two commands, so each file contains the wrong view.
+  - Running `git add .` first, which empties `git diff` and mixes the two layers.
+  - Hand-typing the patch contents instead of redirecting the command output.
 validators:
-- type: file_content_equals
-  path: diff-report.txt
-  text: changed_line=version=2
-  description: diff-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    script: test -s staged.patch && diff <(git diff --staged) staged.patch
+    description: staged.patch equals the output of git diff --staged
+  - type: script_passes
+    script: test -s unstaged.patch && diff <(git diff) unstaged.patch
+    description: unstaged.patch equals the output of git diff
+  - type: script_passes
+    script: git diff --staged | grep -q '^+groceries,450,468'
+    description: The staged groceries edit is still staged
+  - type: script_passes
+    script: git diff | grep -q '^+fun,120,141' && git diff | grep -q '^+savings,300,250'
+    description: The other two edits are still unstaged

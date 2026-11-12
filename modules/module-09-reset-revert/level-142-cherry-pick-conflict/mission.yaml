@@ -6,36 +6,103 @@ difficulty: advanced
 xp: 360
 expected_time: 10m
 concepts:
-- resolve + `git cherry-pick --continue`
-common_mistakes:
-- Running commands related to resolve + `git cherry-pick --continue` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A useful commit exists on another branch and should be copied onto `main`.
-objective: Cherry-pick the feature commit so `picked.txt` appears on `main`.
+  - cherry-pick conflicts
+  - git cherry-pick --continue
+description: |
+  The `maintenance/1.x` branch of the interest-rules library has to receive the new overdraft tier from `main`.
+  The trouble: the same commit also lowers the `current` account rate to 0.0005, but 1.x customers were
+  contractually promised 0.002 (that is what "Adjust current account rate for 1.x" set). So the cherry-pick will
+  collide on that very line, and you must decide the resolution yourself. You are on `maintenance/1.x`.
+objective: |
+  Cherry-pick "Add overdraft tier and lower current rate" from `main` onto `maintenance/1.x`, resolve the conflict
+  in `rates.py` so that it contains the new `"overdraft": 0.19` entry **and** the 1.x value `"current": 0.002`, and finish the
+  cherry-pick so that the operation is complete (no pick left in progress, no conflict markers). The commit message of the original must be kept.
 hints:
-- Find the commit on `feature/pick`.
-- Use `git cherry-pick <hash>` from `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git cherry-pick feature/pick\n   ```"
-debrief: '## What Just Happened
+  - "Find the commit on `main` and pick it. Git will stop and tell you `rates.py` has a conflict."
+  - "Open `rates.py`: the markers show your branch (HEAD) and the picked commit. Keep 0.002 for `current` and keep the new overdraft line, delete the markers."
+  - "After editing: `git add rates.py`, then `git cherry-pick --continue` (set `GIT_EDITOR=true` or save the message unchanged)."
+guide: |
+  ## A conflicted pick
 
+  Locate and pick the commit:
 
-  **Cherry-Pick Conflict**
+  ```bash
+  git log main --oneline
+  git cherry-pick <hash-of-overdraft-commit>
+  ```
 
+  Git reports a conflict and stops. `git status` shows `You are currently cherry-picking commit ...`. Open `rates.py`:
 
-  Cherry-pick copies a commit''s change onto your current branch as a new commit.
+  ```text
+  <<<<<<< HEAD
+      "current": 0.002,
+  =======
+      "current": 0.0005,
+      "overdraft": 0.19,
+  >>>>>>> <hash> (Add overdraft tier and lower current rate)
+  ```
 
-  '
+  The upper part is your branch, the lower part the incoming commit. Combine them according to the task, remove all
+  three marker lines, and the file looks like:
+
+  ```python
+  RATES = {
+      "savings": 0.012,
+      "current": 0.002,
+      "overdraft": 0.19,
+      "business": 0.004,
+  }
+  ```
+
+  Then:
+
+  ```bash
+  git add rates.py
+  git cherry-pick --continue
+  ```
+debrief: |
+  ## What you learned
+
+  A cherry-pick is a three-way merge of one commit: the commit's parent is the base, the commit is "theirs",
+  your branch is "ours". Conflicts are resolved exactly like merge conflicts, but you finish with
+  `git cherry-pick --continue` instead of `git commit`, and the original author and message are kept.
+  Resolution is a decision about business rules, not a mechanical choice of "ours" or "theirs": here the correct
+  result is a mix.
+
+  ## Real-world use
+
+  Backports often collide because maintenance branches diverge. Describe unusual resolutions in the commit
+  message so reviewers understand why the picked commit differs from the original.
+
+  ## Pitfalls
+
+  - Do not `git commit` with leftover markers: check with `git diff --check` or search for `<<<<<<<`.
+  - `git cherry-pick --abort` returns to the state before the pick if you get lost.
+  - `-X ours`/`-X theirs` would have silently picked one side and lost either the overdraft tier or the 1.x rate.
+common_mistakes:
+  - "Taking the incoming side completely, which silently lowers the current rate to 0.0005 for 1.x customers."
+  - "Taking only your side, which drops the overdraft tier the commit was meant to bring."
+  - "Leaving the `<<<<<<<` or `>>>>>>>` lines in the file and committing."
+  - "Running `git commit` instead of `git cherry-pick --continue` and forgetting that no pick is in progress anymore."
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_exists
-  path: picked.txt
-  description: picked.txt was cherry-picked
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: no cherry-pick is in progress and nothing is unmerged
+    script: |
+      test ! -f .git/CHERRY_PICK_HEAD
+      test -z "$(git ls-files --unmerged)"
+  - type: no_conflict_markers
+    description: no conflict markers remain
+  - type: script_passes
+    description: rates.py has both the 1.x current rate and the overdraft tier
+    script: |
+      grep -q '"current": 0.002' rates.py
+      grep -q '"overdraft": 0.19' rates.py
+      ! grep -q '0.0005' rates.py
+  - type: script_passes
+    description: the pick is committed on maintenance/1.x with the original message, and the README commit was not picked
+    script: |
+      test "$(git branch --show-current)" = maintenance/1.x
+      git log -1 --format=%s | grep -qx 'Add overdraft tier and lower current rate'
+      test "$(git rev-list --count HEAD)" = 3
+      test ! -e README.md
+

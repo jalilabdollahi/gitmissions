@@ -6,42 +6,113 @@ difficulty: expert
 xp: 650
 expected_time: 18m
 concepts:
-- colleague force-pushed main
-- local + remote diverged
-common_mistakes:
-- Running commands related to colleague force-pushed main, local + remote diverged
-  without checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- recovering commits erased by a force-push
+- git reflog on a reset
+- git cherry-pick and conflicts
+- receive.denyNonFastForwards
+repo_path: work
+description: |
+  Jonas had an old copy of `main` of the Ansible inventory repo and force-pushed it over the server, erasing three commits from Ines and Tomas that were already on `origin/main` (monitoring group, backup host, NTP switch). You fetched, saw the mess and ran `git reset --hard origin/main` to "get in sync", which also threw away your own unpushed commit about log retention. Nothing of this is on the server any more. The server repository is `../origin.git` and you can reach it from your clone. Your clone's reflog still knows the old tip.
+objective: |
+  Restore all the work and publish it without a force-push.
+
+  1. Local `main` and `origin/main` must end up containing Ines's two commits, Tomas's commit, your log-retention commit and Jonas's commit, all with their original authors.
+  2. The old server tip (Jonas's commit) must be an ancestor of the new `origin/main`: the push must be a normal fast-forward.
+  3. `inventory/group_vars/all.yml` must end with `ntp_server: ntp2.corp.example` (Ines's value wins over Jonas's) and `log_retention_days: 90`, with no conflict markers.
+  4. Protect the server: set `receive.denyNonFastForwards` to `true` in `../origin.git`.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git reflog` shows `reset: moving to origin/main` and, right below it, the commit you were on before.
+  `git log --oneline HEAD@{1}` shows the commits you thought were lost.'
+- Bring them back on top of Jonas's commit with `git merge <old-tip>` or `git cherry-pick <first>^..<last>`,
+  or rebase them. A conflict on the `ntp_server` line is expected.
+- '`git push origin main` should succeed without `--force` when Jonas''s commit is an ancestor. Then `git
+  -C ../origin.git config receive.denyNonFastForwards true`.'
+guide: |
+  ## Find the lost tip
 
+  ```bash
+  git reflog | head
+  git log --oneline --graph HEAD@{1}      # c2, i1, t1, i2, d1
+  ```
 
-  **Force Push Disaster**
+  `HEAD@{1}` is where HEAD stood before the reset. It still contains your commit and the commits Ines and Tomas had pushed.
 
+  ## Re-apply on top of the server state
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  A merge is the quickest way and keeps everything:
 
-  '
+  ```bash
+  git merge HEAD@{1}
+  # CONFLICT in inventory/group_vars/all.yml: ntp_server
+  ```
+
+  Choose `ntp_server: ntp2.corp.example`, keep Jonas's other change and your `log_retention_days: 90`, then:
+
+  ```bash
+  git add inventory/group_vars/all.yml
+  git commit --no-edit
+  git push origin main                     # fast-forward, no --force
+  ```
+
+  ## Harden the server
+
+  ```bash
+  git -C ../origin.git config receive.denyNonFastForwards true
+  ```
+debrief: |
+  ## Why the commits survived
+
+  A reset moves a branch pointer, it does not delete commits. Your reflog (a local journal of every position of HEAD) kept the old tip for 90 days, and the commits of Ines and Tomas were in your object database from the earlier fetch. A force-push erases them from the server only, not from every clone.
+
+  ## Choosing merge, rebase or cherry-pick
+
+  A merge preserves the original commits exactly (same SHAs) and the server history stays fast-forwardable. A rebase or cherry-pick creates copies with new SHAs but linear history. Both keep the authors, and both are fine as long as nothing is rewritten on the server.
+
+  ## Preventing the next one
+
+  `receive.denyNonFastForwards` makes the server refuse any non-fast-forward update, including `--force`. Hosting services offer the same as protected branches. `--force-with-lease` reduces the danger but cannot replace server-side protection.
+
+  ## Related
+
+  - `git reflog show origin/main` records every fetch update of the remote-tracking ref.
+  - `git branch rescue HEAD@{1}` parks the old tip under a name before you do anything else.
+common_mistakes:
+- Trying to `git push --force` your recovered branch, which would repeat Jonas's mistake.
+- Running `git gc` or `git reflog expire` before recovering, destroying the only record of the old tip.
+- Keeping Jonas's NTP value and dropping Ines's change, because the conflict was "resolved" with `--ours`.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+- type: script_passes
+  description: origin/main contains every commit that was lost, with the original authors
+  script: "o=\"git --git-dir=../origin.git\"\nfor s in \"inventory: add monitoring group|Ines\" \"inventory:\
+    \ add backup host|Tomas\" \"inventory: switch NTP to ntp2|Ines\" \"inventory: raise log retention\
+    \ to 90 days|Player\" \"inventory: move NTP to time server|Jonas\"; do\n  subj=${s%%|*}; who=${s##*|}\n\
+    \  test \"$($o log main --format='%an' --grep=\"^$subj\\$\" -1)\" = \"$who\"\ndone\n"
+- type: script_passes
+  description: The push was a fast-forward over Jonas's commit, so no work was overwritten
+  script: 'o="git --git-dir=../origin.git"
+
+    j=$($o log main --format=%H --grep=''^inventory: move NTP to time server$'' -1)
+
+    $o merge-base --is-ancestor "$j" main
+
+    test "$($o rev-parse main)" = "$(git rev-parse main)"
+
+    test "$(git rev-parse origin/main)" = "$(git rev-parse main)"
+
+    '
+- type: script_passes
+  description: all.yml has Ines's NTP value, the 90-day retention and no markers
+  script: 'grep -qx ''ntp_server: ntp2.corp.example'' inventory/group_vars/all.yml
+
+    grep -qx ''log_retention_days: 90'' inventory/group_vars/all.yml
+
+    ! grep -rqE ''^(<<<<<<<|=======|>>>>>>>)'' inventory
+
+    '
+- type: script_passes
+  description: The server refuses non-fast-forward pushes
+  script: 'test "$(git --git-dir=../origin.git config receive.denyNonFastForwards)" = true
+
+    '
 - type: is_clean
   description: Working tree is clean

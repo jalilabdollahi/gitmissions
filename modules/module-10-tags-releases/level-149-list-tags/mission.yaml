@@ -6,48 +6,80 @@ difficulty: intermediate
 xp: 200
 expected_time: 7m
 concepts:
-- '`git tag`'
-- '`git tag -l "v1.*"`'
-common_mistakes:
-- Running commands related to `git tag`, `git tag -l "v1.*"` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git tag`,
-  `git tag -l "v1.*"``.
-objective: 'Inspect the repository history and create `tags.txt` containing exactly:
-
-
-  `tags=2`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git tag -l <pattern>
+  - git tag --sort=v:refname
+description: |
+  The open-banking connector library has accumulated many tags, some released, some release candidates, and one
+  non-version tag. The release dashboard prints them alphabetically, where `v1.10.0` appears **before** `v1.2.0`, so
+  nobody can tell the newest stable version. Support asks two questions: what is the latest *stable* version (no `-rc`
+  suffix), and what are all tags of the 1.x line, in proper version order, so that they can be audited one by one?
+objective: |
+  1. Write the name of the highest stable semantic-version tag (format `vX.Y.Z`, no suffix) into `latest-stable.txt`.
+  2. Write all tags that match `v1.*` (release candidates included), one per line in ascending **version** order, into `v1-tags.txt`.
 hints:
-- Start with the Git command related to ``git tag`, `git tag -l "v1.*"``.
-- Write the exact expected answer into `tags.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > tags.txt <<'EOF'\ntags=2\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add tags.txt\n   ```\n\n3.\n   ```bash\n \
-  \  git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "`git tag` sorts alphabetically. Look in `git help tag` for sorting options that understand version numbers."
+  - "`--sort=v:refname` sorts ascending by version, `--sort=-v:refname` descending. `-l '<pattern>'` filters by glob."
+  - "`git tag -l 'v1.*' --sort=v:refname > v1-tags.txt`. For the stable one, sort descending and filter out names with `-rc`, then take the first."
+guide: |
+  ## Sorting tags like a human
 
+  See the alphabetical mess first:
 
-  **List Tags**
+  ```bash
+  git tag
+  ```
 
+  Ask for version sorting:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git tag --sort=-v:refname
+  ```
 
-  '
+  The first lines are `v2.0.0-rc1` (a candidate, not stable) and `v1.10.1-rc1`; the highest *stable* one is `v1.10.0`.
+  Filter with grep to exclude suffixed names:
+
+  ```bash
+  git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 > latest-stable.txt
+  ```
+
+  Then list the 1.x line in ascending order:
+
+  ```bash
+  git tag -l 'v1.*' --sort=v:refname > v1-tags.txt
+  cat v1-tags.txt
+  ```
+debrief: |
+  ## What you learned
+
+  `git tag -l <glob>` filters by pattern and `--sort=v:refname` compares dotted numbers numerically ("natural"
+  version order), which is why `v1.9.0 < v1.10.0` there but not alphabetically. You can also sort by date with
+  `--sort=creatordate` and print fields with `--format`. Note that `v:refname` treats `-rc1` suffixes as
+  *newer* than the plain version unless you configure `versionsort.suffix=-rc`.
+
+  ## Real-world use
+
+  Release scripts determine "the previous tag" with exactly this pipeline. `git describe --tags --abbrev=0` gives
+  the nearest tag on a branch instead, which is a different question.
+
+  ## Pitfalls
+
+  - Non-version tags such as `release-2024Q2` sort after numeric ones; filter them with the glob.
+  - `git tag --list` output has no markers: do not confuse it with `git branch` output formatting.
+  - Setting `git config versionsort.suffix -rc` makes release candidates sort before the final release.
+common_mistakes:
+  - "Taking the first line of the alphabetical `git tag` output, which is `release-2024Q2` or `v0.9.0`."
+  - "Using `--sort=-v:refname | head -1` without excluding release candidates, which gives `v2.0.0-rc1`."
+  - "Listing 1.x tags in alphabetical order, so `v1.10.0` comes before `v1.2.0`."
 validators:
-- type: file_content_equals
-  path: tags.txt
-  text: tags=2
-  description: tags.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: latest-stable.txt holds the highest stable vX.Y.Z tag
+    script: |
+      want=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+      test "$want" = v1.10.0
+      test "$(tr -d ' \r\n' < latest-stable.txt)" = "$want"
+  - type: script_passes
+    description: v1-tags.txt lists v1.* tags in ascending version order
+    script: |
+      diff <(git tag -l 'v1.*' --sort=v:refname) <(sed 's/[[:space:]]*$//' v1-tags.txt | sed '/^$/d')
+      test "$(wc -l < v1-tags.txt | tr -d ' ')" = 5
+

@@ -4,50 +4,98 @@ level: level-168-hook-not-executable
 order: 168
 difficulty: advanced
 xp: 300
-expected_time: 12m
+expected_time: 6m
 concepts:
-- "hook exists but doesn't run \u2014 chmod"
-common_mistakes:
-- "Running commands related to hook exists but doesn't run \u2014 chmod without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice `hook\
-  \ exists but doesn't run \u2014 chmod`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - hook must be executable
+  - post-checkout hook
+  - hint messages from git
+description: |
+  The release engineer set up a `post-checkout` hook for the payments-cluster repo: whenever someone switches branches, it writes
+  the matching deploy target (`production` for `main`, `staging` for `staging`, `dev` for anything else) to the untracked file
+  `.deploy-target`, which the deployment script reads. It worked on her laptop. On yours, switching branches does nothing at all:
+  `.deploy-target` never appears. Git prints no error, because a hook that is not executable is not run. Only
+  a hint is shown, which scrolls by unnoticed. The hook's script itself is correct.
+objective: |
+  Make the existing `post-checkout` hook run. After the fix, `git switch staging` must write `staging` to `.deploy-target`,
+  `git switch main` must write `production`, and a new feature branch must write `dev`. Do not change what the hook does.
 hints:
-- "Start with the Git command related to `hook exists but doesn't run \u2014 chmod`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Switch to another branch and read all the output git prints. Then compare the file's permissions with a hook that works: `ls -l .git/hooks`."
+  - "Git skips hook files that lack the executable permission. Look for the file's mode string."
+  - "`chmod +x .git/hooks/post-checkout`, then `git switch staging && cat .deploy-target`."
+guide: |
+  ## Why is my hook silent?
 
+  Reproduce the symptom and read everything git prints:
 
-  **Fix Non-Executable Hook**
+  ```bash
+  git switch staging
+  ls .deploy-target
+  ```
 
+  Recent git versions print `hint: The '.git/hooks/post-checkout' hook was ignored because it's not set as executable.` Check the permissions:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  ls -l .git/hooks/post-checkout
+  ```
 
-  '
+  `-rw-r--r--`: no `x`. Add the executable bit:
+
+  ```bash
+  chmod +x .git/hooks/post-checkout
+  ```
+
+  Try again:
+
+  ```bash
+  git switch staging && cat .deploy-target     # staging
+  git switch main && cat .deploy-target        # production
+  git switch -c feature/audit && cat .deploy-target   # dev
+  ```
+
+  The hook's content did not need any change.
+debrief: |
+  ## What you learned
+
+  Git runs a hook only if the file exists, has exactly the hook's name and is executable. When any of these fail, it quietly
+  skips the hook, which makes "my hook does not run" one of the most common hook problems. `post-checkout` receives three arguments
+  (old HEAD, new HEAD, and a flag that is 1 for a branch checkout and 0 for a file checkout), and fires after `git switch`,
+  `git checkout`, `git clone` and `git worktree add`.
+
+  ## Real-world use
+
+  Switching local configuration per branch, rebuilding generated files or reminding developers to run migrations.
+  When a hook arrives through a zip file or a copy from Windows, the executable bit is the first thing lost.
+
+  ## Pitfalls
+
+  - `core.hooksPath` pointing elsewhere makes git ignore `.git/hooks` altogether; check `git config core.hooksPath`.
+  - A wrong shebang or Windows line endings (CRLF) also prevent execution, with a different error ("bad interpreter").
+  - Hooks that are checked into the repository (in a shared folder) need the executable bit stored in git: `git update-index --chmod=+x`.
+common_mistakes:
+  - "Rewriting the hook or moving it into the repository, when the only problem is the missing executable bit."
+  - "Running the hook script by hand with `sh .git/hooks/post-checkout`; it works but git still will not call it."
+  - "Using `chmod 777` on the whole directory instead of just making the hook executable."
+  - "Testing with `git checkout -- file` (a file checkout), for which the flag is 0 and the hook does nothing."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: post-checkout
+    description: the post-checkout hook is executable
+  - type: script_passes
+    description: switching to staging, main and a feature branch writes the right deploy target
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      rm -f .deploy-target
+      git switch -q staging
+      test "$(cat .deploy-target)" = staging
+      git switch -q main
+      test "$(cat .deploy-target)" = production
+      git switch -q -c feature/audit
+      test "$(cat .deploy-target)" = dev
+  - type: script_passes
+    description: the hook still decides by branch and ignores file checkouts
+    script: |
+      grep -q 'production' .git/hooks/post-checkout
+      grep -q 'staging' .git/hooks/post-checkout
+      grep -q '\$3' .git/hooks/post-checkout
+

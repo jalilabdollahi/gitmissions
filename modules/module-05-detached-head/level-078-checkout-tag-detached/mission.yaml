@@ -6,31 +6,71 @@ difficulty: intermediate
 xp: 240
 expected_time: 8m
 concepts:
-- "tags always detach HEAD \u2014 expected behavior"
-common_mistakes:
-- "Running commands related to tags always detach HEAD \u2014 expected behavior without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `v1.0` so that HEAD becomes detached.
+  - checking out a tag
+  - detached HEAD
+  - building an old release
+repo_path: docsmith
+description: |
+  A customer of the Docsmith documentation generator reports a layout glitch in version 1.8.0. The
+  repository has several nearby tags (`v1.8.0-rc1`, `v1.8.0`, `v1.8.1`) and `main` is already on 1.9
+  work. To reproduce, you must build the site exactly as 1.8.0 shipped it. The build script `build.sh`
+  writes `dist/site.txt` (an ignored artifact) that records the version and the commit it was built from.
+objective: |
+  - check out the tag `v1.8.0` (HEAD detached at that exact commit)
+  - run `sh build.sh` from there so `dist/site.txt` is produced for that checkout
+  - leave the repo in that detached state
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout v1.0`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout v1.0\n   ```"
-debrief: '## What Just Happened
+  - "`git tag` shows the candidates. Mind the similar names: pick the final release, not the release candidate or the patch."
+  - "Checking out a tag detaches HEAD. Run the build only after you are on the right commit."
+  - "`git switch --detach v1.8.0 && sh build.sh`"
+guide: |
+  ## 1. Pick the tag
+  ```bash
+  git tag
+  git log --oneline --decorate -8
+  ```
+  `--decorate` shows where each tag sits.
 
+  ## 2. Check it out
+  ```bash
+  git switch --detach v1.8.0
+  git status
+  ```
+  You are at the tagged commit with no branch. This is the only way to see a tag's files.
 
-  **Checkout a Tag (Detached)**
+  ## 3. Build
+  ```bash
+  sh build.sh
+  cat dist/site.txt
+  ```
+  The output file names the version and commit, which proves what you built. `dist/` is in `.gitignore`,
+  so artifacts do not dirty the repo.
+debrief: |
+  ## What happened
+  A tag is a fixed label on a commit. Checking it out recreates that commit's files and leaves HEAD
+  detached, because tags, unlike branches, never move forward with new commits.
 
+  ## Why it matters
+  Reproducing customer bugs requires the exact sources they run. Branches drift, tags do not (unless
+  somebody force-moves them, which is a bad habit).
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Releases, candidates and patches
+  Tags like `v1.8.0-rc1` and `v1.8.1` look alike but contain different code. `git describe --tags`
+  and `git tag --contains <commit>` help to tell them apart.
 
-  '
+  ## Related
+  - `git switch -c repro-1.8.0 v1.8.0` creates a branch if you want to patch the old release.
+  - `git archive v1.8.0 | tar -x -C /tmp/x` exports a tag without touching your checkout.
+common_mistakes:
+  - "Checking out `v1.8.0-rc1` or `v1.8.1` because the names are close."
+  - "Building on `main` first and then checking out the tag, so `dist/site.txt` is from the wrong commit."
+  - "Switching back to main after the build, which fails the detached-HEAD requirement."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_detached
+    description: HEAD is detached
+  - type: script_passes
+    script: test "$(git rev-parse HEAD)" = "$(git rev-parse v1.8.0^{commit})"
+    description: HEAD is exactly the v1.8.0 commit
+  - type: script_passes
+    script: test "$(cat dist/site.txt)" = "docs built for version 1.8.0 from commit $(git rev-parse --short v1.8.0^{commit})"
+    description: dist/site.txt was built from the v1.8.0 checkout

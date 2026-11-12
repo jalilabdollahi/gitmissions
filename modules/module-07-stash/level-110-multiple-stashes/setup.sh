@@ -1,27 +1,19 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main pedalpoint
+cd pedalpoint
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-printf 'first
-' > app.txt
-
-git stash push -m "first"
-
-printf 'second
-' > app.txt
-
-git stash push -m "second"
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf 'STATIONS = []\n' > stations.py
+printf 'def search(q):\n    return []\n' > search.py
+printf 'TILE_SIZE = 256\n' > tiles.py
+printf 'SURGE = 1.0\n' > pricing.py
+git add . && git commit -q -m "Seed bike-share modules"
+printf 'TILE_SIZE = 512\n' > tiles.py && git stash -q
+printf 'SURGE = 1.5\n' > pricing.py && git stash -q
+printf 'def search(q):\n    return [q]\n' > search.py && git stash -q
+printf 'STATIONS = ["central"]\n' > stations.py && git stash -q

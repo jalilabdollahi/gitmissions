@@ -6,43 +6,103 @@ difficulty: expert
 xp: 650
 expected_time: 18m
 concepts:
-- main deleted
-- reflog expired
-- recover it
-common_mistakes:
-- Running commands related to main deleted, reflog expired, recover it without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- recovering refs from other clones
+- git fetch into a bare repository
+- receive.denyDeletes / denyNonFastForwards
+repo_path: ground.git
+description: |
+  Production incident on the ground-station pass-planner. Somebody ran a cleanup on the shared bare repository `ground.git` and deleted the branch `main` and the annotated release tag `v1.2`. A bare server repository has no reflog, so there is nothing to undo there. HEAD points at the missing branch, CI is red and nobody can push. Three engineers have clones next to the server (`../maya-clone`, `../lin-clone`, `../omar-clone`). They fetched at different times; only the most recent state of `main` is acceptable. You are logged in on the server repository itself.
+objective: |
+  Bring the server back.
+
+  1. Recreate `main` in `ground.git` at the newest commit any of the three clones saw on the server (compare their `origin/main`).
+  2. Recreate the annotated tag `v1.2` exactly as it was (the tag object, not a new tag), together with the other tags in the clones. `v1.0` and `v1.1` must stay.
+  3. Make sure this cannot happen again over the wire: set `receive.denyDeletes` and `receive.denyNonFastForwards` to `true` in the server repository.
+
+  `HEAD` of the server must again resolve to `refs/heads/main`, and `git fsck` must be clean.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- Inside each clone, `git log -1 --format='%h %ad %s' origin/main` shows how current it is. `git tag -l`
+  in the clone that is newest shows whether it has `v1.2`.
+- 'You can fetch from a path into a bare repository: `git fetch ../<clone> <src>:<dst>` creates or updates
+  refs in the server. A refspec like `refs/tags/*:refs/tags/*` copies tags, including annotated tag objects.'
+- '`git config receive.denyDeletes true` and the other setting protect the server against future `push
+  --delete` and `push --force`.'
+guide: |
+  ## Find the best copy
 
+  ```bash
+  for c in maya lin omar; do
+    echo "$c: $(git -C ../$c-clone log -1 --format='%h %ad %s' --date=short origin/main)"
+  done
+  ```
 
-  **Main Branch Gone**
+  The clone whose `origin/main` is the newest (and a descendant of the others) is the source of truth. Check that the older ones are ancestors of it.
 
+  ## Fetch the lost refs into the bare repo
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ```bash
+  git fetch ../omar-clone refs/heads/main:refs/heads/main 'refs/tags/*:refs/tags/*'
+  git branch -a ; git tag -l
+  git symbolic-ref HEAD                 # refs/heads/main
+  ```
 
-  '
+  A fetch into a bare repository may update any branch, because nothing is checked out there.
+
+  ## Protect the server
+
+  ```bash
+  git config receive.denyDeletes true
+  git config receive.denyNonFastForwards true
+  git fsck
+  ```
+debrief: |
+  ## Every clone is a backup
+
+  Git is distributed: each clone has the objects and the remote-tracking refs it fetched last. When the central copy loses refs, the objects are usually still there (here the bare repo still held them), and the clones know which commit each ref pointed to. The risk is picking a stale clone, which would silently roll back a colleague's work. Comparing commit dates and ancestry first avoids that.
+
+  ## Bare repositories
+
+  A server repository has no working tree and, by default, `core.logAllRefUpdates` is off, so there is no reflog. That is why deleted branches are much harder to recover on servers than on a laptop, and why server-side protection matters.
+
+  ## Hardening options
+
+  `receive.denyDeletes` rejects pushes that delete refs, `receive.denyNonFastForwards` rejects forced updates. Hosting platforms call these "branch protection". For a local server you also may enable `core.logAllRefUpdates true` to have a reflog.
+
+  ## Related
+
+  - `git for-each-ref`, `git ls-remote ../omar-clone`.
+  - `git bundle` and `git clone --mirror` for proper backups.
+common_mistakes:
+- Fetching from the first clone you try (`maya-clone`), which is two commits behind and silently loses
+  recent work.
+- Creating a new lightweight tag `v1.2` with `git tag` instead of fetching the original annotated tag.
+- Forgetting to protect the repository, so the next force-push or delete repeats the incident.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: main exists on the server at the newest commit seen by any clone
+  script: "best=\"\"\nfor c in maya lin omar; do\n  t=$(git -C ../$c-clone rev-parse origin/main)\n  if\
+    \ [ -z \"$best\" ] || git merge-base --is-ancestor \"$best\" \"$t\"; then best=$t; fi\ndone\ntest\
+    \ \"$(git rev-parse refs/heads/main)\" = \"$best\"\ntest \"$(git symbolic-ref HEAD)\" = refs/heads/main\n"
+- type: script_passes
+  description: Tags v1.0, v1.1 and the annotated original v1.2 are present
+  script: 'git rev-parse -q --verify refs/tags/v1.0 >/dev/null
+
+    git rev-parse -q --verify refs/tags/v1.1 >/dev/null
+
+    test "$(git cat-file -t refs/tags/v1.2)" = tag
+
+    test "$(git rev-parse refs/tags/v1.2)" = "$(git -C ../omar-clone rev-parse refs/tags/v1.2)"
+
+    test "$(git rev-parse ''v1.2^{commit}'')" = "$(git rev-parse main)"
+
+    '
+- type: script_passes
+  description: The server refuses deletes and non-fast-forward pushes
+  script: 'test "$(git config receive.denyDeletes)" = true
+
+    test "$(git config receive.denyNonFastForwards)" = true
+
+    '
+- type: script_passes
+  description: The repository is healthy
+  script: git fsck --no-dangling >/dev/null 2>&1

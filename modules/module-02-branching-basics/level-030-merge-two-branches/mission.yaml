@@ -4,44 +4,84 @@ level: level-030-merge-two-branches
 order: 30
 difficulty: beginner
 xp: 180
-expected_time: 6m
+expected_time: 8m
 concepts:
-- auto-merge when no conflicts
-common_mistakes:
-- Running commands related to auto-merge when no conflicts without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Two branches diverged on separate files, so the merge should complete
-  cleanly.
-objective: Merge `feature/api` into `main` and keep both files.
+  - git merge on diverged branches
+  - automatic three-way merge
+  - merge commit with two parents
+description: |
+  A tabletop roleplaying group keeps its campaign wiki in Git. After session 12 Priya wrote a recap and
+  updated a location and the world's danger level on `session-12-recap`. While she did that, Marcus
+  updated NPC Mira and added a second deity to `world.md` directly on `main`. Both branches changed
+  `world.md`, but different lines, so Git should be able to combine everything by itself.
+objective: |
+  Merge `session-12-recap` into `main`. When you are done, `main` must be on a merge commit with two parents
+  that contains **all** changes from both sides: the recap file, the lighthouse tunnel, Mira's new text,
+  the second deity, and the raised danger level in `world.md`. There must be no conflict leftovers, and the
+  working tree must be clean.
 hints:
-- Check out `main` first.
-- Run `git merge feature/api`.
-- There should be no conflicts because the branches touched different files.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git merge feature/api\n   ```"
-debrief: '## What Just Happened
+  - "`git log --oneline --graph --all` shows that both branches have commits the other one lacks, so Git must create a new merge commit."
+  - "Be on `main` and merge the other branch into it with `git merge <branch>`. Add `-m` to avoid an editor."
+  - "`git merge session-12-recap -m \"Merge session 12 recap\"`, then check `world.md`: both the deity line and the danger line changed."
+guide: |
+  ## 1. See that the branches diverged
+  ```bash
+  git log --oneline --graph --all
+  ```
+  Two lines of history that split at the first commit.
 
+  ## 2. Merge
+  ```bash
+  git switch main      # already there
+  git merge session-12-recap -m "Merge session 12 recap"
+  ```
+  Git finds the common ancestor, applies the changes of both sides and records a merge commit. Because the two
+  edits in `world.md` are on different lines, no human decision is needed.
 
-  **Merge Two Diverged Branches**
+  ## 3. Check the result
+  ```bash
+  cat world.md
+  git log --oneline --graph
+  ```
+  Both lines are changed, the recap exists and the log shows a diamond.
+debrief: |
+  ## What happened
+  This was a three-way merge: Git compared the tip of each branch with their common ancestor, took every change
+  that only one side made, and combined them. The result became a merge commit with two parents.
 
+  ## Why it matters
+  Most merges are like this one: parallel work on different parts of a project. Git handles the bookkeeping,
+  and you only review the result. Conflicts only appear when both sides touch the *same* lines (next module).
 
-  Diverged branches can merge automatically when they touch different parts of the
-  tree.
+  ## Related
+  - `git merge --no-commit` stops before committing so you can inspect the result.
+  - `git diff HEAD^1 HEAD` shows what the merge brought into `main`.
+  - `git log --merges` lists merge commits.
 
-  '
+  ## Pitfalls
+  - Merging into the wrong branch changes the wrong history; check `git branch` first.
+  - After the merge the feature branch still exists; delete it when it is no longer needed.
+common_mistakes:
+  - Merging `main` into `session-12-recap` instead, which leaves `main` untouched.
+  - Rebasing or cherry-picking and losing the merge commit.
+  - Checking only one file; `world.md` needs both lines changed.
 validators:
-- type: merge_commit_exists
-  branch: HEAD
-  description: A merge commit exists
-- type: file_exists
-  path: main.txt
-  description: main.txt exists
-- type: file_exists
-  path: api.txt
-  description: api.txt exists
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: merge_commit_exists
+    branch: main
+    description: main has a merge commit
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor session-12-recap HEAD
+    description: HEAD is a merge of main and session-12-recap
+  - type: script_passes
+    script: "grep -q 'Danger level: high' world.md && grep -q 'Lantern King' world.md"
+    description: world.md has both the danger-level and deity changes
+  - type: script_passes
+    script: test -s sessions/12.md && grep -q 'smuggler tunnel' locations/harbor.md && grep -q 'maps for 5 silver marks' npcs/mira.md
+    description: The recap, the tunnel and Mira's update are all present
+  - type: no_conflict_markers
+    description: No conflict markers
+  - type: is_clean
+    description: Working tree is clean

@@ -4,38 +4,87 @@ level: level-096-interactive-drop
 order: 96
 difficulty: intermediate
 xp: 300
-expected_time: 12m
+expected_time: 10m
 concepts:
-- '`drop` / `d` in interactive rebase'
-common_mistakes:
-- Running commands related to `drop` / `d` in interactive rebase without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: One commit on the feature branch should disappear from history.
-objective: Drop the commit whose message is `Debug print`.
+  - drop
+  - removing a commit from history
+  - leaked secrets in unpushed commits
+repo_path: deskly
+description: |
+  You are building a ticket-export screen for the Deskly helpdesk. While debugging you committed a file with live
+  production credentials (`.env.production`) as "Add temporary debug credentials", and then kept working with
+  another commit on top. You have not pushed anything yet, and the pre-push review will reject any branch whose
+  history contains that file. Deleting the file in a new commit is not enough, because it would stay in history. Remove the
+  commit itself while keeping the two good commits around it.
+objective: |
+  - rewrite `feature/ticket-export` so the commit `Add temporary debug credentials` is gone
+  - the commits `Add ticket list view` and `Add status filter` must remain (in that order, 2 commits on top of main)
+  - `.env.production` must not exist in any commit reachable from any branch, nor in the working tree
 hints:
-- Interactive rebase is designed for dropping commits.
-- Another option is to rewrite the branch without that commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch feature/rebase\n  \
-  \ ```\n\n2.\n   ```bash\n   git reset --hard HEAD~2\n   ```\n\n3.\n   ```bash\n\
-  \   printf 'final\n' > final.txt\n   ```\n\n4.\n   ```bash\n   git add final.txt\n\
-  \   ```\n\n5.\n   ```bash\n   git commit -m \"Final work\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --stat main..feature/ticket-export` shows which commit added `.env.production`. It is in the middle of the branch."
+  - "In `git rebase -i`, deleting a todo line or using `drop` removes the commit completely. Its neighbours do not depend on it."
+  - "`git rebase -i main`, change `pick` to `drop` on the credentials commit."
+guide: |
+  ## 1. Find the offending commit
+  ```bash
+  git log --stat --oneline main..feature/ticket-export
+  ```
 
+  ## 2. Drop it interactively
+  ```bash
+  git rebase -i main
+  ```
+  ```
+  pick 111 Add ticket list view
+  drop 222 Add temporary debug credentials
+  pick 333 Add status filter
+  ```
 
-  **Drop a Commit**
+  ## 3. Check that the file is gone from history
+  ```bash
+  git log --all --oneline -- .env.production
+  ls -a
+  ```
+  The log command prints nothing: no commit on any branch touches that file.
 
+  ## 4. If it had been pushed
+  History rewriting alone would not be enough: the secret would have to be rotated. Treat any pushed secret as compromised.
+debrief: |
+  ## What happened
+  `drop` tells rebase to skip a commit when replaying. The following commit did not depend on the file, so it applied
+  without conflict, and the new history never contains the secret.
 
-  Dropping commits is useful when temporary or mistaken changes should not survive
-  in the final branch history.
+  ## Why a revert would not do
+  `git revert` adds a new commit that deletes the file, but the old commit with the secret stays in
+  history forever. Dropping is only appropriate for commits nobody else has.
 
-  '
+  ## Old commits linger
+  The dropped commit still exists in the reflog and unreachable objects until garbage collection. For
+  a real leak that reached a remote, rotate the credentials and use `git filter-repo` or the host's
+  secret-removal tools.
+
+  ## Related
+  - `git rebase -i` with a deleted line is the same as `drop`.
+  - `.gitignore` plus a secrets scanner (pre-commit hook) prevents repeats.
+common_mistakes:
+  - "Deleting the file in a new commit: the secret stays in history."
+  - "Dropping the wrong commit, e.g. `Add status filter`."
+  - "Using `git reset --hard HEAD~1`, which would also lose the status filter commit."
 validators:
-- type: script_passes
-  description: Debug print commit is gone
-  script: '! git log --pretty=%s | grep -q ''^Debug print$'''
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/ticket-export
+    description: HEAD is on feature/ticket-export
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/ticket-export | tr '\n' '|')" = "Add ticket list view|Add status filter|"
+    description: Only the two good commits remain on top of main
+  - type: script_passes
+    script: |
+      test -z "$(git log --all --format=%H -- .env.production)"
+    description: No reachable commit ever touched .env.production
+  - type: file_not_exists
+    path: .env.production
+    description: The credentials file is not in the working tree
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && test -f filters.py && test -f tickets.py"
+    description: No rebase in progress and the good work is intact

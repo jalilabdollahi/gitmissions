@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main pawfinder
+cd pawfinder
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-v1
-EOF
-
-git add app.txt
-
-git commit -m "Initial scaffold"
-
-printf 'v2
-' > app.txt
-
-git add app.txt
-
-git commit -m "Second commit"
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+c() { git add -A && git commit -q -m "$1"; }
+printf 'CREATE TABLE pets (id INT, name TEXT);\n' > schema.sql
+printf 'ideas:\n' > notes.txt && c "Create pets table"
+printf 'CREATE TABLE owners (id INT);\n' >> schema.sql && c "Add owners table"
+git tag v0.9
+printf 'CREATE INDEX pets_name ON pets(name);\n' >> schema.sql && c "Index pet names"
+git switch -q --detach v0.9
+printf 'CREATE TABLE pets (id INT, name TEXT, vaccinated BOOLEAN);\nCREATE TABLE owners (id INT);\n' > schema.sql
+git add schema.sql
+printf 'ideas:\n- photo gallery\n' > notes.txt

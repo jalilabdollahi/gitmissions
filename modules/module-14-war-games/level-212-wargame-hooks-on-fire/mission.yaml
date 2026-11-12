@@ -6,43 +6,118 @@ difficulty: expert
 xp: 660
 expected_time: 18m
 concepts:
-- pre-commit
-- commit-msg
-- pre-push all fail for different reasons
-common_mistakes:
-- Running commands related to pre-commit, commit-msg, pre-push all fail for different
-  reasons without checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- pre-commit, commit-msg and pre-push hooks
+- fixing the content instead of bypassing hooks
+- git push with a failing hook
+repo_path: work
+description: |
+  The image-templates repo (Packer) has three client-side hooks, and today every step of shipping a change fails for a different reason. Your staged new template `db.pkr.hcl` is blocked by the pre-commit hook. Your first commit message is rejected by the commit-msg hook. And even once that works, the pre-push hook refuses the push because the tests fail on an older, still unpushed commit that references a hardening script under a mistyped name. Policy says: hooks stay as they are, `--no-verify` is not allowed, and every commit that reaches the server must follow the message convention.
+objective: |
+  Get your work onto `origin/main` through the hooks.
+
+  1. Commit the staged `db.pkr.hcl` and `scripts/postgres.sh` with a message that satisfies the commit-msg hook (`feat: add postgres image [IMG-142]`-style: type, colon, text, ticket in brackets).
+  2. Fix the broken reference `scripts/hardn.sh` in `web.pkr.hcl` in another valid commit so that `./test.sh` passes.
+  3. Push `main` to `origin`. No hook may be edited, disabled or skipped (no `--no-verify`, no `core.hooksPath` change), no commit may add trailing whitespace, and every commit on the server after the first one must satisfy the message rule.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- 'Run `.git/hooks/pre-commit` (or just `git commit`) to read the error: it names the file with trailing
+  whitespace. `git diff --cached --check` shows the exact lines. Fix the file and `git add` it again.'
+- Read `.git/hooks/commit-msg` to see the exact pattern. The pre-push hook runs `./test.sh`; run it yourself
+  to see which template references a script that does not exist.
+- A unit test fails on the typo, not on the hook. Correct `hardn.sh` to the real file name in `scripts/`,
+  commit with a valid message and push.
+guide: |
+  ## 1. Pre-commit: trailing whitespace
 
+  ```bash
+  git commit -m "feat: add postgres image [IMG-142]"   # pre-commit: trailing whitespace in db.pkr.hcl
+  git diff --cached --check                              # shows the lines
+  sed -i.bak 's/[[:space:]]*$//' db.pkr.hcl && rm db.pkr.hcl.bak
+  git add db.pkr.hcl
+  ```
 
-  **All Hooks Broken**
+  ## 2. Commit-msg: convention
 
+  ```bash
+  cat .git/hooks/commit-msg
+  git commit -m "feat: add postgres image [IMG-142]"
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  The subject needs `type: text [IMG-n]` with type one of feat, fix, chore, docs.
 
-  '
+  ## 3. Pre-push: the tests
+
+  ```bash
+  sh ./test.sh                              # template references missing scripts/hardn.sh
+  ls scripts/
+  sed -i.bak 's/hardn.sh/harden.sh/' web.pkr.hcl && rm web.pkr.hcl.bak
+  git commit -am "fix: correct harden script path [IMG-143]"
+  git push origin main
+  ```
+
+  The push only passes once the tests are green, which is exactly what the hook is for.
+debrief: |
+  ## Hooks are gates, not obstacles
+
+  A hook is just an executable in `.git/hooks`. `pre-commit` runs before the commit is created (non-zero blocks it), `commit-msg` receives the message file, `pre-push` runs before objects are sent. Each failure here was a *real* defect: whitespace noise, an unparsable message, a template pointing at a script that does not exist. Bypassing with `--no-verify` would have pushed a broken build.
+
+  ## Reading a failing hook
+
+  Run it by hand to see its output, read its source to learn the rule, then fix the cause. Hooks are local and are not copied by `git clone`, so teams share them with a tracked directory and `core.hooksPath` (or tools such as pre-commit and husky).
+
+  ## Order of events
+
+  pre-commit, prepare-commit-msg, commit-msg, post-commit for a commit; pre-push for a push. The pre-push test checks the *tip* of what you push, so an old bad commit blocks new good ones until it is repaired in a later commit (or rewritten if unpublished).
+
+  ## Related
+
+  - `git diff --check` warns about whitespace errors and conflict markers.
+  - `git commit --no-verify` and `git push --no-verify` exist for emergencies, not for routine use.
+common_mistakes:
+- Using `--no-verify` or deleting the hook, which the policy forbids and which would leave the server
+  with broken templates.
+- Fixing the whitespace in the working tree but forgetting to `git add` the file again, so the same staged
+  version is rejected again.
+- 'Writing a message like `Add postgres image IMG-142`: the ticket must be in square brackets.'
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
-- type: is_clean
-  description: Working tree is clean
+- type: hook_exists
+  name: pre-commit
+  description: pre-commit hook is still installed
+- type: hook_exists
+  name: commit-msg
+  description: commit-msg hook is still installed
+- type: hook_exists
+  name: pre-push
+  description: pre-push hook is still installed
+- type: script_passes
+  description: Hooks are unmodified and hooksPath is unchanged
+  script: 'grep -q ''gm-hook: pre-commit'' .git/hooks/pre-commit
+
+    grep -q ''IMG-\[0-9\]+'' .git/hooks/commit-msg
+
+    grep -q ''sh ./test.sh'' .git/hooks/pre-push
+
+    test "$(git config core.hooksPath)" = ".git/hooks"
+
+    '
+- type: script_passes
+  description: Every commit on the server follows the message rule and adds no trailing whitespace
+  script: "o=\"git --git-dir=../origin.git\"\nbase=$($o rev-list --max-parents=0 main)\ntest \"$($o rev-list\
+    \ --count $base..main)\" -ge 3\n$o log --format=%s $base..main | while IFS= read -r s; do\n  printf\
+    \ '%s\\n' \"$s\" | grep -qE '^(feat|fix|chore|docs): .+ \\[IMG-[0-9]+\\]$'\ndone\n! $o log -p --format=\
+    \ $base..main | grep -E '^\\+.*[[:space:]]+$' | grep -vq '^+++'\n"
+- type: script_passes
+  description: The server tip passes the template test and contains the postgres template
+  script: 't=$(mktemp -d); git --git-dir=../origin.git archive main | tar -x -C "$t"
+
+    (cd "$t" && sh ./test.sh)
+
+    test -f "$t/db.pkr.hcl" && test -f "$t/scripts/postgres.sh"
+
+    rm -rf "$t"
+
+    '
+- type: script_passes
+  description: Local main equals origin/main and the tree is clean
+  script: 'test "$(git --git-dir=../origin.git rev-parse main)" = "$(git rev-parse main)"
+
+    test -z "$(git status --porcelain)"'

@@ -6,40 +6,80 @@ difficulty: beginner
 xp: 100
 expected_time: 5m
 concepts:
-- '`git add`'
-- '`git commit -m`'
-common_mistakes:
-- Running commands related to `git add`, `git commit -m` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository exists, but the first file has not been committed yet.
-objective: Stage `hello.txt` and create the first commit with the message `Initial
-  commit`.
+  - git add
+  - git commit -m
+  - the staging area
+description: |
+  The Okafor family keeps its favourite recipes in a folder of Markdown files, plus a weekly
+  shopping list, and wants them to survive the next laptop upgrade. Dad already ran `git init`
+  in the folder, but nothing has been saved yet: the repository has no commits at all.
+objective: |
+  Record all current files (the three recipes and `shopping-list.txt`) in one commit
+  with the message `Add first recipes`. When you are done, the repository must have exactly one commit
+  and `git status` must report a clean working tree.
 hints:
-- Start with the Git command related to ``git add`, `git commit -m``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git add hello.txt\n   ```\n\n\
-  2.\n   ```bash\n   git commit -m \"Initial commit\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows what Git sees. Everything is untracked, so nothing will be part of a commit until you stage it."
+  - Staging is done with `git add`, saving with `git commit`. The message goes after `-m`.
+  - "`git add .` then `git commit -m \"Add first recipes\"`"
+guide: |
+  ## 1. See the starting point
+  ```bash
+  git status
+  ```
+  "No commits yet" and four untracked entries (the `recipes/` folder and the shopping list).
 
+  ## 2. Stage everything
+  ```bash
+  git add .
+  ```
+  The staging area (index) is the draft of your next commit. `.` means "everything below here".
 
-  **Your First Commit**
+  ## 3. Commit
+  ```bash
+  git commit -m "Add first recipes"
+  ```
+  Git stores a snapshot of the staged files with your message, name and the time.
 
+  ## 4. Verify
+  ```bash
+  git status
+  git log --oneline
+  ```
+  The tree is clean and the log has exactly one entry.
+debrief: |
+  ## What happened
+  `git add` copied the current content of each file into the index. `git commit` turned the index into a
+  permanent snapshot (a commit object) and moved `main` to point at it.
 
-  This level focused on `git add`, `git commit -m`.
+  ## Why two steps?
+  The index lets you decide exactly what goes into a commit. Today you staged everything; in later
+  missions you will stage only part of your work.
 
-  '
+  ## Real-world use
+  The first commit of any project is usually "Initial commit" or a description of what exists.
+  Here the message says what the commit holds: the first recipes.
+
+  ## Related
+  - `git commit -am "msg"` stages modified tracked files and commits, but never picks up new files.
+  - `git log --oneline` lists commits one per line.
+  - `git show` displays what a commit contains.
+
+  ## Pitfalls
+  - A commit stores what was staged, not what is currently on disk. Editing a file after `git add` leaves that edit out.
+  - `git commit` without `-m` opens an editor, which is easy to get stuck in.
+common_mistakes:
+  - Running `git commit -m` without staging first; Git answers "nothing added to commit" because untracked files are never included automatically.
+  - Putting the message in single quotes with an apostrophe inside, or forgetting the closing quote, which makes the shell wait for more input.
+  - Typing a message that differs from the requested one; the check compares it exactly.
 validators:
-- type: commit_message_contains
-  text: Initial commit
-  description: Latest commit message contains 'Initial commit'
-- type: commit_count_eq
-  branch: HEAD
-  count: 2
-  description: The first user commit was created
-- type: is_clean
-  description: Working tree is clean
+  - type: commit_count_eq
+    count: 1
+    description: The repository has exactly one commit
+  - type: commit_message_equals
+    text: Add first recipes
+    description: Commit message is "Add first recipes"
+  - type: script_passes
+    script: test "$(git ls-tree -r --name-only HEAD | sort | tr '\n' ' ')" = "recipes/granola.md recipes/lentil-soup.md recipes/pancakes.md shopping-list.txt "
+    description: The commit contains the three recipes and the shopping list
+  - type: is_clean
+    description: Working tree is clean

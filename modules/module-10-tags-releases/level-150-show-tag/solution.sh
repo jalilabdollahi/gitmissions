@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
-cat > show-tag.txt <<'EOF'
-tag=v1.0
-EOF
-git add show-tag.txt
-git commit -m "docs: add report"
+git for-each-ref --format='%(taggername)' refs/tags/v3.2.0 > tagger.txt
+git rev-list -n 1 v3.2.0 > target.txt
+git tag -l v3.2.0 --format='%(contents:subject)' > note.txt

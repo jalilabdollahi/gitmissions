@@ -4,40 +4,86 @@ level: level-067-track-remote-branch
 order: 67
 difficulty: intermediate
 xp: 240
-expected_time: 9m
+expected_time: 10m
 concepts:
-- '`git checkout --track origin/feature`'
-common_mistakes:
-- Running commands related to `git checkout --track origin/feature` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Create a local branch that tracks `origin/feature/api`.
+  - tracking branches
+  - git switch on a remote branch
+  - push to upstream
+repo_path: studyloop
+description: |
+  Studyloop is an e-learning platform. Your colleague Amara started a quiz countdown on the remote branch
+  `feature/quiz-timer` and asked you to fix a bug in it: pausing the timer resets the elapsed time.
+  Another remote branch, `feature/quiz-scoring`, looks similar but is not part of this task. You have
+  already fetched everything, but you have no local branch for either of them yet.
+objective: |
+  - create a local branch named `feature/quiz-timer` that tracks `origin/feature/quiz-timer` and check it out
+  - make a commit on top of Amara's work that changes `timer.py` so `pause()` keeps the elapsed time; use the message `Fix timer reset on pause`
+  - push so the remote branch contains Amara's commit and yours, and `origin/feature/quiz-timer` equals your local branch
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git checkout --track origin/feature/api\n   ```"
-debrief: '## What Just Happened
+  - "`git branch -a` lists remote-tracking branches. A local branch does not exist yet, so you must create one that follows the remote one."
+  - "`git switch feature/quiz-timer` creates a tracking branch automatically when exactly one remote has that name. `git switch -c <name> --track origin/<name>` is the explicit form."
+  - "Switch, edit `timer.py`, `git commit -am \"Fix timer reset on pause\"`, `git push`."
+guide: |
+  ## 1. Find the branch
+  ```bash
+  git branch -a
+  git log --oneline origin/feature/quiz-timer
+  ```
+  Only `main` exists locally.
 
+  ## 2. Create the tracking branch
+  ```bash
+  git switch feature/quiz-timer
+  git branch -vv
+  ```
+  Git sees that `origin/feature/quiz-timer` matches the name and creates a local branch that tracks it.
+  Check the brackets in `git branch -vv`.
 
-  **Track an Existing Remote Branch**
+  ## 3. Fix the bug and commit
+  ```bash
+  sed -n '1,20p' timer.py
+  # edit pause() so it does not set elapsed back to 0
+  git commit -am "Fix timer reset on pause"
+  ```
 
+  ## 4. Push to the tracked branch
+  ```bash
+  git push
+  ```
+  No arguments needed, because the upstream is known.
+debrief: |
+  ## What happened
+  A local branch can be linked to a remote one through its upstream configuration. Creating the branch
+  from `origin/feature/quiz-timer` set that link, so `git push` and `git pull` pick the right target on
+  their own, and `git status` shows ahead/behind counts.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Ways to create it
+  - `git switch <name>` (DWIM, when the name is unique)
+  - `git switch -c <name> --track origin/<name>`
+  - `git checkout -b <name> origin/<name>` (older style)
+  - `git branch -u origin/<name>` to link an existing branch afterwards
 
-  '
+  ## Pitfalls
+  - Never commit on `origin/feature/quiz-timer` directly: remote-tracking branches are read-only, and checking one out detaches HEAD.
+  - If two remotes have the same branch name, DWIM refuses; use `--track` with the full name.
+
+  ## Related
+  - `git branch -vv` shows the upstream for every local branch.
+  - `git pull --ff-only` is a safe way to keep a tracking branch current.
+common_mistakes:
+  - "Checking out `origin/feature/quiz-timer`, which leaves HEAD detached, then committing there."
+  - "Tracking the similarly named `feature/quiz-scoring` branch by mistake."
+  - "Committing but not pushing, so Amara never sees the fix."
 validators:
-- type: branch_exists
-  branch: feature/api
-  description: feature/api exists locally
-- type: script_passes
-  description: feature/api tracks origin/feature/api
-  script: test "$(git for-each-ref --format='%(upstream:short)' refs/heads/feature/api)"
-    = "origin/feature/api"
+  - type: is_on_branch
+    branch: feature/quiz-timer
+    description: HEAD is on feature/quiz-timer
+  - type: script_passes
+    script: test "$(git rev-parse --abbrev-ref feature/quiz-timer@{upstream})" = origin/feature/quiz-timer
+    description: The branch tracks origin/feature/quiz-timer
+  - type: script_passes
+    script: test "$(git log -1 --format=%s)" = "Fix timer reset on pause" && ! git diff --quiet HEAD~1 HEAD -- timer.py
+    description: The top commit is the timer fix and it changes timer.py
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/feature/quiz-timer)" = "$(git rev-parse HEAD)" && git log --format=%s | grep -qx 'Add quiz countdown timer'
+    description: The remote branch equals your branch and still contains Amara's commit

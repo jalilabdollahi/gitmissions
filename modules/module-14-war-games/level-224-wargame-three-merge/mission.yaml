@@ -4,44 +4,113 @@ level: level-224-wargame-three-merge
 order: 224
 difficulty: expert
 xp: 740
-expected_time: 18m
+expected_time: 22m
 concepts:
-- merge three features
-- 2 conflict pairs
-common_mistakes:
-- Running commands related to merge three features, 2 conflict pairs without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- conflict markers committed in a merge
+- undoing an unpublished merge
+- merging three branches with overlapping edits
+description: |
+  The release branch `release/2026.03` of the API gateway is supposed to combine three feature branches: `feature/auth-rotation`, `feature/rate-limit` and `feature/audit-log`. Each one inserts its plugin at the top of the plugin chain in `gateway.yaml` and adds a route to `routes.yaml`, so every pair conflicts. A colleague merged the first branch fine, then hit the conflict for the second, ran `git add -A && git commit` without opening the files, and committed the conflict markers into `gateway.yaml` and `routes.yaml`. The third branch has not been merged. Nothing is pushed. The check script `./check.sh` fails, and so would any CI that checks for markers.
+objective: |
+  Produce a release branch whose history is clean.
+
+  1. `release/2026.03` must contain all three feature branches (merge commits), with `./check.sh` passing: the plugin chain has `auth`, then `ratelimit`, then `audit`, followed by the existing `cors` and `compress`, and `routes.yaml` lists `/health`, `/rotate`, `/limits` and `/audit`.
+  2. No commit between `main` and `release/2026.03` may contain conflict markers, not even the one your colleague committed: since nothing was published, remove that commit from the history instead of fixing forward.
+  3. `release/2026.03` is checked out and the working tree is clean.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git log --oneline --graph` shows the first (good) merge and the second one with markers on top. `git
+  show HEAD` makes the markers visible. Because it is unpublished, `git reset --hard HEAD^` throws away
+  only that bad merge.'
+- Re-merge `feature/rate-limit`, resolve both files by hand (insert order matters), `git add`, `git commit
+  --no-edit`, then repeat with `feature/audit-log`.
+- Run `./check.sh` before every commit, and `git diff --check` to find leftover markers. `git log -p main..HEAD
+  | grep '^+<<<<<<<'` must print nothing.
+guide: |
+  ## Look at the damage
 
+  ```bash
+  git log --oneline --graph
+  git show HEAD:gateway.yaml | head -12     # markers committed
+  ./check.sh
+  ```
 
-  **Three-Branch Merge Disaster**
+  ## Drop the bad merge
 
+  The branch was never published, so it is safe to move it back to the first merge:
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ```bash
+  git reset --hard HEAD^
+  git log --oneline --graph
+  ```
 
-  '
+  ## Merge the second branch properly
+
+  ```bash
+  git merge feature/rate-limit        # conflicts in gateway.yaml and routes.yaml
+  ```
+
+  Edit both files: the chain must read `auth`, `ratelimit`, then the old entries; the routes list keeps everything. Then:
+
+  ```bash
+  ./check.sh
+  git add gateway.yaml routes.yaml
+  git commit --no-edit
+  ```
+
+  ## Third branch
+
+  ```bash
+  git merge feature/audit-log          # conflicts again, resolve with audit after ratelimit
+  ./check.sh && git add -A && git commit --no-edit
+  git log -p main..HEAD | grep -c '^+<<<<<<<'   # 0
+  ```
+debrief: |
+  ## Markers are just text
+
+  `git add` does not check whether a file still has conflict markers; Git only cares that the path is no longer listed as unmerged. Committing them is therefore easy and the damage is invisible until the build breaks. Guards: `git diff --check`, a `pre-commit` hook that greps for markers, a CI check like `check.sh`.
+
+  ## Fix forward or rewrite
+
+  On a shared branch you fix forward (a new commit that removes the markers), and the bad commit stays in history. On an unpublished branch you may rewrite: `git reset --hard` to the commit before the bad merge removes it as if it never happened, and later bisects will not land on a broken state.
+
+  ## Why the order of plugins matters
+
+  Three branches inserting at the same line produce conflicts for every pair. The semantic order (authenticate, then rate limit, then audit) is something only a human knows; Git can only tell you that both sides touched the same place.
+
+  ## Related
+
+  - `git merge --no-commit` lets you inspect and test before the merge commit exists.
+  - `git checkout --merge <file>` recreates markers if you resolved a file wrongly.
+  - `git rerere` makes the second merge of the same conflict automatic.
+common_mistakes:
+- Fixing the files in a new commit on top, which leaves a commit with markers in the history (unpublished
+  history is supposed to be clean here).
+- Using `git reset --hard HEAD~2`, which also drops the good merge of `feature/auth-rotation`.
+- Resolving by taking one side with `-X theirs`, so one plugin silently disappears from the chain.
 validators:
+- type: script_passes
+  description: All three feature branches are merged into release/2026.03
+  script: "for b in feature/auth-rotation feature/rate-limit feature/audit-log; do\n  git merge-base --is-ancestor\
+    \ \"$b\" release/2026.03\ndone\ntest \"$(git rev-list --merges --count main..release/2026.03)\" -ge\
+    \ 3\n"
+- type: script_passes
+  description: check.sh passes (chain order and all routes)
+  script: 'sh ./check.sh
+
+    grep -q -- ''- cors'' gateway.yaml
+
+    grep -q -- ''- compress'' gateway.yaml
+
+    '
+- type: no_conflict_markers
+  description: No conflict markers in the tracked files
+- type: script_passes
+  description: No commit in the release history ever contained conflict markers
+  script: '! git log -p --format= main..release/2026.03 | grep -qE ''^\+(<<<<<<<|=======|>>>>>>>)''
+
+    '
 - type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+  branch: release/2026.03
+  description: HEAD is on release/2026.03
 - type: is_clean
   description: Working tree is clean

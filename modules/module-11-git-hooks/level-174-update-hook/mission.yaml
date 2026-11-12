@@ -4,50 +4,111 @@ level: level-174-update-hook
 order: 174
 difficulty: advanced
 xp: 400
-expected_time: 12m
+expected_time: 15m
+repo_path: work
 concepts:
-- per-branch push rules
-common_mistakes:
-- Running commands related to per-branch push rules without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `per-branch
-  push rules`.
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - update hook
+  - per-ref server-side rules
+  - immutable tags
+description: |
+  The regulatory-filings archive records each submission with a tag such as `filing-2024-Q4`. These tags are legal evidence: they may be created, but must
+  **never** be moved to another commit or deleted. Hosted platforms offer "protected tags", but this is a self-hosted bare repo (`../origin.git`),
+  and someone with force-push rights recently retagged a filing. You will enforce the rule with an `update` hook, the per-ref cousin of
+  `pre-receive`: git runs it once for **each** ref being updated, passing the ref name, the old value and the new value as arguments, and
+  only that one ref is rejected when it exits non-zero.
+objective: |
+  Install an executable `update` hook in `../origin.git/hooks/` which rejects any update or deletion of an **existing** tag (`refs/tags/*` whose old value is not all zeros),
+  but still allows creating new tags and any updates of branches. After that, the existing tag `filing-2024-Q4` on the server must not be movable or deletable, even with `--force`.
 hints:
-- Start with the Git command related to `per-branch push rules`.
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "The update hook is called with three arguments: `$1` ref name, `$2` old object, `$3` new object. A new ref has an old value of forty zeros."
+  - "Match refs with `case \"$1\" in refs/tags/*)`. If the old value is not all zeros, the tag already exists."
+  - "Put it in `../origin.git/hooks/update`, print a reason on stderr, `exit 1` for existing tags, `exit 0` otherwise, and `chmod +x`."
+guide: |
+  ## One verdict per ref
 
+  The server hook gets arguments (unlike `pre-receive`, which reads stdin):
 
-  **Server-Side: update**
+  ```bash
+  cat > ../origin.git/hooks/update <<'HOOK'
+  #!/bin/sh
+  refname="$1"; old="$2"; new="$3"
+  zero=0000000000000000000000000000000000000000
+  case "$refname" in
+    refs/tags/*)
+      if [ "$old" != "$zero" ]; then
+        echo "update: tag ${refname#refs/tags/} already exists and is immutable" >&2
+        exit 1
+      fi ;;
+  esac
+  exit 0
+  HOOK
+  chmod +x ../origin.git/hooks/update
+  ```
 
+  Test from `work`:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git tag -f filing-2024-Q4 HEAD
+  git push --force origin filing-2024-Q4        # remote rejected
+  git push origin :refs/tags/filing-2024-Q4     # remote rejected (delete)
+  git tag filing-2025-Q1 && git push origin filing-2025-Q1   # allowed
+  git push origin main                          # allowed
+  ```
 
-  '
+  A deleted ref arrives with a new value of zeros; the same rule covers it because the old value is non-zero.
+debrief: |
+  ## What you learned
+
+  The `update` hook is evaluated **per ref**: with several refs in one push, git runs it for each, and rejecting one does not
+  block the others (unlike `pre-receive`, which is all-or-nothing). It gets the ref name and the old and new object names as arguments, so it is
+  the natural place for rules such as "protected branch", "no deletions", "tags are immutable" and "only fast-forwards on main".
+
+  ## Real-world use
+
+  Evidence and release tags, signed releases, protecting `main` from force pushes (compare with `git merge-base --is-ancestor $old $new`).
+  Hosted git services implement their protected-ref features in exactly this layer.
+
+  ## Pitfalls
+
+  - Without the hook, even a normal user can run `git push --force origin <tag>` and silently move a published tag.
+  - An `update` hook cannot see the whole push; use `pre-receive` if a rule needs all refs together.
+  - `receive.denyDeletes` and `receive.denyNonFastForwards` are built-in settings for the simplest cases.
+common_mistakes:
+  - "Writing a `pre-receive` hook but reading arguments `$1 $2 $3`, which are empty for it."
+  - "Blocking all tag pushes, so new filings cannot be tagged anymore."
+  - "Forgetting that deletion also is an update: a rule that compares only the *new* value misses it."
+  - "Placing the hook in `work/.git/hooks`, a client-side directory."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: an executable update hook is installed in the bare repository
+    script: |
+      test -x ../origin.git/hooks/update
+  - type: script_passes
+    description: moving or deleting the existing tag is rejected, even with --force
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R ../origin.git "$t/o.git"
+      git clone -q "$t/o.git" "$t/w"; cd "$t/w"
+      git fetch -q --tags
+      before=$(git ls-remote origin refs/tags/filing-2024-Q4 | cut -f1)
+      test -n "$before"
+      printf 'x\n' >> filings.csv
+      git -c user.name=T -c user.email=t@example.dev commit -q -am "Later commit"
+      git tag -f filing-2024-Q4 HEAD >/dev/null 2>&1
+      if git push -q --force origin filing-2024-Q4 >/dev/null 2>&1; then echo "tag move accepted" >&2; exit 1; fi
+      if git push -q origin :refs/tags/filing-2024-Q4 >/dev/null 2>&1; then echo "tag delete accepted" >&2; exit 1; fi
+      test "$(git ls-remote origin refs/tags/filing-2024-Q4 | cut -f1)" = "$before"
+  - type: script_passes
+    description: new tags and branch updates are still accepted
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R ../origin.git "$t/o.git"
+      git clone -q "$t/o.git" "$t/w"; cd "$t/w"
+      printf 'x\n' >> filings.csv
+      git -c user.name=T -c user.email=t@example.dev commit -q -am "Add a row"
+      git tag -a filing-2025-Q1 -m "Q1 2025" >/dev/null 2>&1 || git -c user.name=T -c user.email=t@example.dev tag -a filing-2025-Q1 -m "Q1 2025"
+      git push -q origin main
+      git push -q origin filing-2025-Q1
+      test -n "$(git ls-remote origin refs/tags/filing-2025-Q1)"
+      test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
+

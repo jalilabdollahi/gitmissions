@@ -1,42 +1,92 @@
-name: "Conflict \u2014 Deleted vs Modified"
+name: Conflict - Deleted vs Modified
 module: module-03-merge-conflicts
 level: level-043-conflict-in-deleted-file
 order: 43
 difficulty: intermediate
 xp: 250
-expected_time: 10m
+expected_time: 12m
 concepts:
-- one side deleted
-- other modified
-common_mistakes:
-- Running commands related to one side deleted, other modified without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - modify/delete conflict
+  - git rm to resolve
+  - porting a change to the new location
+description: |
+  The Oak Street neighbourhood association used to keep its contact list in `legacy-contacts.txt`. Wanda moved
+  everything into `contacts.csv` on `main` and deleted the text file. At the same time Hugh updated Dr Novak's phone
+  number inside the old text file on the branch `update-phones`. Now Git reports "deleted by us / modified by them":
+  one side deleted the file, the other changed it. Wanda's reorganisation is intentional, but Hugh's new number must not be lost.
+objective: |
+  Merge `update-phones` into `main`. `legacy-contacts.txt` must stay deleted (neither tracked nor in the working
+  tree), and `contacts.csv` must show Dr Novak's **new** phone number (the one from Hugh's change) instead of the
+  old one. Complete the merge commit.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: "## What Just Happened\n\n**Conflict \u2014 Deleted vs Modified**\n\nConflict\
-  \ resolution is just editing the working tree to the final content you want, then\
-  \ telling Git the file is resolved.\n"
+  - "`git status` says `deleted by us: legacy-contacts.txt`. `git diff main...update-phones` shows what Hugh changed in that file."
+  - "Decide what the correct end state is: the file stays deleted (`git rm legacy-contacts.txt`), but the information from Hugh's edit must be moved to the new place by hand."
+  - "Edit the Novak row in `contacts.csv`, `git add contacts.csv`, `git rm legacy-contacts.txt` and `git commit`."
+guide: |
+  ## 1. Merge
+  ```bash
+  git merge update-phones
+  git status
+  ```
+  `deleted by us: legacy-contacts.txt`. Git keeps Hugh's version of the file in the working tree so you can look.
+
+  ## 2. See what Hugh changed
+  ```bash
+  git diff main...update-phones
+  ```
+  The new number replaces `555-0111` with `555-0199`.
+
+  ## 3. Resolve
+  ```bash
+  git rm legacy-contacts.txt                 # accept the deletion
+  # edit contacts.csv: change the Dr Novak row to 555-0199
+  git add contacts.csv
+  ```
+
+  ## 4. Commit
+  ```bash
+  git commit -m "Merge update-phones: new number moved to contacts.csv"
+  ```
+debrief: |
+  ## What happened
+  A modify/delete conflict arises when one branch removes a file and the other edits it. Git cannot know whether
+  the edit should resurrect the file. It leaves the modified file in your working tree and asks you to choose:
+  `git add <file>` to keep it, `git rm <file>` to delete it.
+
+  ## Why it matters
+  Reorganisations (moves, splits, deletions) conflict with ordinary edits made elsewhere. The key step here
+  was noticing that deleting the file is not enough: the intent of the other change (the new number) must be
+  re-applied in the new location.
+
+  ## Related
+  - `git log --merge -- <file>` shows the commits involved.
+  - `git show update-phones:legacy-contacts.txt` reads the other side's version.
+  - Rename detection can turn "deleted + new file" into a rename, which then merges without a conflict.
+
+  ## Pitfalls
+  - Choosing `git rm` and forgetting to carry over the edit loses information silently.
+  - `git add` on the file would bring the old file back from the dead.
+common_mistakes:
+  - Running `git add legacy-contacts.txt`, which resurrects the file Wanda deliberately deleted.
+  - Deleting the file but leaving the old number in `contacts.csv`.
+  - Running `git rm --cached` only, which leaves the file lying around untracked.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor update-phones HEAD
+    description: HEAD merges update-phones
+  - type: file_not_exists
+    path: legacy-contacts.txt
+    description: legacy-contacts.txt is gone from the working tree
+  - type: file_not_tracked
+    path: legacy-contacts.txt
+    description: legacy-contacts.txt is not tracked
+  - type: script_passes
+    script: grep -qx 'first-aid,Dr Novak,555-0199' contacts.csv && ! grep -q '555-0111' contacts.csv
+    description: contacts.csv has Dr Novak's new number only
+  - type: script_passes
+    script: grep -qx 'chair,Wanda,555-0100' contacts.csv && grep -qx 'treasurer,Hugh,555-0101' contacts.csv
+    description: The other contacts are intact
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

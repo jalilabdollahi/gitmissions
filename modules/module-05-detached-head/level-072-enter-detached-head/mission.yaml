@@ -6,31 +6,77 @@ difficulty: intermediate
 xp: 220
 expected_time: 8m
 concepts:
-- "`git checkout <hash>` \u2014 intentional exploration"
-common_mistakes:
-- "Running commands related to `git checkout <hash>` \u2014 intentional exploration\
-  \ without checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - git switch --detach
+  - git log -S
+  - parent of a commit
+repo_path: coinjar
+description: |
+  The Coinjar mobile wallet shipped a regression: a few users report that their savings jar overcharges them
+  since "round-up savings" went live. The feature is controlled by a flag in `flags.json`. To reproduce
+  the bug on the last build that did NOT have the feature enabled, you need to put your working copy
+  at exactly that commit. You do not want to move `main` or any branch, just look at the old state.
+objective: |
+  Put the repository in detached HEAD state on the last commit before `"round_up"` was switched to `true` in
+  `flags.json` (the commit immediately before the one that enabled it). Do not move or modify `main`.
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "`git log -p -- flags.json` shows how the flags changed. Look for the commit that flips `round_up` to true. Note: there is an earlier commit where it was added as false."
+  - "`git log -S'\"round_up\": true'` finds commits that add or remove that exact text. The commit you need is its parent (`<hash>^` or `<hash>~1`)."
+  - "`git switch --detach <hash-of-enabling-commit>^`, or `git checkout --detach`."
+guide: |
+  ## 1. Find the enabling commit
+  ```bash
+  git log --oneline -- flags.json
+  git log -S'"round_up": true' --oneline
+  ```
+  The pickaxe option `-S` lists commits where the number of occurrences of the text changed, so it
+  skips the earlier commit that added the flag as `false`.
 
+  ## 2. Step to its parent
+  ```bash
+  git show <hash>^ --stat
+  ```
+  `^` and `~1` both mean "the first parent".
 
-  **Enter Detached HEAD**
+  ## 3. Detach there
+  ```bash
+  git switch --detach <hash>^
+  git status
+  ```
+  `--detach` makes the intent explicit, no branch is created or moved.
 
+  ## 4. Verify
+  ```bash
+  grep round_up flags.json
+  ```
+  It must say `false`.
+debrief: |
+  ## What happened
+  You checked out a commit by id. HEAD now holds that id instead of a branch name, which is called a
+  detached HEAD. The working tree shows that old snapshot while `main` stays where it was.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Why use it
+  Reproducing a bug on an old build, building an old release, or diffing behaviour all need a
+  past state without creating branches. Reading and running code in this state is safe.
 
-  '
+  ## Pickaxe vs grep
+  `git log -S<text>` counts occurrences, `-G<regex>` matches changed lines, and `--grep` searches
+  commit messages. Pickaxe finds when content, not wording, changed.
+
+  ## Related
+  - `git switch -` returns to the previous branch.
+  - `git switch -c <name>` turns the detached state into a branch if you want to keep work.
+common_mistakes:
+  - "Detaching at the enabling commit itself instead of its parent."
+  - "Using the first commit that mentions round_up, which only added the flag as false."
+  - "Running `git reset --hard` on main to travel back, which moves the branch instead of just looking."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_detached
+    description: HEAD is detached
+  - type: script_passes
+    script: |
+      first=$(git log -S'"round_up": true' --format=%H --reverse main | head -1)
+      test "$(git rev-parse HEAD)" = "$(git rev-parse "$first^")"
+    description: HEAD is the parent of the commit that enabled round_up
+  - type: script_passes
+    script: test "$(git log -1 --format=%s main)" = "Tune streak copy"
+    description: main has not moved

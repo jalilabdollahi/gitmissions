@@ -4,50 +4,87 @@ level: level-117-log-all-branches
 order: 117
 difficulty: advanced
 xp: 280
-expected_time: 10m
+expected_time: 8m
 concepts:
-- "`--all` flag \u2014 see the full picture"
-common_mistakes:
-- "Running commands related to `--all` flag \u2014 see the full picture without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``--all`\
-  \ flag \u2014 see the full picture`."
-objective: 'Inspect the repository history and create `all-branches.txt` containing
-  exactly:
-
-
-  `subjects=4`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --all
+  - git log --grep
+  - git branch --contains
+description: |
+  Finance is angry: contractors were paid double overtime last Friday. Someone swears the multiplier was
+  already capped at 1.5 for contractors, yet `git log` on `main` shows no such commit. You suspect the fix lives
+  on a branch that never reached `main`, and you need to know both where it is and who wrote it, so you can
+  ask them to open a pull request.
+objective: |
+  Find the commit whose subject says the overtime multiplier was capped for contractors, wherever it lives in
+  the repository. Create `found.txt` with exactly two lines: line 1 is the name of the **branch** that contains
+  that commit, line 2 is the **author name** of the commit.
 hints:
-- "Start with the Git command related to ``--all` flag \u2014 see the full picture`."
-- Write the exact expected answer into `all-branches.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > all-branches.txt <<'EOF'\n\
-  subjects=4\nEOF\n   ```\n\n2.\n   ```bash\n   git add all-branches.txt\n   ```\n\
-  \n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "The fix is not reachable from the branch you are on. Ask `git log` to start from all refs."
+  - "`git log --all --grep=<words>` searches commit messages on every branch. Then ask which branch contains the hash you found."
+  - "`git branch --contains <hash>` lists the branch. `git log -1 --format=%an <hash>` prints just the author name."
+guide: |
+  ## Look beyond HEAD
 
+  ```bash
+  git log --oneline          # the fix is missing: you only see main
+  git log --all --oneline    # now every branch contributes commits
+  ```
 
-  **Log All Branches**
+  Several branches have similar sounding commits (holiday cap, overtime report). Search by message:
 
+  ```bash
+  git log --all --oneline --grep='overtime multiplier'
+  ```
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  Take the hash it prints and find out which branch holds it, and who wrote it:
 
-  '
+  ```bash
+  git branch --contains <hash>
+  git log -1 --format=%an <hash>
+  ```
+
+  Write both answers into the file:
+
+  ```bash
+  git branch --contains <hash> --format='%(refname:short)' > found.txt
+  git log -1 --format=%an <hash> >> found.txt
+  ```
+debrief: |
+  ## What you learned
+
+  `git log` answers "what led to HEAD". When you are hunting for work that is *not* in your branch, you need
+  `--all` (every ref) and a filter. `--grep` filters on the message; `--author`, `--since` and `-S` filter on
+  other things. `git branch --contains <commit>` is the reverse question: given a commit, which branches have
+  it? Add `-r` for remote branches or `--all` for both.
+
+  ## Real-world use
+
+  "Is the hotfix in the release branch yet?" is answered with `git branch --contains` (or `git tag --contains`
+  for tags). Release managers use it before every deploy.
+
+  ## Pitfalls
+
+  - `--grep` is case sensitive unless you add `-i`.
+  - Without `--all` a search never leaves the current branch, which is why people conclude that "the commit does not exist".
+  - `--format=%an` is the author, `%cn` is the committer; they differ after a rebase or cherry-pick.
+common_mistakes:
+  - "Picking the decoy commits: the holiday cap and the overtime report talk about multipliers and contractors too, but are different commits."
+  - "Stopping at `git log --grep` on the current branch, which finds nothing."
+  - "Writing the committer or the branch's last commit author instead of the author of that specific commit."
+  - "Putting both answers on one line or adding extra text to found.txt."
 validators:
-- type: file_content_equals
-  path: all-branches.txt
-  text: subjects=4
-  description: all-branches.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: found.txt line 1 is the branch that contains the contractor overtime cap
+    script: |
+      c=$(git log --all --format=%H -1 --grep='Cap overtime multiplier')
+      want=$(git branch --contains "$c" --format='%(refname:short)')
+      test "$(sed -n 1p found.txt | tr -d ' \r')" = "$want"
+  - type: script_passes
+    description: found.txt line 2 is the author of that commit and nothing else is in the file
+    script: |
+      c=$(git log --all --format=%H -1 --grep='Cap overtime multiplier')
+      want=$(git log -1 --format=%an "$c")
+      test "$(sed -n 2p found.txt | sed 's/[[:space:]]*$//')" = "$want"
+      test "$(wc -l < found.txt | tr -d ' ')" -le 3
+      test -z "$(sed -n '3,$p' found.txt | tr -d ' \n')"
+

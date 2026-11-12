@@ -6,35 +6,75 @@ difficulty: intermediate
 xp: 210
 expected_time: 7m
 concepts:
-- '`git stash push -m "WIP: login form"`'
-common_mistakes:
-- 'Running commands related to `git stash push -m "WIP: login form"` without checking
-  `git status` first, which hides the actual repository state.'
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Save the current modifications with the message `WIP login`.
+  - git stash push -m
+  - staged and unstaged changes
+  - switching branches with a dirty tree
+repo_path: rsvpal
+description: |
+  On Rsvpal, an event RSVP page, you are working on guest-waitlist notifications: `invite.py` is staged and
+  `guests.py` has further unstaged edits. A hotfix is needed on the maintenance branch `release/1.2`, but Git refuses
+  to switch while `invite.py` differs between the branches. Stash everything with a description that you will recognise
+  next week among other stashes, then move to the release branch.
+objective: |
+  - create one stash with the message `WIP: guest waitlist notifications` that contains both `invite.py` and `guests.py`
+  - switch to `release/1.2` with a clean working tree
+  - the stash entry must remain in the stash list
 hints:
-- 'Start with the Git command related to ``git stash push -m "WIP: login form"``.'
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash push -m \"WIP login\"\
-  \n   ```"
-debrief: '## What Just Happened
+  - "Try `git switch release/1.2` first and read the error: your local changes would be overwritten."
+  - "`git stash push -m \"<message>\"` stores a description. The default stash saves staged and unstaged tracked changes."
+  - "`git stash push -m \"WIP: guest waitlist notifications\" && git switch release/1.2`"
+guide: |
+  ## 1. Why switching fails
+  ```bash
+  git status -sb
+  git switch release/1.2
+  ```
+  `invite.py` differs on that branch, so Git protects your edits.
 
+  ## 2. Stash with a message
+  ```bash
+  git stash push -m "WIP: guest waitlist notifications"
+  git stash list
+  git stash show --name-only
+  ```
+  Both files are in the stash. Without `-m` the entry would be called something like `WIP on main: <hash> <subject>`.
 
-  **Stash with a Message**
+  ## 3. Switch
+  ```bash
+  git switch release/1.2
+  git status -sb
+  ```
+debrief: |
+  ## What happened
+  A stash entry holds two commits internally: one for the index (staged state) and one for the working tree.
+  Both of your files went in, and the tree became clean, so the switch was allowed.
 
+  ## Why name stashes
+  Default messages only mention the branch and the last commit, which makes a long list unreadable.
+  A short description tells you what is inside when you return days later.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Staged vs unstaged
+  `git stash pop --index` restores the staged/unstaged split exactly; plain pop merges everything into
+  the working tree as unstaged changes.
 
-  '
+  ## Related
+  - `git stash push -- <path>` stashes only specific files.
+  - `git stash push --keep-index` stashes but leaves staged changes in place.
+common_mistakes:
+  - "Forgetting `-m`, so the entry has the generic name and the message check fails."
+  - "Stashing only one of the two files via `git stash push -- invite.py`."
+  - "Using `git switch -f release/1.2`, which silently discards your edits."
 validators:
-- type: stash_not_empty
-  description: A stash entry exists
-- type: script_passes
-  description: Stash message is correct
-  script: git stash list | grep -q 'WIP login'
+  - type: is_on_branch
+    branch: release/1.2
+    description: HEAD is on release/1.2
+  - type: script_passes
+    script: |
+      git stash list | grep -qF 'WIP: guest waitlist notifications'
+    description: A stash has the requested message
+  - type: script_passes
+    script: |
+      test "$(git stash show --name-only 'stash@{0}' | sort | tr '\n' ' ')" = "guests.py invite.py "
+    description: The stash contains both invite.py and guests.py
+  - type: is_clean
+    description: Working tree is clean

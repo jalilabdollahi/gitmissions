@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init -b main
-git config user.email "player@gitmissions.local"
+git init -q -b main rsvpal
+cd rsvpal
 git config user.name "Player"
-
-cat > app.txt <<'EOF'
-base
-EOF
-
-git add app.txt
-
-git commit -m "Base commit"
-
-printf 'work in progress
-' > app.txt
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf 'def invite(guest):\n    return guest\n' > invite.py
+printf 'GUESTS = []\n' > guests.py
+git add . && git commit -q -m "RSVP page basics"
+git switch -q -c release/1.2
+printf 'def invite(guest):\n    return guest.strip()\n' > invite.py
+git commit -q -am "Trim guest names on invite"
+git switch -q main
+printf 'def invite(guest):\n    return notify(guest)\n' > invite.py
+git add invite.py
+printf 'GUESTS = []\nWAITLIST = []\n' > guests.py

@@ -4,40 +4,88 @@ level: level-122-reflog-after-reset
 order: 122
 difficulty: advanced
 xp: 350
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git reflog` + `git reset --hard <hash>`'
-common_mistakes:
-- Running commands related to `git reflog` + `git reset --hard <hash>` without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: Useful history was made unreachable, and your job is to recover it.
-objective: 'Recover the lost work so `recovered.txt` exists in the current branch,
-  then commit it with `chore: recover history`.'
+  - git reflog
+  - git reset --hard <ref>
+description: |
+  You keep the company's ML model registry: one line per model with its stage. This morning, trying to
+  "drop the unfinished stuff", you ran `git reset --hard HEAD~3` on `main`. It turns out the last three commits were not
+  unfinished at all: the staging promotion of `churn-model`, the `ltv-model` registration and the production
+  promotion of `fraud-model`. The release train leaves in an hour.
+objective: |
+  Bring `main` back to **exactly** the commit it pointed to before the reset, with a clean working tree.
+  No new commits should be created: the three lost commits must be the original ones, not copies.
 hints:
-- Use `git reflog` or `git fsck --lost-found` to find the lost commit.
-- Restore the file or reset to the right commit.
-- Commit the recovered file when needed.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git reflog\n   ```\n\n2.\n   ```bash\n\
-  \   git checkout <lost-commit> -- recovered.txt\n   ```\n\n3.\n   ```bash\n   git\
-  \ add recovered.txt\n   ```\n\n4.\n   ```bash\n   git commit -m \"chore: recover\
-  \ history\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log` no longer shows the lost commits, but git still remembers where `main` and HEAD pointed before the reset."
+  - "`git reflog` lists HEAD's previous positions. The entry just before `reset: moving to HEAD~3` is the commit you want."
+  - "`git reset --hard HEAD@{1}` moves main back to where HEAD was one step ago (check with `git reflog` first)."
+guide: |
+  ## Undoing a hard reset
 
+  First confirm the damage:
 
-  **Recover After Hard Reset**
+  ```bash
+  git log --oneline          # only 3 commits left
+  cat registry/models.txt
+  ```
 
+  The reset only moved the branch pointer; the commits still exist. Ask the reflog:
 
-  Reflog and object recovery tools are the difference between panic and a calm recovery.
+  ```bash
+  git reflog
+  ```
 
-  '
+  The top entry is `reset: moving to HEAD~3`. The one below it is the commit "Promote fraud-model 1.2.0 to
+  production", which is your old tip. Move the branch back there:
+
+  ```bash
+  git reset --hard HEAD@{1}
+  ```
+
+  `HEAD@{1}` means "where HEAD was one move ago". If you have done other things in the meantime, use the
+  hash instead: `git reset --hard <hash>`.
+
+  Verify:
+
+  ```bash
+  git log --oneline
+  git status
+  ```
+debrief: |
+  ## What you learned
+
+  `git reset --hard` moves the branch and overwrites the index and working tree, but it does not delete
+  commits. The previous tip is recorded in the reflog (and in `ORIG_HEAD`) until it expires. Resetting
+  back to it restores *committed* work completely.
+
+  ## Real-world use
+
+  "I reset too far" is one of the most common git accidents, and the reflog is the fix. Make it a habit:
+  before anything destructive, copy the current hash (`git rev-parse HEAD`) or create a backup branch.
+
+  ## Pitfalls
+
+  - **Uncommitted** changes destroyed by `--hard` are not in the reflog and cannot be recovered this way.
+  - `HEAD@{n}` counts moves, not time, so each new command shifts the number. Always read `git reflog` first.
+  - `git reset --soft`/`--mixed` to the old hash also reaches the right commit but leaves your tree differently.
+  - Reflog entries are per repository clone; a different clone cannot help you.
+common_mistakes:
+  - "Running `git cherry-pick` or `git revert` to re-create the lost commits, which produces new hashes instead of restoring the originals."
+  - "Using `git reset --hard ORIG_HEAD` after other resets or merges, when ORIG_HEAD may point elsewhere; read the reflog."
+  - "Resetting to the wrong reflog entry (for example the 'Register ltv-model' commit), so the production promotion is still missing."
 validators:
-- type: file_content_equals
-  path: recovered.txt
-  text: rescued
-  description: Recovered file is present
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: script_passes
+    description: main points to the exact commit it had before the reset
+    script: |
+      test "$(git rev-parse main)" = "$(cat .git/gm-orig-tip)"
+  - type: file_content_contains
+    path: registry/models.txt
+    text: "fraud-model 1.2.0 production"
+    description: the production promotion is back in the registry
+  - type: is_clean
+    description: working tree and index are clean
+

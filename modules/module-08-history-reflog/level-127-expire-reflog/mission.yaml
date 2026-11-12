@@ -4,50 +4,95 @@ level: level-127-expire-reflog
 order: 127
 difficulty: advanced
 xp: 320
-expected_time: 10m
+expected_time: 9m
 concepts:
-- "`git reflog expire` \u2014 when entries vanish"
-common_mistakes:
-- "Running commands related to `git reflog expire` \u2014 when entries vanish without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ reflog expire` \u2014 when entries vanish`."
-objective: 'Inspect the repository history and create `expire.txt` containing exactly:
-
-
-  `command=git reflog expire`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git reflog expire
+  - git gc --prune
+  - permanently removing unreachable objects
+description: |
+  The nightly-load ETL repo suddenly weighs 4 MB for a 1 KB config. Two days ago someone committed a debug dump of
+  60,000 raw events and reset it away with `git reset --hard HEAD~1`. The files are gone from the branch, but the
+  dump is still stored and a fresh `git clone` of this repository *on the build server* will copy this
+  copy around. Data governance wants the raw events removed from this clone for good, but the
+  `legacy` branch and everything reachable must stay exactly as it is.
+objective: |
+  Make the dump commit "Add raw event dump for debugging" and its large file **disappear completely from the
+  repository's object database**: the reflog must no longer mention it and the objects must be pruned. `main` must still have its
+  3 commits, the branch `legacy` must exist, and the working tree must be clean.
 hints:
-- "Start with the Git command related to ``git reflog expire` \u2014 when entries\
-  \ vanish`."
-- Write the exact expected answer into `expire.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > expire.txt <<'EOF'\ncommand=git\
-  \ reflog expire\nEOF\n   ```\n\n2.\n   ```bash\n   git add expire.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "Two things keep the dump alive: a reflog entry that points to it, and the fact that git has not collected unreachable objects yet."
+  - "First expire reflog entries: `git reflog expire` with an expiry of `now` for all refs. Then run garbage collection with a prune that is not delayed by the usual two weeks."
+  - "`git reflog expire --expire=now --all` then `git gc --prune=now`."
+guide: |
+  ## Why a reset does not free space
 
+  Check the size and the safety net holding the dump:
 
-  **Reflog Expiry**
+  ```bash
+  git count-objects -vH
+  git reflog | head
+  ```
 
+  The reflog entry `commit: Add raw event dump for debugging` keeps the commit "reachable", and `gc` never deletes
+  reachable objects. Remove the reflog entries first:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git reflog expire --expire=now --all
+  ```
 
-  '
+  Now the objects are unreachable but young, so `gc` still keeps them for 2 weeks by default. Prune immediately:
+
+  ```bash
+  git gc --prune=now
+  ```
+
+  Verify:
+
+  ```bash
+  git count-objects -vH
+  git reflog
+  git log --oneline --all
+  ```
+
+  The dump is gone for good, and normal history is untouched.
+debrief: |
+  ## What you learned
+
+  Git keeps unreachable objects for a grace period. `git reflog expire --expire=now --all` empties the
+  journals; `git gc --prune=now` physically deletes everything unreachable. This is the supported way to
+  clean a clone of data you reset away. The default expiry is 90 days for reachable and 30 days for unreachable
+  reflog entries, and `gc.pruneExpire` is two weeks.
+
+  ## Real-world use
+
+  Removing leaked data from a **local** clone. Note the scope: other clones, forks and the server still have
+  whatever was pushed. For leaked secrets in shared history you need a history rewrite (`git filter-repo`) *and*
+  rotating the secret.
+
+  ## Pitfalls
+
+  - After expiring the reflog you lose your own undo safety net. Do it deliberately.
+  - `git gc --prune=now` can delete objects another git process is just creating; do not run it during a busy operation.
+  - `--expire-unreachable=now` is a gentler variant that keeps reachable entries in the reflog.
+common_mistakes:
+  - "Running only `git gc`, which keeps unreachable objects younger than two weeks (and everything the reflog still points to)."
+  - "Running `git gc --prune=now` before expiring the reflog: the dump is still referenced by the reflog, so nothing is removed."
+  - "Deleting `.git/objects` files by hand, which corrupts the repository."
 validators:
-- type: file_content_equals
-  path: expire.txt
-  text: command=git reflog expire
-  description: expire.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: the dump commit and its large file blob no longer exist in the repository
+    script: |
+      while read -r sha; do ! git cat-file -e "$sha" 2>/dev/null; done < .git/gm-dump-sha
+  - type: script_passes
+    description: the reflog no longer mentions the dump
+    script: |
+      ! git reflog --all | grep -q 'raw event dump'
+  - type: script_passes
+    description: main still has its 3 commits and legacy still exists
+    script: |
+      test "$(git rev-list --count main)" = 3
+      git rev-parse --verify -q legacy >/dev/null
+      test "$(git rev-list --count legacy)" = 2
+  - type: is_clean
+    description: working tree is clean
+

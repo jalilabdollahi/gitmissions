@@ -4,33 +4,82 @@ level: level-080-relative-refs
 order: 80
 difficulty: intermediate
 xp: 260
-expected_time: 8m
+expected_time: 10m
 concepts:
-- navigating history with relative refs
-common_mistakes:
-- Running commands related to navigating history with relative refs without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - HEAD~n and HEAD^n
+  - second parent of a merge
+  - navigating with relative refs
+repo_path: tunelist
+description: |
+  The Tunelist playlist app has a merge commit at the tip of `main`: the crossfade feature branch was merged
+  and then deleted, so there is no branch name for its commits any more. The product owner asks three
+  questions about the history, and you must answer them using relative refs only (`^`, `~`), not by
+  scrolling `git log`. Afterwards, park your working copy on the first commit of the deleted feature
+  branch to try its original code.
+objective: |
+  - write `refs.txt` with exactly three lines, each the commit subject of:
+    1. the second parent of the tip of main (`main^2`)
+    2. the grandparent of the tip along first parents (`main~2`)
+    3. the first parent of the second parent (`main^2~1`)
+  - then put HEAD in detached state on that same commit (`main^2~1`)
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "`^n` selects the n-th parent of a commit (merges have two), while `~n` follows first parents n times."
+  - "`git log -1 --format=%s <ref>` prints one subject. Draw the graph with `git log --graph --oneline` to check your thinking."
+  - "`git log -1 --format=%s 'main^2'`, `'main~2'`, `'main^2~1'`; then `git switch --detach 'main^2~1'`."
+guide: |
+  ## 1. Draw the history
+  ```bash
+  git log --graph --oneline main
+  ```
+  The merge commit has two parents: the first is the main line, the second is the end of the feature line.
 
+  ## 2. Relative refs
+  - `main^` or `main^1` is the first parent, `main^2` the second.
+  - `main~2` is `main^^`, two steps down the first-parent chain.
+  - `main^2~1` is the second parent's own first parent.
 
-  **Relative Refs: HEAD~1, HEAD^2**
+  ## 3. Print each subject
+  ```bash
+  git log -1 --format=%s 'main^2'  > refs.txt
+  git log -1 --format=%s 'main~2' >> refs.txt
+  git log -1 --format=%s 'main^2~1' >> refs.txt
+  cat refs.txt
+  ```
 
+  ## 4. Park on the first feature commit
+  ```bash
+  git switch --detach 'main^2~1'
+  ```
+debrief: |
+  ## What happened
+  Every commit knows its parents. `^` chooses between parents, `~` walks along the first parent. A
+  merge commit's first parent is the branch you merged into, and the second is the branch you merged in.
+  Combining them reaches any commit near a ref without knowing a single hash.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Reading the notation
+  - `HEAD~3` equals `HEAD^^^`.
+  - `HEAD~3` and `HEAD^3` differ: the latter means the third parent (octopus merges only).
+  - Quote refs with `^` in shells where it is special (zsh, Windows cmd).
 
-  '
+  ## Real-world use
+  Reverting a merge needs `-m 1`, which is the same parent numbering. Comparing "what main had before
+  this merge" is `git diff main^1 main`.
+
+  ## Related
+  - `git rev-parse main^2~1` prints the full hash.
+  - `git show main^2` shows that commit.
+common_mistakes:
+  - "Confusing `~2` with `^2`: `main~2` is the grandparent, `main^2` is the merged-in parent."
+  - "Writing hashes instead of subjects, or writing the lines in a different order."
+  - "Forgetting to quote refs containing `^` in zsh."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: script_passes
+    script: |
+      exp=$(printf '%s\n%s\n%s\n' "$(git log -1 --format=%s main^2)" "$(git log -1 --format=%s main~2)" "$(git log -1 --format=%s main^2~1)")
+      test "$exp" = "$(sed '/^$/d' refs.txt)"
+    description: refs.txt has the three subjects in the requested order
+  - type: is_detached
+    description: HEAD is detached
+  - type: script_passes
+    script: test "$(git rev-parse HEAD)" = "$(git rev-parse main^2~1)"
+    description: HEAD is on the first commit of the merged feature line

@@ -1,47 +1,19 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init --bare remote.git
-
-git clone remote.git seed
-
+mkdir workspace
+git init -q --bare -b main streamlane.git
+git clone -q streamlane.git seed 2>/dev/null
 cd seed
-
-git config user.email "player@gitmissions.local"
-
-git config user.name "Player"
-
-cat > file.txt <<'EOF'
-1
-EOF
-
-git add file.txt
-
-git commit -m "Commit 1"
-
-printf '2
-' > file.txt
-
-git add file.txt
-
-git commit -m "Commit 2"
-
-printf '3
-' > file.txt
-
-git add file.txt
-
-git commit -m "Commit 3"
-
-git branch -M main
-
-git push origin main
-
-git -C ../remote.git symbolic-ref HEAD refs/heads/main
-
+git config user.name "Vik"
+git config user.email "vik@streamlane.dev"
+git config commit.gpgsign false
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
+  printf 'bitrate=%s\n' "$((i * 150))" > encoder.conf
+  git add . && git commit -q -m "Tune encoder profile $i"
+done
+git push -q origin main
 cd ..
-
 rm -rf seed

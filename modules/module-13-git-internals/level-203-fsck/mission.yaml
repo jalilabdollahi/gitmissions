@@ -4,49 +4,95 @@ level: level-203-fsck
 order: 203
 difficulty: expert
 xp: 560
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`git fsck` \u2014 find corruption"
-common_mistakes:
-- "Running commands related to `git fsck` \u2014 find corruption without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ fsck` \u2014 find corruption`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git fsck --full --strict
+- missing and corrupt loose objects
+- repairing with git hash-object -w
+description: |
+  After a disk hiccup the package-registry mirror reports "error: inflate: data stream error" on one command and "fatal: loose object ... is corrupt" on another. `git fsck` confirms that two objects of the current tree are damaged: one blob file was lost, another has garbage written over it. Luckily the checked-out files in the working tree are untouched, because nobody ran `git checkout` since. Cloning again is not allowed (the mirror carries unpushed local state), and there is no other copy of the repository.
+objective: |
+  Repair the object database in place.
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. Identify the damaged objects with `git fsck --full`.
+  2. Rewrite each damaged blob from the identical file in the working tree (the object name must come out the same). Delete a corrupt loose object file first, since Git will not overwrite an existing file.
+  3. At the end `git fsck --full --strict` exits cleanly, every blob of `HEAD` can be read, history is unchanged (5 commits) and the working tree is still clean.
 hints:
-- "Start with the Git command related to ``git fsck` \u2014 find corruption`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git fsck --full` names the problem objects: "missing blob <sha>" and an "inflate" or "corrupt" error
+  for the other. A corrupt loose object lives at `.git/objects/<first two hex digits>/<remaining 38>`.'
+- '`git hash-object -w <file>` recomputes the SHA of a working-tree file and writes the blob. If the printed
+  SHA equals the one fsck complained about, the repair is exact.'
+- Remove the corrupt file first (`rm -f .git/objects/xx/yyyy...`), because `hash-object -w` skips writing
+  when an object file already exists.
+guide: |
+  ## Diagnose
 
+  ```bash
+  git fsck --full 2>&1 | head
+  # missing blob <sha>            <- object file gone
+  # error: inflate: data stream error ... / corrupt  <- garbage
+  ```
 
-  **Repo Integrity Check**
+  ## Map objects to files
 
+  The tree says which path owns which blob, and the working tree still has the right bytes:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git ls-tree -r HEAD            # mode, type, sha, path
+  git hash-object packages/beta.json   # same SHA as the tree entry if the file is intact
+  ```
 
-  '
+  ## Rewrite the objects
+
+  ```bash
+  sha=<corrupt-sha>
+  rm -f .git/objects/${sha%${sha#??}}/${sha#??}     # delete the garbage file
+  git hash-object -w packages/gamma.json            # writes the blob again
+  git hash-object -w packages/beta.json             # the missing one
+  ```
+
+  ## Verify
+
+  ```bash
+  git fsck --full --strict && echo healthy
+  git status --short
+  ```
+debrief: |
+  ## Content addressing makes repair possible
+
+  An object's name is the hash of its content. If you can reproduce the content from somewhere (a working-tree file, another clone, a backup of the same version), writing it again produces the very same name and the repository is whole again. There is no need to rewrite history.
+
+  ## Missing versus corrupt
+
+  A missing object is just a gap. A corrupt object is worse because the file exists and Git trusts existence: `hash-object -w`, `cat-file -e` and many other commands see the file and skip it. Deleting the corrupt file turns it into the easy case.
+
+  ## What fsck checks
+
+  `git fsck --full` also checks objects in packs; `--strict` enables stricter format checks (for example malformed tree entries). Dangling objects are reported but are not errors. Exit status is non-zero only for real problems.
+
+  ## Related
+
+  - `git cat-file -p <sha>` to try reading an object, `git verify-pack` for packs.
+  - Prevention: `transfer.fsckObjects true` makes pushes and fetches reject malformed objects.
+  - When nothing local is left, `git fetch` from a remote copy refills the missing objects.
+common_mistakes:
+- Hashing an edited working-tree file; any edit yields a different SHA and the tree still points at a
+  missing object.
+- Running `hash-object -w` without removing the corrupt file first, so nothing is repaired.
+- Running `git gc` on a corrupt repository, which can propagate or hide the damage.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: git fsck --full --strict reports no errors
+  script: 'git fsck --full --strict >/dev/null 2>&1
+
+    '
+- type: script_passes
+  description: Every blob of HEAD can be read and equals its working-tree file
+  script: "for f in $(git ls-files); do\n  git cat-file blob \"HEAD:$f\" | cmp -s - \"$f\"\ndone\n"
+- type: script_passes
+  description: History is unchanged and the repository is clean
+  script: 'test "$(git rev-list --count main)" = 5
+
+    git diff --quiet
+
+    git diff --cached --quiet'

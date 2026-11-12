@@ -4,50 +4,107 @@ level: level-160-pre-commit-file-size
 order: 160
 difficulty: advanced
 xp: 340
-expected_time: 12m
+expected_time: 10m
 concepts:
-- pre-commit checks file size
-common_mistakes:
-- Running commands related to pre-commit checks file size without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice `pre-commit
-  checks file size`.
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git cat-file -s
+  - size limits in a pre-commit hook
+description: |
+  The sensor-readings repository is cloned by field engineers over slow mobile links. Last month somebody committed a 40 MB raw
+  export, and every clone has carried it since. The data steward wants a firm rule enforced by git: no single file larger than
+  100 KB (102,400 bytes) may be committed. Exactly 102,400 bytes is still allowed; one byte more is not. The message must
+  name the offending file so people know what to move to the file server.
+objective: |
+  Write an executable `.git/hooks/pre-commit` that exits 1 if any staged added or modified file is **larger than 102400 bytes**,
+  printing the file's name (and size) to stderr, and exits 0 otherwise. The size must be that of the staged content.
 hints:
-- Start with the Git command related to `pre-commit checks file size`.
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "You need the size of each staged blob. Git can report the size of any object by name, and `:<path>` names the staged version."
+  - "`git cat-file -s :<path>` prints the byte size of the staged file. Loop over `git diff --cached --name-only --diff-filter=ACM`."
+  - "Compare with `[ \"$size\" -gt 102400 ]`. Use `-gt`, not `-ge`, because exactly 100 KB must pass."
+guide: |
+  ## A size guard
 
+  Ask git for the staged size of one file:
 
-  **Reject Large Files**
+  ```bash
+  git cat-file -s :readings/station1.csv
+  ```
 
+  Wrap it in a loop over all staged files and compare with the limit:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  cat > .git/hooks/pre-commit <<'HOOK'
+  #!/bin/sh
+  limit=102400
+  rc=0
+  for f in $(git diff --cached --name-only --diff-filter=ACM); do
+    size=$(git cat-file -s ":$f")
+    if [ "$size" -gt "$limit" ]; then
+      echo "pre-commit: $f is $size bytes (limit $limit)" >&2
+      rc=1
+    fi
+  done
+  exit $rc
+  HOOK
+  chmod +x .git/hooks/pre-commit
+  ```
 
-  '
+  Try it with a generated file:
+
+  ```bash
+  head -c 150000 /dev/zero | tr '\0' 'x' > readings/big.csv
+  git add readings/big.csv
+  git commit -m "too big"     # rejected and named
+  ```
+debrief: |
+  ## What you learned
+
+  The index holds blobs, and `git cat-file -s :<path>` reads the size of the staged blob without touching the working copy.
+  Checking `-gt` versus `-ge` is the kind of boundary detail that policies need to state explicitly. Reporting all violating
+  files in one go saves repeated attempts.
+
+  ## Real-world use
+
+  Hosting platforms reject pushes with files over 100 MB for the same reason. A local hook gives the feedback earlier, before the
+  object is in your history (once committed, a large file is expensive to remove). Larger assets belong in Git LFS or object storage.
+
+  ## Pitfalls
+
+  - Compressed size and file size differ; the policy talks about uncompressed bytes.
+  - `--diff-filter=ACM` avoids trying to measure deleted files.
+  - A hook cannot protect against a large file already in the history.
+common_mistakes:
+  - "Measuring the working-tree file with `wc -c`, which is wrong when the staged version differs."
+  - "Using `-ge`, so a file of exactly 102400 bytes is rejected."
+  - "Stopping at the first big file instead of listing all of them, or not printing the file name."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: pre-commit
+    description: an executable pre-commit hook exists
+  - type: script_passes
+    description: a file of 102401 bytes is rejected and named, 102400 is accepted
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      head -c 102401 /dev/zero | tr '\0' 'a' > readings/export_big.csv
+      git add readings/export_big.csv
+      must_fail git commit -q -m "add big export"
+      out=$(git commit -q -m "add big export" 2>&1 || true)
+      printf '%s' "$out" | grep -q 'export_big.csv'
+      head -c 102400 /dev/zero | tr '\0' 'a' > readings/export_big.csv
+      git add readings/export_big.csv
+      git commit -q -m "add export at the limit"
+  - type: script_passes
+    description: the staged content counts, not the working copy, and every offender blocks the commit
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      head -c 200000 /dev/zero | tr '\0' 'b' > readings/station2.csv
+      git add readings/station2.csv
+      printf 'tiny\n' > readings/station2.csv
+      must_fail git commit -q -m "stage big then shrink on disk"
+      git reset -q --hard
+      printf 'ts,sensor,value\n2025-03-02T00:00,S1,9.9\n' >> readings/station1.csv
+      git add -A
+      git commit -q -m "Small update"

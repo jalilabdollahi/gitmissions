@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -e
-
-git checkout HEAD~1
+git switch -c staging
+git push -u origin staging

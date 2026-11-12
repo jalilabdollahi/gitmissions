@@ -4,38 +4,82 @@ level: level-082-switch-away-cleanly
 order: 82
 difficulty: intermediate
 xp: 260
-expected_time: 8m
+expected_time: 9m
 concepts:
-- stash or branch before switching
-common_mistakes:
-- Running commands related to stash or branch before switching without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: There are uncommitted changes while HEAD is detached, and you need to
-  leave cleanly.
-objective: Stash the detached changes, then switch back to `main`.
+  - leaving detached HEAD
+  - git switch -
+  - discarding an experiment
+repo_path: pingly
+description: |
+  The Pingly notification service has maintenance branches `release/3.9` and `release/4.0`, plus `main`. You
+  were on `release/4.0`, detached HEAD two commits back to check how rate limits used to work, and then
+  experimented by setting `rate: 9999` in `limits.yaml`. The experiment is worthless. Because `limits.yaml` is the
+  same in the old commit and at the tip of `release/4.0`, Git would quietly carry the experiment onto
+  whichever branch you switch to, and it could end up in a release commit. Clean it up and go back to
+  the branch you came from.
+objective: |
+  - discard the experimental edit to `limits.yaml` (do not stash it)
+  - return to the branch you were on before detaching (`release/4.0`; the reflog shows it)
+  - the working tree must have no tracked-file changes and the stash must be empty
 hints:
-- Save the changes first.
-- Because the pending file is untracked, include untracked files in the stash.
-- Then switch back to `main`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash -u\n   ```\n\n2.\n \
-  \  ```bash\n   git switch main\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows `limits.yaml` modified. `git reflog -5` shows where HEAD came from."
+  - "`git restore limits.yaml` throws the edit away. `git switch -` jumps back to the previous branch."
+  - "`git restore limits.yaml && git switch -`"
+guide: |
+  ## 1. Where did I come from?
+  ```bash
+  git status
+  git reflog -5
+  ```
+  The newest reflog entry reads `checkout: moving from release/4.0 to <hash>`.
 
+  ## 2. Discard the experiment
+  ```bash
+  git diff
+  git restore limits.yaml
+  ```
+  Only do this because you are sure the edit is junk: restored changes cannot be recovered.
 
-  **Switch Away Cleanly**
+  ## 3. Return
+  ```bash
+  git switch -
+  git status -sb
+  ```
+  `-` means "the previous branch", just like `cd -` does for directories.
+debrief: |
+  ## What happened
+  Switching branches only refuses when uncommitted changes conflict with the target. Here the file was
+  identical at both commits, so the change would have travelled with you. Restoring first made the
+  switch clean.
 
+  ## Choosing between options
+  - Throw away: `git restore <file>` or `git switch --discard-changes <branch>`.
+  - Keep for later: `git stash push`.
+  - Keep as work: `git switch -c <name>` and commit.
 
-  Stash is a handy escape hatch when you want to move away from a risky working state
-  without losing changes.
+  ## The reflog trick
+  When you do not remember what you left, `git reflog` shows `moving from A to B` lines. `git switch -`
+  uses exactly that history.
 
-  '
+  ## Related
+  - `git checkout -` is the older spelling.
+  - `git status` prints advice for every case: detached, ahead, dirty.
+common_mistakes:
+  - "Switching to main instead of the original release/4.0 branch."
+  - "Stashing the experiment instead of discarding it, which leaves a stash entry behind."
+  - "Using `git reset --hard` on the release branch, which moves its history."
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: stash_not_empty
-  description: The stash contains the saved changes
+  - type: is_on_branch
+    branch: release/4.0
+    description: HEAD is on release/4.0
+  - type: script_passes
+    script: git diff --quiet HEAD -- limits.yaml && ! grep -q 9999 limits.yaml
+    description: The experimental limits.yaml edit is gone
+  - type: is_clean
+    ignore_untracked: true
+    description: No uncommitted tracked changes
+  - type: stash_empty
+    description: Nothing was stashed
+  - type: script_passes
+    script: test "$(git log -1 --format=%s release/4.0)" = "Add push channel"
+    description: release/4.0 did not move

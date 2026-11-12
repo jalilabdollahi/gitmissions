@@ -6,48 +6,103 @@ difficulty: expert
 xp: 460
 expected_time: 14m
 concepts:
-- "`git sparse-checkout` \u2014 partial clone"
-common_mistakes:
-- "Running commands related to `git sparse-checkout` \u2014 partial clone without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ sparse-checkout` \u2014 partial clone`."
-objective: 'Inspect the repository history and create `advanced-report.txt` containing
-  exactly:
+- git sparse-checkout set (cone mode)
+- following a dependency chain
+- skip-worktree
+repo_path: platform
+description: |
+  `platform` is the company monorepo: eight services and six shared libraries, and a full checkout takes your laptop minutes to index. You only work on the billing service. Billing declares its library dependencies in `services/billing/deps.txt`, and each of those libraries may declare dependencies of its own in a `deps.txt` next to it. If you leave one out, the build breaks; if you keep all of them, you defeat the purpose.
+objective: |
+  Reduce the working tree to what billing needs, using cone-mode sparse checkout.
 
-
-  `done=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. Enable sparse checkout (cone mode) with exactly these directories: `services/billing` plus every library it needs, directly or through other libraries' `deps.txt` files (follow the whole chain).
+  2. Nothing else should remain on disk except top-level files such as `Makefile`, e.g. `services/auth` and unrelated libraries are gone from the working tree.
+  3. Everything stays tracked, and `git status` is clean (no deletions are shown).
 hints:
-- "Start with the Git command related to ``git sparse-checkout` \u2014 partial clone`."
-- Write the exact expected answer into `advanced-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > advanced-report.txt <<'EOF'\n\
-  done=1\nEOF\n   ```\n\n2.\n   ```bash\n   git add advanced-report.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- Read `services/billing/deps.txt` before you narrow the tree, then read the `deps.txt` of each library
+  it lists, and keep going until no new libraries appear. The files disappear from disk once you narrow
+  it.
+- '`git sparse-checkout set --cone <dir>...` replaces the whole directory list in one go (`git sparse-checkout
+  list` shows it).'
+- Run `git sparse-checkout disable` if you need to see everything again, then set the final list.
+guide: |
+  ## Follow the dependency chain
 
+  ```bash
+  cat services/billing/deps.txt          # libs/money, libs/tax
+  cat libs/money/deps.txt libs/tax/deps.txt
+  cat libs/rates/deps.txt                # keep going until nothing new
+  ```
 
-  **Sparse Checkout**
+  You should end with billing and four libraries.
 
+  ## Narrow the tree
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git sparse-checkout set --cone services/billing libs/money libs/tax libs/rates libs/ids
+  git sparse-checkout list
+  ls services libs
+  ```
 
-  '
+  Cone mode keeps all files directly in the repository root and in the parents of the listed directories, and whole subtrees for the listed directories.
+
+  ## Verify
+
+  ```bash
+  git status                       # clean: files are skip-worktree, not deleted
+  git ls-files services/auth | head -1   # still tracked in the index
+  ```
+debrief: |
+  ## What sparse checkout does
+
+  The index still has every file, but entries outside your patterns are flagged `skip-worktree`, so Git neither writes them to disk nor reports them as deleted. Commits, branch switches and merges keep working on the full tree.
+
+  ## Cone mode
+
+  Cone mode matches whole directories instead of arbitrary globs, which is much faster for big repos. It is the default when you use `sparse-checkout set` on modern Git.
+
+  ## Dependency closure
+
+  Real monorepo tools (Bazel, Nx, Pants) compute this transitive closure for you. Doing it by hand teaches the failure mode: leaving out `libs/ids`, which only a library of a library needs, makes the build fail in confusing ways.
+
+  ## Related
+
+  - `git clone --filter=blob:none --sparse` combines a partial clone with sparse checkout, so you never download the blobs you do not need.
+  - `git sparse-checkout add <dir>` extends the list, `reapply` refreshes it, `disable` restores everything.
+common_mistakes:
+- Listing only the directly declared dependencies and missing `libs/rates` and `libs/ids`.
+- Deleting directories with `rm -rf`, which shows hundreds of deletions in `git status` instead of using
+  sparse checkout.
+- Including every library to be safe, which defeats the purpose.
 validators:
-- type: file_content_equals
-  path: advanced-report.txt
-  text: done=1
-  description: advanced-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: script_passes
+  description: Cone-mode sparse checkout is enabled
+  script: 'test "$(git config core.sparseCheckout)" = true
+
+    test "$(git config core.sparseCheckoutCone)" = true
+
+    '
+- type: script_passes
+  description: The sparse list is billing plus its full transitive dependency set
+  script: "want=\"\"; todo=\"services/billing\"\nwhile true; do\n  set -- $todo; [ $# -gt 0 ] || break\n\
+    \  d=$1; shift; todo=\"$*\"\n  case \" $want \" in *\" $d \"*) continue;; esac\n  want=\"$want $d\"\
+    \n  deps=$(git show \"HEAD:$d/deps.txt\" 2>/dev/null | tr '\\n' ' ' || true)\n  todo=\"$todo $deps\"\
+    \ndone\nexp=$(printf '%s\\n' $want | sort)\ngot=$(git sparse-checkout list | sort)\ntest \"$exp\"\
+    \ = \"$got\"\n"
+- type: script_passes
+  description: Unneeded directories are gone from disk but still tracked
+  script: 'test ! -d services/auth
+
+    test ! -d libs/logging
+
+    test -f services/billing/main.go
+
+    test -f Makefile
+
+    test -n "$(git ls-files services/auth)"
+
+    test -n "$(git ls-files libs/logging)"
+
+    '
 - type: is_clean
-  description: Working tree is clean
+  description: git status is clean

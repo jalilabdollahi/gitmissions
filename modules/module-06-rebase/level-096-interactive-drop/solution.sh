@@ -1,8 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-git reset --hard HEAD~2
-printf 'final
-' > final.txt
-git add final.txt
-git commit -m "Final work"
+GIT_SEQUENCE_EDITOR="sed -i.bak -e '2s/^pick/drop/'" git rebase -i main

@@ -6,31 +6,93 @@ difficulty: expert
 xp: 460
 expected_time: 14m
 concepts:
-- '`git submodule update --remote`'
-common_mistakes:
-- Running commands related to `git submodule update --remote` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: An external repository should be linked into this repo as a submodule.
-objective: Add `./lib.git` as a submodule at `vendor/lib`.
+- git submodule update --remote
+- tracking a submodule branch
+- recording the new pointer
+repo_path: minicc
+description: |
+  `minicc` is a toy C compiler that vendors its tokenizer as a submodule, `vendor/lexer`. The lexer's maintainers publish releases from the `stable` branch, while `main` holds a half-finished rewrite. `.gitmodules` already says `branch = stable`. Your compiler pins the lexer three commits behind `stable`, and a tokenizer bug you need is fixed upstream. Do not take the rewrite by accident.
+objective: |
+  Bump the lexer to the newest `stable`.
+
+  1. Update the submodule with `git submodule update --remote vendor/lexer` so that it follows the branch named in `.gitmodules`.
+  2. Commit the new pointer with a message starting `Bump lexer`.
+
+  The recorded commit of `vendor/lexer` in HEAD must equal the tip of the lexer's `stable` branch (not its `main`). The repository must be clean afterwards. Local-path submodule fetches are blocked by default in modern Git, so run the update as `git -c protocol.file.allow=always submodule update --remote vendor/lexer`.
 hints:
-- Git needs a separate repository to point at.
-- Use `git submodule add`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git -c protocol.file.allow=always\
-  \ submodule add ./lib.git vendor/lib\n   ```"
-debrief: '## What Just Happened
+- '`git diff --submodule` and `git submodule status` show what is pinned now. The upstream repository
+  lives in `../remotes/lexer.git`.'
+- '`--remote` makes Git fetch and use the branch from `.gitmodules` (`submodule.<name>.branch`) rather
+  than the commit recorded in the superproject.'
+- 'After the update the superproject shows `modified: vendor/lexer (new commits)`. Stage it with `git
+  add vendor/lexer` and commit.'
+guide: |
+  ## See where you are
 
+  ```bash
+  git submodule status
+  git config -f .gitmodules submodule.vendor/lexer.branch   # stable
+  ```
 
-  **Update a Submodule**
+  ## Pull the new commits
 
+  ```bash
+  git -c protocol.file.allow=always submodule update --remote vendor/lexer
+  git status --short        # M vendor/lexer
+  git diff --submodule      # lists the new lexer commits
+  ```
 
-  Submodules pin one repository inside another at a specific commit.
+  Without `--remote`, `update` would only restore the commit that the superproject records, i.e. the old one.
 
-  '
+  ## Record it
+
+  ```bash
+  git add vendor/lexer
+  git commit -m "Bump lexer to the latest stable"
+  ```
+
+  The pointer change is a normal commit; teammates receive it with their next `git pull` plus `git submodule update`.
+debrief: |
+  ## Two different directions
+
+  `git submodule update` moves the submodule to what the superproject says. `git submodule update --remote` moves it to what the upstream branch says, then your superproject has a *difference* that you commit. Confusing the two is the number one submodule mistake.
+
+  ## Why `stable`
+
+  The `branch` setting in `.gitmodules` is what makes `--remote` safe: without it Git uses the remote's default branch, which here is the rewrite on `main`.
+
+  ## Review before you bump
+
+  `git diff --submodule=log` prints the upstream commit subjects that your pointer move pulls in. Read them like a dependency changelog.
+
+  ## Related
+
+  - `git submodule update --remote --merge` / `--rebase` for local work inside the submodule.
+  - `git config -f .gitmodules submodule.<name>.branch <branch>` to set the tracked branch.
+common_mistakes:
+- Running `git submodule update` (without `--remote`) and wondering why nothing changed.
+- Running `git pull` inside the submodule on its default branch, which pulls the main rewrite.
+- Updating the submodule but forgetting to commit the new pointer in the superproject.
 validators:
-- type: submodule_exists
-  path: vendor/lib
-  description: vendor/lib is registered as a submodule
+- type: script_passes
+  description: HEAD records the tip of the lexer's stable branch
+  script: 'want=$(git -C ../remotes/lexer.git rev-parse stable)
+
+    got=$(git ls-tree HEAD vendor/lexer | awk ''{print $3}'')
+
+    test "$got" = "$want"
+
+    test "$got" != "$(git -C ../remotes/lexer.git rev-parse main)"
+
+    '
+- type: script_passes
+  description: The submodule checkout matches the recorded commit
+  script: 'test "$(git -C vendor/lexer rev-parse HEAD)" = "$(git ls-tree HEAD vendor/lexer | awk ''{print
+    $3}'')"
+
+    '
+- type: commit_message_contains
+  text: Bump lexer
+  description: The pointer bump is committed as Bump lexer
+- type: is_clean
+  description: Nothing is left modified

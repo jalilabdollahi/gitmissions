@@ -4,35 +4,86 @@ level: level-098-interactive-reword
 order: 98
 difficulty: intermediate
 xp: 300
-expected_time: 12m
+expected_time: 11m
 concepts:
-- '`reword` / `r`'
-common_mistakes:
-- Running commands related to `reword` / `r` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The latest feature commit message should be rewritten to something cleaner.
-objective: 'Change the latest commit message to `feat: polished commit`.'
+  - reword
+  - several rewords in one rebase
+  - conventional commit messages
+repo_path: duskline
+description: |
+  The Duskline design-system team adopted conventional commit messages (`type: summary`) because the release notes
+  are generated from them. Your unpushed branch `feature/dark-mode` has three commits, written at 2 a.m., called
+  `wip`, `stuff` and `more`. They add the colour tokens, the theme toggle and the documentation, in that order.
+  Rename all three in a single interactive rebase before the pull request is opened, without changing any
+  file content.
+objective: |
+  Reword the three commits of `feature/dark-mode` (oldest to newest) to exactly:
+  - `feat: add dark color tokens`
+  - `feat: add theme toggle`
+  - `docs: describe dark mode`
+  Their contents must stay the same (3 commits on top of main, all three files present) and you must end on `feature/dark-mode`.
 hints:
-- '`git commit --amend -m ...` works for the latest commit.'
-- Interactive rebase is another valid option.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git commit --amend -m \"feat:\
-  \ polished commit\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --stat --oneline main..feature/dark-mode` shows what each commit contains, so you know which new message fits which."
+  - "In the todo, change `pick` to `reword` for all three lines (or `r`). Git then opens the message editor three times."
+  - "`git rebase -i main`; for each editor, type the new message on the first line, save, close."
+guide: |
+  ## 1. Map messages to contents
+  ```bash
+  git log --stat --reverse --oneline main..feature/dark-mode
+  ```
+  `wip` adds `theme/tokens.css`, `stuff` adds `theme/toggle.js`, `more` adds `docs/dark-mode.md`.
 
+  ## 2. Mark all three for rewording
+  ```bash
+  git rebase -i main
+  ```
+  ```
+  reword 111 wip
+  reword 222 stuff
+  reword 333 more
+  ```
 
-  **Reword a Commit Message**
+  ## 3. Type each new message
+  Git stops three times and opens the editor with the old message. Replace each in turn with the new text.
 
+  ## 4. Check
+  ```bash
+  git log --oneline main..feature/dark-mode
+  git diff main feature/dark-mode --stat
+  ```
+debrief: |
+  ## What happened
+  `reword` replays a commit unchanged but lets you edit the message. Messages are part of a commit's
+  hash input, so every later commit also gets a new hash, which is why this is only safe on unpushed work.
 
-  Rewording improves commit history without changing the snapshot itself.
+  ## Why messages matter
+  Tools such as semantic-release, changelog generators and `git log --grep` depend on them. A
+  good message answers "what and why" for someone reading `git blame` in two years.
 
-  '
+  ## Shortcuts
+  - `git commit --amend -m "..."` rewords the latest commit.
+  - In the todo list, `r` is short for `reword`.
+  - `exec git commit --amend -m "..."` lines can replace the editor for scripted rewrites.
+
+  ## Related
+  - `git log --format=%s` prints only subjects.
+  - Commit templates (`commit.template`) remind you of the format.
+common_mistakes:
+  - "Rewording only one of the three because the others looked fine."
+  - "Using `edit` and forgetting to amend, which leaves the old message."
+  - "Adding a trailing period or capital letter that differs from the requested text."
 validators:
-- type: commit_message_contains
-  text: 'feat: polished commit'
-  description: Latest commit message is correct
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/dark-mode
+    description: HEAD is on feature/dark-mode
+  - type: script_passes
+    script: |
+      test "$(git log --reverse --format=%s main..feature/dark-mode | tr '\n' '|')" = "feat: add dark color tokens|feat: add theme toggle|docs: describe dark mode|"
+    description: The three messages are exactly as requested
+  - type: script_passes
+    script: |
+      git show --name-only --format= HEAD~2 | grep -qx theme/tokens.css && git show --name-only --format= HEAD~1 | grep -qx theme/toggle.js && git show --name-only --format= HEAD | grep -qx docs/dark-mode.md
+    description: Each message sits on the commit with the matching content
+  - type: script_passes
+    script: "! test -d .git/rebase-merge"
+    description: No rebase in progress

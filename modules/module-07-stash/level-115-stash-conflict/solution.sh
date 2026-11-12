@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -e
-
 git stash pop || true
-printf 'resolved stash
-' > app.txt
-git add app.txt
-git commit -m "Resolve stash conflict"
+printf 'plans:\n  pro: 24\n  team: 50\n  enterprise: 90\n' > pricing.yaml
+git add pricing.yaml
+git commit -m "Add enterprise plan with new pro price"
+git stash drop

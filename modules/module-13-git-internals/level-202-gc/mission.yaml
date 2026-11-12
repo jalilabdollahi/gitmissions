@@ -4,49 +4,102 @@ level: level-202-gc
 order: 202
 difficulty: expert
 xp: 520
-expected_time: 12m
+expected_time: 14m
 concepts:
-- "`git gc` \u2014 what gets cleaned up"
-common_mistakes:
-- "Running commands related to `git gc` \u2014 what gets cleaned up without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ gc` \u2014 what gets cleaned up`."
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- unreachable objects and the reflog
+- git reflog expire and git gc --prune=now
+- rescuing before pruning
+description: |
+  The flag service repo is bloated with leftovers and the disk quota is gone. Someone deleted the unmerged branch `feature/geo-flags` last week (two commits of country-based targeting nobody wants to lose), dropped a stash, and reset away an experimental caching commit. All of that is unreachable now but still held alive by the reflog, so a normal `git gc` frees nothing. You must free the space completely, but you must not lose the geo-targeting work.
+objective: |
+  1. Rescue the tip of the deleted branch: create the branch `rescue/geo-flags` at the commit with subject `geo: country allowlist for flags` (it has the second geo commit below it). Find it yourself via the reflog or `git fsck`.
+  2. Expire all reflogs and run `git gc --prune=now` so that nothing unreachable remains: `git fsck --unreachable --no-reflogs` prints no unreachable objects and `git count-objects -v` reports `count: 0`.
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  The scratch commit and the dropped stash may disappear; the geo work and `main` must stay intact.
 hints:
-- "Start with the Git command related to ``git gc` \u2014 what gets cleaned up`."
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git reflog` (or `git log -g`) lists where HEAD was; the commit made on the deleted branch is still
+  listed. `git fsck --lost-found` also shows dangling commits, but you must read their subjects to pick
+  the right one.'
+- 'Branch first, then clean: once objects are pruned they are gone for good.'
+- '`git reflog expire --expire=now --all` empties the reflogs; `git gc --prune=now` then removes unreachable
+  objects without the usual two-week grace period.'
+guide: |
+  ## Find the commit before touching anything
 
+  ```bash
+  git reflog | head -20
+  git fsck --unreachable --no-reflogs | grep commit
+  git log -g --format='%h %s' | grep geo
+  ```
 
-  **Garbage Collection**
+  Three kinds of leftovers show up: the geo commits, an experimental caching commit and a dangling stash commit.
 
+  ## Rescue first
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  tip=$(git log -g --format='%H %s' | awk '/ geo: country allowlist for flags$/ {print $1; exit}')
+  git branch rescue/geo-flags "$tip"
+  git log --oneline main..rescue/geo-flags      # two commits
+  ```
 
-  '
+  ## Then free the space
+
+  ```bash
+  git reflog expire --expire=now --all
+  git gc --prune=now
+  git fsck --unreachable --no-reflogs          # nothing
+  git count-objects -v                          # count: 0
+  ```
+
+  `gc` alone keeps objects that the reflog or the 2-week grace period still protect, which is why the explicit expire and `--prune=now` are needed.
+debrief: |
+  ## Why `gc` does nothing at first
+
+  An object is deleted only if no ref, no reflog entry and no recent file time protects it. By default reflog entries live 90 days (30 for unreachable ones) and loose unreachable objects 2 weeks. Deleting a branch removes its own reflog but HEAD's reflog still remembers every commit made while you stood on it.
+
+  ## Safe order
+
+  Rescue first (a ref is the only protection that is permanent), expire second, prune last. `--expire=now` and `--prune=now` are irreversible; in a shared server repository they can also race with a push in progress, so use them on your own clones.
+
+  ## Real-world use
+
+  Removing a leaked secret from a clone after a history rewrite (the same expire-and-prune pair), reclaiming space after deleting large branches, or demonstrating that something really is gone.
+
+  ## Related
+
+  - `git fsck --lost-found` writes dangling commits and blobs to `.git/lost-found`.
+  - `git stash drop` prints the SHA of the dropped stash for exactly this reason.
+  - `gc.pruneExpire`, `gc.reflogExpire` and `gc.reflogExpireUnreachable` change the defaults.
+common_mistakes:
+- Running `git gc --prune=now` before rescuing, which permanently deletes the geo commits.
+- Rescuing the wrong dangling commit, such as the scratch caching experiment.
+- Pruning without expiring the reflog; the reflog still protects the objects so unreachable ones remain.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: script_passes
+  description: rescue/geo-flags is at the geo allowlist commit and holds both geo commits
+  script: 'test "$(git log -1 --format=%s rescue/geo-flags)" = "geo: country allowlist for flags"
+
+    test "$(git rev-list --count main..rescue/geo-flags)" = 2
+
+    git log --format=%s main..rescue/geo-flags | grep -q ''geo: parse country codes''
+
+    '
+- type: script_passes
+  description: No unreachable objects remain and nothing is loose
+  script: 'out=$(git fsck --unreachable --no-reflogs 2>/dev/null | grep -v ''^Checking'' || true)
+
+    test -z "$out"
+
+    test "$(git count-objects -v | awk ''/^count:/ {print $2}'')" = 0
+
+    '
+- type: script_passes
+  description: The reflogs were expired
+  script: 'test "$(git reflog show HEAD | wc -l | tr -d '' '')" -le 3
+
+    '
+- type: script_passes
+  description: main is intact
+  script: 'test "$(git rev-list --count main)" = 4
+
+    git diff --quiet'

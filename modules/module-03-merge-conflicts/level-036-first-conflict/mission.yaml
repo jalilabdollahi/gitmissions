@@ -6,43 +6,92 @@ difficulty: intermediate
 xp: 200
 expected_time: 10m
 concepts:
-- conflict markers `<<<<<<<` `=======` `>>>>>>>`
-common_mistakes:
-- Running commands related to conflict markers `<<<<<<<` `=======` `>>>>>>>` without
-  checking `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep the incoming version, and complete
-  the merge.
+  - conflict markers
+  - git merge stops on conflict
+  - resolve, add, commit
+description: |
+  Hanne is organising a lake camping weekend and keeps the packing list in Git. She changed the tent line on `main`
+  (borrowing a light 2-person tent) and added a stove. Meanwhile Jonas, on the branch `group-size`, noticed that
+  three people are going and changed the same line to a 3-person tent. Git cannot decide which version of that line
+  is right, so a merge will stop and ask for a human decision. The sleeping-bag line tells you how many people go.
+objective: |
+  Merge `group-size` into `main` and resolve the conflict in `packing.txt` so that the list contains
+  `Tent: 3-person` (and not the 2-person line), still has the `Stove: gas, one cartridge` line, and has no conflict markers.
+  Finish the merge with a commit. `git status` must be clean afterwards.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git merge group-size` will report `CONFLICT (content)`. `git status` lists the file under 'Unmerged paths'."
+  - "Open `packing.txt`. The conflicting lines are between `<<<<<<<` and `>>>>>>>`, separated by `=======`. Edit the file to the text you want and delete all three marker lines."
+  - "After editing: `git add packing.txt` (this marks it resolved), then `git commit` (or `git commit -m \"...\"`) to finish the merge."
+guide: |
+  ## 1. Start the merge
+  ```bash
+  git merge group-size
+  ```
+  Git merges what it can and stops: "Automatic merge failed; fix conflicts and then commit the result."
 
+  ## 2. Look at the damage
+  ```bash
+  git status
+  cat packing.txt
+  ```
+  The conflict region looks like this:
+  ```
+  <<<<<<< HEAD
+  Tent: 2-person, 1.8 kg (borrow from Ola)
+  =======
+  Tent: 3-person
+  >>>>>>> group-size
+  ```
+  The top part is your branch (`HEAD`), the bottom part is the incoming branch.
 
-  **Your First Conflict**
+  ## 3. Decide and edit
+  Three people are going, so keep `Tent: 3-person`. Delete the other line and all marker lines.
+  The stove line outside the conflict was merged automatically; do not touch it.
 
+  ## 4. Mark resolved and commit
+  ```bash
+  git add packing.txt
+  git commit -m "Merge group-size: take the 3-person tent"
+  ```
+debrief: |
+  ## What happened
+  Both branches changed the same line of the file relative to their common ancestor, so Git had no rule to pick a
+  winner. It wrote both versions into the file between markers and put the repository into a "merging" state.
+  `git add` told Git that you had resolved the file, and `git commit` created the merge commit.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Why it matters
+  Conflicts are normal, not an error. They simply mean two people had different ideas about the same lines.
+  The skill is to read both sides, decide, and leave a clean file.
 
-  '
+  ## Related
+  - `git diff` during a conflict shows a combined diff.
+  - `git merge --abort` returns to the state before the merge.
+  - `git checkout --ours/--theirs <file>` takes one whole side.
+
+  ## Pitfalls
+  - Committing with markers still in the file. Always search the file for `<<<<<<<`.
+  - The text between the markers is not "correct" by default; you decide.
+common_mistakes:
+  - Leaving the `=======` or `>>>>>>>` marker line in the file.
+  - Keeping both tent lines, which makes the list contradictory.
+  - Running `git commit` before `git add`, which Git refuses because of unmerged paths.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: merge_commit_exists
+    branch: main
+    description: main has a merge commit
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor group-size HEAD
+    description: HEAD merges group-size
+  - type: file_content_contains
+    path: packing.txt
+    text: "Tent: 3-person"
+    description: The list has the 3-person tent
+  - type: script_passes
+    script: "! grep -q '2-person' packing.txt && grep -qx 'Stove: gas, one cartridge' packing.txt"
+    description: The 2-person line is gone and the stove line is kept
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: is_clean
+    description: Working tree is clean

@@ -4,37 +4,88 @@ level: level-109-stash-apply
 order: 109
 difficulty: intermediate
 xp: 210
-expected_time: 7m
+expected_time: 9m
 concepts:
-- '`git stash apply`'
-common_mistakes:
-- Running commands related to `git stash apply` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This level starts with work in progress that should be managed through
-  Git stash.
-objective: Apply the stash without removing it from the stash list.
+  - git stash apply
+  - reusing one stash on several branches
+  - stash vs pop
+repo_path: metaboost
+description: |
+  Metaboost builds two white-label sites from `release/blue` and `release/green`, and both need the same new SEO meta tags
+  in `layout.html`. You wrote the change once, on `main`, and stashed it (`SEO meta tags`) instead of committing,
+  because `main` must not receive it. Apply that single stash to both release branches and commit it on each,
+  keeping the stash around until you are sure both builds are fine.
+objective: |
+  - on `release/blue` and on `release/green`, apply the stash and commit with the message `Add SEO meta tags`
+  - both branches must contain the meta description tag in `layout.html`
+  - the stash entry must still exist (use `apply`, not `pop`), and `main` must stay unchanged
+  - finish with a clean working tree
 hints:
-- Start with the Git command related to ``git stash apply``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git stash apply\n   ```"
-debrief: '## What Just Happened
+  - "`git stash pop` removes the entry after the first use, so the second branch would have nothing to apply. Which command keeps it?"
+  - "`git stash apply` applies the latest stash and leaves it in the list. Do it once per branch and commit each time."
+  - "`git switch release/blue && git stash apply && git commit -am \"Add SEO meta tags\"`, then the same on `release/green`."
+guide: |
+  ## 1. See what is stored
+  ```bash
+  git stash list
+  git stash show -p
+  ```
 
+  ## 2. First branch
+  ```bash
+  git switch release/blue
+  git stash apply
+  git commit -am "Add SEO meta tags"
+  ```
 
-  **Apply Without Removing**
+  ## 3. Second branch
+  ```bash
+  git switch release/green
+  git stash apply
+  git commit -am "Add SEO meta tags"
+  ```
 
+  ## 4. Check
+  ```bash
+  git stash list
+  git log --oneline -2 release/blue release/green
+  ```
+  The stash is still there, in case you need a third site.
+debrief: |
+  ## What happened
+  `apply` replays the stash diff on the current branch without removing the entry. You reused one change on
+  two branches, which a pop could not do.
 
-  Stash is a useful side shelf for changes you are not ready to commit.
+  ## Apply vs pop
+  - `pop` = apply, then drop the entry if there is no conflict.
+  - `apply` = keep the entry, so it can be used again or kept as a backup.
+  Drop it yourself when done: `git stash drop`.
 
-  '
+  ## Alternative
+  `git cherry-pick` of a single commit is the more common tool for sharing one change across branches.
+  Stashing is handy when the change should not land on the source branch at all.
+
+  ## Related
+  - `git stash show -p stash@{0}` previews the patch.
+  - `git stash branch <name>` turns an entry into its own branch.
+common_mistakes:
+  - "Using `git stash pop` on the first branch, leaving nothing for the second."
+  - "Applying the stash but forgetting to commit before switching branches."
+  - "Committing on `main` by mistake and polluting the trunk."
 validators:
-- type: stash_not_empty
-  description: Stash still has an entry
-- type: file_content_equals
-  path: app.txt
-  text: stashed change
-  description: app.txt contains the restored change
+  - type: script_passes
+    script: |
+      for b in release/blue release/green; do
+        git show "$b:layout.html" | grep -q 'name="description"'
+        test "$(git log -1 --format=%s "$b")" = "Add SEO meta tags"
+      done
+    description: Both release branches have the meta tags committed
+  - type: stash_count_eq
+    count: 1
+    description: The stash entry is still in the list
+  - type: script_passes
+    script: |
+      test "$(git log -1 --format=%s main)" = "Create base layout" && ! git show main:layout.html | grep -q 'name="description"'
+    description: main was not changed
+  - type: is_clean
+    description: Working tree is clean

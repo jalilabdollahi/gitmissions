@@ -6,34 +6,83 @@ difficulty: intermediate
 xp: 200
 expected_time: 9m
 concepts:
-- '`git push origin main`'
-common_mistakes:
-- Running commands related to `git push origin main` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Push `main` to `origin`.
+  - git push
+  - push one branch
+  - commit before push
+repo_path: checkout
+description: |
+  You are finishing the checkout flow for the Cartwheel marketplace. Two commits are done locally
+  (shipping estimates and postal-code validation) but were never pushed, and you have one more edit
+  to `coupon.js` sitting in the working tree. You also keep an experimental branch,
+  `experiment-apple-pay`, that must stay on your laptop because legal has not approved it.
+  The team deploys whatever is on `origin/main`.
+objective: |
+  - commit the pending `coupon.js` change with the message `Apply coupon before tax`
+  - push so that `origin/main` equals your local `main` (all three commits)
+  - do not publish `experiment-apple-pay`: the remote must not have that branch
+  - leave the working tree clean
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git push origin main\n   ```"
-debrief: '## What Just Happened
+  - "`git status` shows an edited file that is not committed and `git log origin/main..main` shows what is not pushed."
+  - "Commit first (`git commit -am ...`), then push the branch by name so other local branches stay private."
+  - "`git commit -am \"Apply coupon before tax\" && git push origin main`"
+guide: |
+  ## 1. Understand the state
+  ```bash
+  git status -sb
+  git log --oneline origin/main..main
+  git branch
+  ```
+  The `[ahead 2]` marker and the modified `coupon.js` tell you both a push and a commit are pending.
 
+  ## 2. Commit the edit
+  ```bash
+  git commit -am "Apply coupon before tax"
+  ```
+  `-a` stages changes to tracked files. Pushing never sends uncommitted work.
 
-  **Push to Remote**
+  ## 3. Push only main
+  ```bash
+  git push origin main
+  ```
+  Naming the branch pushes just that one, regardless of what other branches you have.
 
+  ## 4. Verify
+  ```bash
+  git status -sb
+  git branch -r
+  ```
+  `origin/experiment-apple-pay` must not appear.
+debrief: |
+  ## What happened
+  Push transfers commits, not files. Your working-tree edit was invisible to the remote until it became
+  a commit, and `git push origin main` then uploaded the three commits that origin lacked and moved
+  `origin/main` forward.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why naming the branch matters
+  `git push` without arguments depends on `push.default` and your upstream settings; `--all` would send
+  every local branch, including experiments. Explicit `git push origin <branch>` is predictable.
 
-  '
+  ## Real-world use
+  Before pushing, a quick `git log origin/main..main` and `git status` answers "what exactly am I
+  about to publish?" It prevents leaking WIP commits to a branch that gets deployed.
+
+  ## Related
+  - `git push --dry-run` shows what would be sent.
+  - `git diff origin/main..main` shows the content you are about to publish.
+  - `git push -u origin <branch>` publishes a new branch and sets its upstream.
+common_mistakes:
+  - "Pushing before committing, then wondering why the coupon fix did not arrive."
+  - "Using `git push --all`, which publishes `experiment-apple-pay` too."
+  - "Committing the change but forgetting to push, leaving `main` ahead of `origin/main`."
 validators:
-- type: script_passes
-  description: origin/main exists in the remote
-  script: git -C ../remote.git rev-parse --verify refs/heads/main >/dev/null
+  - type: script_passes
+    script: test "$(git log -1 --format=%s main)" = "Apply coupon before tax"
+    description: The coupon change is committed with the requested message
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/main)" = "$(git rev-parse main)"
+    description: origin/main equals your local main
+  - type: script_passes
+    script: "! git --git-dir=../origin.git rev-parse --verify -q refs/heads/experiment-apple-pay"
+    description: experiment-apple-pay was not published
+  - type: is_clean
+    description: Working tree is clean

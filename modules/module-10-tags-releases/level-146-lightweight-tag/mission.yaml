@@ -4,33 +4,76 @@ level: level-146-lightweight-tag
 order: 146
 difficulty: intermediate
 xp: 200
-expected_time: 7m
+expected_time: 4m
 concepts:
-- '`git tag v1.0`'
-common_mistakes:
-- Running commands related to `git tag v1.0` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
-objective: Create a lightweight tag named `v1.0`.
+  - git tag <name>
+  - lightweight tags
+description: |
+  The tax-filing CLI has just reached the state that QA wants to test as release candidate one of 0.9.0. The last
+  commit, "Freeze defaults for release candidate", is exactly what should be built. QA's scripts look for a
+  git tag called `v0.9.0-rc1`, a simple bookmark, no release notes needed. Right now the repository has only one tag, `v0.8.0`.
+objective: |
+  Create a **lightweight** tag named `v0.9.0-rc1` on the current commit (HEAD). The existing tag `v0.8.0` must stay untouched.
 hints:
-- Start with the Git command related to ``git tag v1.0``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git tag v1.0\n   ```"
-debrief: '## What Just Happened
+  - "A tag is a permanent name for a commit. Look at what `git tag` lists today."
+  - "`git tag <name>` with no extra options creates the simplest kind of tag, directly on HEAD."
+  - "`git tag v0.9.0-rc1`, then check with `git tag` and `git log --oneline --decorate`."
+guide: |
+  ## A name for this commit
 
+  Look at the current tags and where they sit:
 
-  **Lightweight Tag**
+  ```bash
+  git tag
+  git log --oneline --decorate
+  ```
 
+  Only `v0.8.0` exists, two commits back. Create the new tag on HEAD:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git tag v0.9.0-rc1
+  ```
 
-  '
+  Verify it appears next to the freeze commit:
+
+  ```bash
+  git log --oneline --decorate -3
+  git tag
+  ```
+
+  A lightweight tag is just a ref, `refs/tags/v0.9.0-rc1`, pointing straight at the commit: no author, no date, no message.
+debrief: |
+  ## What you learned
+
+  `git tag <name>` writes a file under `.git/refs/tags` containing the commit hash. Unlike a branch, it never
+  moves when you commit. That makes tags perfect to mark "the exact commit that was built or released".
+
+  ## Real-world use
+
+  Release candidates, build markers and temporary bookmarks (`before-refactor`) are typically lightweight.
+  Public releases usually deserve an annotated tag, the topic of the next level.
+
+  ## Pitfalls
+
+  - Tags are not pushed by `git push`; they need to be pushed explicitly.
+  - Lightweight tags carry no tagger information, so `git describe` ignores them by default.
+  - Tag names cannot contain spaces; the convention `vMAJOR.MINOR.PATCH[-suffix]` keeps sorting predictable.
+common_mistakes:
+  - "Tagging with `git tag -a` and ending up with an annotated tag when a lightweight one was requested."
+  - "Forgetting that the tag goes on HEAD, so tagging after a new commit moves it to the wrong snapshot."
+  - "Using `git branch v0.9.0-rc1`, which creates a branch that moves, not a tag."
 validators:
-- type: tag_exists
-  tag: v1.0
-  description: Tag v1.0 exists
+  - type: tag_exists
+    tag: v0.9.0-rc1
+    description: tag v0.9.0-rc1 exists
+  - type: script_passes
+    description: it is a lightweight tag (a plain ref to the commit) pointing at HEAD
+    script: |
+      test "$(git cat-file -t v0.9.0-rc1)" = commit
+      test "$(git rev-parse v0.9.0-rc1)" = "$(git rev-parse HEAD)"
+  - type: script_passes
+    description: v0.8.0 is untouched and there are exactly two tags
+    script: |
+      test "$(git rev-parse v0.8.0)" = "$(git rev-parse HEAD~2)"
+      test "$(git tag | wc -l | tr -d ' ')" = 2
+

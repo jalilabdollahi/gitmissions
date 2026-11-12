@@ -4,49 +4,111 @@ level: level-204-rerere-internals
 order: 204
 difficulty: expert
 xp: 550
-expected_time: 12m
+expected_time: 15m
 concepts:
-- '`.git/rr-cache` structure'
-common_mistakes:
-- Running commands related to `.git/rr-cache` structure without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``.git/rr-cache`
-  structure`.
-objective: 'Inspect the repository history and create `internals.txt` containing exactly:
+- git rerere and .git/rr-cache
+- preimage and postimage
+- re-using a recorded resolution
+description: |
+  The platform team's Terraform repo keeps merging the long-lived `feature/autoscale` branch into `main` and getting the same conflicts again every time the merge is redone. Yesterday you resolved the one in `terraform/cluster.tf` (five baseline nodes, at most nine) and then aborted the rehearsal merge. `rerere` is enabled in this repo, so Git remembered your resolution in `.git/rr-cache`. Today you do the real merge. A second conflict in `terraform/alerts.tf` was never resolved, so rerere knows nothing about it. Management also wants to know which cache entry belongs to which conflict.
+objective: |
+  1. Merge `feature/autoscale` into `main`. Let rerere resolve `terraform/cluster.tf` from the recorded resolution (do not retype it). Resolve `terraform/alerts.tf` yourself by keeping the stricter threshold, `70`. Finish with a normal merge commit (two parents).
+  2. Write the conflict ID of the `cluster.tf` conflict, the name of its directory in `.git/rr-cache`, into `rr.txt` (just the name).
 
-
-  `object=known`
-
-
-  Then commit the report with the message `docs: add report`.'
+  No conflict markers may remain anywhere.
 hints:
-- Start with the Git command related to ``.git/rr-cache` structure`.
-- Write the exact expected answer into `internals.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > internals.txt <<'EOF'\n\
-  object=known\nEOF\n   ```\n\n2.\n   ```bash\n   git add internals.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- A plain `git merge feature/autoscale` conflicts again, but Git prints `Resolved 'terraform/cluster.tf'
+  using previous resolution.` for the known file. Check `git status` and `git rerere status`.
+- Each conflict gets a directory `.git/rr-cache/<hash>/` containing `preimage` (the conflicted text) and
+  `postimage` (your resolution). Find the one whose `postimage` equals the resolved `cluster.tf`.
+- Resolve `alerts.tf`, then `git add terraform` and `git commit` (the merge message is prepared). Committing
+  also records the second resolution.
+guide: |
+  ## Re-run the merge
 
+  ```bash
+  git merge feature/autoscale        # CONFLICT in both files
+  # Resolved 'terraform/cluster.tf' using previous resolution.
+  git rerere status                  # files rerere is tracking
+  git diff                            # cluster.tf resolved, alerts.tf still has markers
+  ```
 
-  **Rerere Under the Hood**
+  ## Finish by hand where rerere cannot help
 
+  Edit `terraform/alerts.tf` so that it contains `threshold = 70` and no markers, then:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git add terraform
+  git commit --no-edit
+  ```
 
-  '
+  ## Look inside the cache
+
+  ```bash
+  ls .git/rr-cache/
+  for d in .git/rr-cache/*/; do
+    echo "$d"; ls "$d"            # preimage, postimage (and thisimage while merging)
+  done
+  ```
+
+  Match the entry whose `postimage` is identical to `terraform/cluster.tf` (`cmp`), and write its directory name to `rr.txt`.
+debrief: |
+  ## How rerere works
+
+  When a merge stops with conflicts, rerere normalises the conflict hunks (marker labels removed, sides sorted) and hashes them into a conflict ID. It stores the conflicted text as `preimage`. When you later commit the resolution it stores the result as `postimage`. The next time the same conflict appears, the hash matches, and rerere applies a three-way merge of preimage, postimage and the new conflicted file, leaving the result in the working tree (you still `git add` it unless `rerere.autoUpdate` is set).
+
+  ## Why it is useful
+
+  Repeated merges, rebases of long-running branches and `git merge --abort` rehearsals all re-create identical conflicts. Recorded resolutions make them free and reproducible.
+
+  ## Gotchas
+
+  - A bad resolution is remembered too: `git rerere forget <path>` removes it.
+  - The cache is local and not pushed; share it by committing resolutions or by scripting.
+  - Entries expire (`gc.rerereResolved` 60 days, `gc.rerereUnresolved` 15 days).
+
+  ## Related
+
+  - `git rerere diff`, `git rerere remaining`, `git rerere gc`.
+  - `git checkout --merge <file>` recreates conflict markers for a file you resolved wrongly.
+common_mistakes:
+- Retyping the cluster.tf resolution by hand and discovering later that rerere was never used.
+- Forgetting `git add terraform`, so the commit is refused because of unmerged paths.
+- Guessing the conflict ID instead of matching the `postimage` file.
 validators:
-- type: file_content_equals
-  path: internals.txt
-  text: object=known
-  description: internals.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
+- type: script_passes
+  description: A real merge commit of feature/autoscale into main exists
+  script: 'test "$(git rev-list --parents -1 main | wc -w | tr -d '' '')" = 3
+
+    test "$(git rev-parse main^2)" = "$(git rev-parse feature/autoscale)"
+
+    '
+- type: script_passes
+  description: cluster.tf has the recorded resolution and alerts.tf the threshold 70, with no markers
+  script: 'grep -q ''min_nodes  = 5'' terraform/cluster.tf
+
+    grep -q ''max_nodes  = 9'' terraform/cluster.tf
+
+    ! grep -q node_count terraform/cluster.tf
+
+    grep -q ''threshold = 70'' terraform/alerts.tf
+
+    ! grep -rqE ''^(<<<<<<<|=======|>>>>>>>)'' terraform
+
+    '
+- type: script_passes
+  description: rr.txt names the rr-cache entry of the cluster.tf conflict
+  script: 'rr=$(git rev-parse --git-path rr-cache)
+
+    id=$(tr -d ''[:space:]'' < rr.txt)
+
+    test -n "$id"
+
+    test -f "$rr/$id/preimage"
+
+    cmp -s "$rr/$id/postimage" terraform/cluster.tf
+
+    '
 - type: is_clean
-  description: Working tree is clean
+  ignore_untracked: true
+  description: Merge is finished and the tree is clean

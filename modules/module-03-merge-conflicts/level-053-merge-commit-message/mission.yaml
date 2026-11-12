@@ -6,43 +6,79 @@ difficulty: intermediate
 xp: 220
 expected_time: 10m
 concepts:
-- meaningful merge commit messages
-common_mistakes:
-- Running commands related to meaningful merge commit messages without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Resolve the conflict in `app.txt`, keep both changes combined, and complete
-  the merge.
+  - merge commit messages
+  - HEAD^1 and HEAD^2
+  - git commit --amend on a merge
+description: |
+  Vera merged the `feature/dark-mode` branch of her recipe app into `main` just now, and Git wrote the default
+  message `Merge branch 'feature/dark-mode'`. The team's convention for merge commits is a meaningful subject and a
+  body that lists the commits being brought in, so that `git log` on `main` tells the story without opening the branch.
+  The merge has not been pushed yet, so its message can still be improved.
+objective: |
+  Rewrite the message of the merge commit at the tip of `main` (amend it, without redoing the merge): subject
+  `Merge dark mode into main`, a blank line, and a body with one line per commit that the branch brought in, each
+  formatted as `- <that commit's subject>` (use the actual subjects from the branch). The commit must keep its
+  two parents and the number of commits on `main` must not change.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "`git log --graph --oneline` shows the merge and the three commits of the branch. In a merge commit `HEAD^1` is the old `main`, `HEAD^2` is the merged branch."
+  - "`git log HEAD^1..HEAD^2` lists the commits that the merge introduced. `--format='- %s'` formats them the way you need."
+  - "`git commit --amend` can change the message of a merge commit; use `-m` twice for subject and body, or an editor."
+guide: |
+  ## 1. See what the merge brought in
+  ```bash
+  git log --graph --oneline
+  git log --format='- %s' HEAD^1..HEAD^2
+  ```
+  The second command prints the subjects of the branch's commits, already in bullet format.
 
+  ## 2. Rewrite the message
+  ```bash
+  git commit --amend -m "Merge dark mode into main" -m "$(git log --reverse --format='- %s' HEAD^1..HEAD^2)"
+  ```
+  Amending a merge commit keeps both parents and the merged content; only the message changes.
 
-  **Craft a Good Merge Commit**
+  ## 3. Check
+  ```bash
+  git log -1
+  git rev-list --parents -n1 HEAD
+  ```
+  Still three hashes (merge plus two parents).
+debrief: |
+  ## What happened
+  A merge commit is a normal commit with two parents. `git commit --amend` can replace its message
+  without changing the parents or the tree. `HEAD^1..HEAD^2` is the range "reachable from the second parent but not
+  from the first", i.e. exactly what the merge brought in.
 
+  ## Why it matters
+  Default merge messages say nothing. A summary of what arrived helps people reading `git log --first-parent`,
+  release notes and future `git revert -m 1` decisions.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Related
+  - `git merge --no-ff -m "..."` or `git merge --edit` lets you write the message at merge time.
+  - `git log --first-parent --oneline` is the high-level view of `main`.
+  - `git merge --log` automatically appends up to N branch subjects to the message.
 
-  '
+  ## Pitfalls
+  - Amending after pushing needs a force push; only do it on unpushed merges.
+  - `-m` text with a leading `-` is fine, but make sure the shell does not eat quotes.
+common_mistakes:
+  - Making a new empty commit with the nice message instead of amending the merge.
+  - Redoing the merge with `git reset` and `git merge`, which changes the parents' relationship by accident.
+  - Copying the subjects by hand and mistyping one.
 validators:
-- type: no_conflict_markers
-  description: No conflict markers remain
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: app.txt has the expected content
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && test "$(git log -1 --format=%s HEAD^1)" = "Update footer links" && test "$(git log -1 --format=%s HEAD^2)" = "Fix contrast on buttons"
+    description: HEAD is still the merge of main and feature/dark-mode
+  - type: script_passes
+    script: test "$(git log -1 --format=%s)" = "Merge dark mode into main"
+    description: The subject is "Merge dark mode into main"
+  - type: script_passes
+    script: git log -1 --format=%b | grep -qx -- '- Add dark palette variables' && git log -1 --format=%b | grep -qx -- '- Follow the system dark mode preference' && git log -1 --format=%b | grep -qx -- '- Fix contrast on buttons'
+    description: The body lists all three commits of the branch as "- subject" lines
+  - type: script_passes
+    script: test -z "$(git log -1 --format=%B | sed -n 2p)"
+    description: A blank line follows the subject
+  - type: commit_count_eq
+    count: 6
+    branch: main
+    description: main still has six commits (the merge was amended, not repeated)

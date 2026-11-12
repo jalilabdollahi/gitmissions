@@ -4,42 +4,83 @@ level: level-060-push-rejected-diverged
 order: 60
 difficulty: intermediate
 xp: 250
-expected_time: 9m
+expected_time: 10m
 concepts:
-- "`! [rejected]` \u2014 pull first"
-- then push
-common_mistakes:
-- "Running commands related to `! [rejected]` \u2014 pull first, then push without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-repo_path: local
-description: This mission uses a local bare repository to simulate a remote server.
-objective: Resolve the diverged history by integrating `origin/main`, then push successfully.
+  - rejected push
+  - non-fast-forward
+  - merge then push
+repo_path: pricing
+description: |
+  You work on the fare engine of the Hailo ride-sharing app. You added an airport fee in a new file
+  and committed it, but `git push` is rejected with "fetch first". While you were working, Tomas
+  raised the surge cap in another file and pushed it. Both of you started from the same commit, so
+  the histories have diverged. Nobody should lose work, and force-pushing is forbidden on `main`.
+  This repository is set to merge on pull (`pull.rebase false`).
+objective: |
+  - integrate Tomas's commit into your local `main` with a merge commit (no force push)
+  - push so that `origin/main` equals your local `main`
+  - both changes must survive: `fees.py` (airport fee) and `surge.py` (new surge cap)
 hints:
-- Work in the `local/` directory inside the sandbox.
-- Inspect remotes with `git remote -v` and branches with `git branch -a`.
-- Use the remote command named in the mission objective.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cd local\n   ```\n\n2.\n   ```bash\n\
-  \   git pull --no-rebase origin main\n   ```\n\n3.\n   ```bash\n   git push origin\
-  \ main\n   ```"
-debrief: '## What Just Happened
+  - "Read the push error: the remote has commits you do not have. `git fetch` and `git log --oneline --graph --all` shows the fork."
+  - "Bring the remote commit in with `git pull` (merge strategy), then push again. Never use `--force` here."
+  - "`git pull --no-rebase --no-edit && git push origin main`"
+guide: |
+  ## 1. Diagnose
+  ```bash
+  git push origin main      # rejected
+  git fetch origin
+  git log --oneline --graph --all
+  ```
+  The graph shows two tips branching from the same parent: your airport-fee commit and Tomas's surge commit.
 
+  ## 2. Merge his work into yours
+  ```bash
+  git pull --no-rebase --no-edit
+  ```
+  Because they touch different files there is no conflict, and Git creates a merge commit with both
+  parents. `--no-edit` accepts the default merge message.
 
-  **Push Rejected: Diverged History**
+  ## 3. Push
+  ```bash
+  git push origin main
+  ```
+  Your history now contains the remote tip, so the push is a fast-forward for the server.
 
+  ## 4. Check
+  ```bash
+  git log --oneline --graph -5
+  ```
+debrief: |
+  ## What happened
+  A push is only accepted when it moves the remote branch forward along a straight line. Tomas's commit
+  was not in your history, so Git refused. Merging produced a commit that has both tips as ancestors,
+  making your push a plain fast-forward.
 
-  Local bare repos are a great way to practice remote workflows without needing any
-  network services.
+  ## Why not force
+  `git push --force` would have overwritten Tomas's commit on the server. His work would vanish for
+  everyone who had not fetched it yet.
 
-  '
+  ## Merge or rebase?
+  Merging keeps both commits as they were and adds a merge commit; rebasing replays yours on top of his
+  for a linear history. Both are valid. The next level covers `git pull --rebase`.
+
+  ## Related
+  - `git fetch` plus `git merge origin/main` is the same as `git pull` with merge.
+  - `git config pull.rebase false` makes merging the explicit default.
+common_mistakes:
+  - "Reaching for `git push --force`, which erases the teammate's surge change from origin."
+  - "Pulling but forgetting to push afterwards, leaving local main ahead by the merge."
+  - "Resetting your own commit away to make the push work, which loses the airport fee."
 validators:
-- type: ahead_of
-  other: origin/main
-  count: 0
-  description: Local branch is synchronized with origin/main
-- type: script_passes
-  description: Remote contains the local change
-  script: git show origin/main:local.txt >/dev/null 2>&1
+  - type: script_passes
+    script: test "$(git --git-dir=../origin.git rev-parse refs/heads/main)" = "$(git rev-parse main)"
+    description: origin/main equals your local main
+  - type: merge_commit_exists
+    branch: main
+    description: main contains a merge commit
+  - type: script_passes
+    script: git merge-base --is-ancestor "$(git log --format=%H -1 --grep='Raise surge cap' main)" main
+    description: Tomas's surge commit is part of main
+  - type: script_passes
+    script: grep -q 'AIRPORT_FEE' fees.py && grep -q 'SURGE_CAP = 3.0' surge.py
+    description: Both the airport fee and the new surge cap are present

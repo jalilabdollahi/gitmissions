@@ -4,39 +4,90 @@ level: level-039-abort-a-merge
 order: 39
 difficulty: intermediate
 xp: 200
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git merge --abort`'
-common_mistakes:
-- Running commands related to `git merge --abort` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A merge conflict started, but this mission asks you to back out safely.
-objective: Abort the merge so the repository returns to a clean `main` branch.
+  - git merge --abort
+  - MERGE_HEAD
+  - leaving a conflicted merge safely
+description: |
+  Nina is writing her thesis in LaTeX. She started merging `citations-rewrite` into `main` and immediately hit a
+  conflict in `thesis/chapter3.tex`. Then she remembered that the citations on that branch are only half finished,
+  so the merge should not happen today. Her repository is now stuck halfway through a merge: the chapter file is full
+  of conflict markers and `git status` shows unmerged paths. She wants everything back exactly as it was before
+  the merge attempt and a short note so she remembers to come back.
+objective: |
+  Cancel the merge so that `main` is exactly the commit `Tighten chapter 3 intro` again (no merge in progress,
+  no unmerged files, no markers, `chapter3.tex` as on that commit). Then create `TODO.md` that mentions the branch
+  `citations-rewrite`, and commit it with the message `Postpone citations merge`. The branch `citations-rewrite`
+  must remain untouched.
 hints:
-- The repo is mid-merge right now.
-- Use `git merge --abort`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git merge --abort\n   ```"
-debrief: '## What Just Happened
+  - "`git status` tells you that you are in the middle of a merge and shows the way out."
+  - "Git remembers the pre-merge state and can restore it with a single option of `git merge`."
+  - "`git merge --abort`, then create TODO.md, `git add TODO.md`, `git commit -m \"Postpone citations merge\"`."
+guide: |
+  ## 1. Diagnose
+  ```bash
+  git status
+  ```
+  "You have unmerged paths" and "(use "git merge --abort" to abort the merge)".
 
+  ## 2. Abort
+  ```bash
+  git merge --abort
+  git status
+  cat thesis/chapter3.tex
+  ```
+  The file is back to the `main` version, the markers are gone, and the merge state (`MERGE_HEAD`) is removed.
 
-  **Abort a Merge**
+  ## 3. Leave a note and commit it
+  ```bash
+  printf '# TODO\n- Finish citations on citations-rewrite, then merge it.\n' > TODO.md
+  git add TODO.md
+  git commit -m "Postpone citations merge"
+  ```
+debrief: |
+  ## What happened
+  During a merge Git records the other commit in `.git/MERGE_HEAD` and writes conflicted files into the working tree.
+  `git merge --abort` restores the index and working tree to the state at the start of the merge and removes the
+  merge state. Nothing was committed, so no history changed.
 
+  ## Why it matters
+  A conflict is not a commitment. Aborting is the right move when you started at the wrong time or on the
+  wrong branch. It is much safer than hand-deleting markers just to "get out".
 
-  Aborting a merge restores the pre-merge state when you decide the attempt should
-  not continue.
+  ## Related
+  - `git reset --merge` is the older equivalent.
+  - `git rebase --abort` and `git cherry-pick --abort` work the same way.
+  - Uncommitted changes you had before starting the merge can complicate an abort, so commit or stash first.
 
-  '
+  ## Pitfalls
+  - `git reset --hard` also gets you out but will destroy any uncommitted work.
+  - Do not just delete the markers and commit: that would create a merge that nobody intended.
+common_mistakes:
+  - Editing `chapter3.tex` and committing, which completes the merge instead of cancelling it.
+  - Using `git reset --hard HEAD~1` after the abort, which throws away the previous good commit.
+  - Forgetting that the TODO file must be committed, not just written.
 validators:
-- type: is_clean
-  description: Working tree is clean
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: app.txt
-  text: value=main
-  description: The main branch version is restored
+  - type: script_passes
+    script: '! test -e "$(git rev-parse --git-dir)/MERGE_HEAD"'
+    description: No merge is in progress any more
+  - type: no_unmerged_files
+    description: No unmerged paths remain
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: script_passes
+    script: test "$(git log -1 --format=%s HEAD~1)" = "Tighten chapter 3 intro" && git diff --quiet HEAD~1 HEAD -- thesis
+    description: chapter3.tex is exactly as on "Tighten chapter 3 intro"
+  - type: commit_message_equals
+    text: Postpone citations merge
+    description: Latest commit message is "Postpone citations merge"
+  - type: script_passes
+    script: git show HEAD:TODO.md | grep -q 'citations-rewrite' && test "$(git show --name-only --format= HEAD)" = "TODO.md"
+    description: TODO.md mentions citations-rewrite and is the only file in the commit
+  - type: no_merge_commit
+    description: No merge commit was created
+  - type: script_passes
+    script: test "$(git log -1 --format=%s citations-rewrite)" = "Rewrite citations in methods (half done)"
+    description: citations-rewrite is untouched
+  - type: is_clean
+    description: Working tree is clean

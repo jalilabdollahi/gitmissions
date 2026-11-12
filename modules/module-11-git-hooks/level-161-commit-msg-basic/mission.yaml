@@ -4,50 +4,106 @@ level: level-161-commit-msg-basic
 order: 161
 difficulty: advanced
 xp: 340
-expected_time: 12m
+expected_time: 10m
 concepts:
-- "`commit-msg` \u2014 validate message format"
-common_mistakes:
-- "Running commands related to `commit-msg` \u2014 validate message format without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``commit-msg`\
-  \ \u2014 validate message format`."
-objective: 'Inspect the repository history and create `hooks-report.txt` containing
-  exactly:
-
-
-  `hook=understood`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - commit-msg hook
+  - the message file argument ($1)
+  - rejecting a commit message
+description: |
+  The grants tracker is audited every year, and the auditors read the git log like a diary. Commit messages such as "fix",
+  "stuff" and "WIP" are useless to them. The treasurer asks for a minimal gate on the message itself: the subject (first
+  line) must be at least 10 characters long, and may not start with `wip` in any capitalisation. A `commit-msg` hook is the right place, because git
+  passes it the path of the file that contains the message and aborts the commit when the hook fails.
+objective: |
+  Create an executable `.git/hooks/commit-msg` that exits 1 with an explanation when the first line of the message has fewer than
+  10 characters, or begins with `wip` (case-insensitive), and exits 0 otherwise. A 10-character subject is acceptable.
+  Lines starting with `#` are comments and must not be counted.
 hints:
-- "Start with the Git command related to ``commit-msg` \u2014 validate message format`."
-- Write the exact expected answer into `hooks-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > hooks-report.txt <<'EOF'\n\
-  hook=understood\nEOF\n   ```\n\n2.\n   ```bash\n   git add hooks-report.txt\n  \
-  \ ```\n\n3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "A `commit-msg` hook receives one argument: the file with the proposed message. Read the first line from that file."
+  - "Use `grep -v '^#' \"$1\" | sed -n 1p` for the subject, `wc -c` for its length and `tr 'A-Z' 'a-z'` plus `case` for the `wip` test."
+  - "`[ \"$len\" -lt 10 ]` rejects short subjects (so exactly 10 passes). Print to stderr and `exit 1`. Then `chmod +x`."
+guide: |
+  ## Gate on the message
 
+  Unlike `pre-commit`, this hook gets an argument:
 
-  **Commit Message Hook**
+  ```bash
+  cat > .git/hooks/commit-msg <<'HOOK'
+  #!/bin/sh
+  subject=$(grep -v '^#' "$1" | sed -n '1p')
+  len=$(printf '%s' "$subject" | wc -c | tr -d ' ')
+  if [ "$len" -lt 10 ]; then
+    echo "commit-msg: subject is too short ($len chars, minimum 10)" >&2
+    exit 1
+  fi
+  case $(printf '%s' "$subject" | tr 'A-Z' 'a-z') in
+    wip*)
+      echo "commit-msg: WIP commits are not allowed" >&2
+      exit 1 ;;
+  esac
+  exit 0
+  HOOK
+  chmod +x .git/hooks/commit-msg
+  ```
 
+  Test:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  echo x >> grants.csv && git add grants.csv
+  git commit -m "fix"                              # rejected: too short
+  git commit -m "WIP grants"                       # rejected: WIP
+  git commit -m "Record the Helvetia payout date"  # accepted
+  ```
 
-  '
+  When a commit is rejected, your staged changes remain, so you only need to run the commit again with a better message.
+debrief: |
+  ## What you learned
+
+  `commit-msg` runs after you have written the message but before the commit exists. It gets the path of the message file
+  (usually `.git/COMMIT_EDITMSG`) and may even *edit* that file, for example to append a trailer. A non-zero exit aborts the commit and keeps
+  your index intact. Comment lines (starting with `#`) are stripped by git later, so a hook that counts the first line must skip them.
+
+  ## Real-world use
+
+  Message conventions (length, ticket numbers, Conventional Commits) are enforced here. Note that the hook sees the message *as typed*,
+  with editor comments, when you commit without `-m`.
+
+  ## Pitfalls
+
+  - `git commit -m "..."` and an interactive editor produce slightly different files; test both.
+  - Merges and reverts generate their own messages; decide whether the hook should apply (see the next levels).
+  - Amending (`git commit --amend`) also runs `commit-msg`.
+common_mistakes:
+  - "Reading `$0` or the commit from `git log` instead of the file in `$1`; at hook time the commit does not exist yet."
+  - "Using `-le 10`, which rejects a perfectly fine 10-character subject."
+  - "Matching `WIP` case-sensitively, so `wip:` and `Wip` slip through."
+  - "Forgetting `chmod +x`."
 validators:
-- type: file_content_equals
-  path: hooks-report.txt
-  text: hook=understood
-  description: hooks-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: hook_exists
+    name: commit-msg
+    description: an executable commit-msg hook exists
+  - type: script_passes
+    description: short subjects and WIP subjects are rejected (any capitalisation)
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      printf 'G-102,Alpine Trust,5000,pending\n' >> grants.csv
+      git add grants.csv
+      must_fail git commit -q -m "fix"
+      must_fail git commit -q -m "Fix typo!"
+      must_fail git commit -q -m "wip: more grants to enter"
+      must_fail git commit -q -m "WIP all donors"
+      must_fail git commit -q -m "Wip something longer"
+  - type: script_passes
+    description: a 10 character subject and a descriptive message are accepted
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf 'G-102,Alpine Trust,5000,pending\n' >> grants.csv
+      git add grants.csv
+      git commit -q -m "Fix typos!"
+      printf 'G-103,Bern Bank,9000,awarded\n' >> grants.csv
+      git commit -q -am "Record the Bern Bank award"
+      test "$(git log -1 --format=%s)" = "Record the Bern Bank award"
+

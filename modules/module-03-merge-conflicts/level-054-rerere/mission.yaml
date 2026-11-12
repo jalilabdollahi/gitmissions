@@ -4,44 +4,100 @@ level: level-054-rerere
 order: 54
 difficulty: intermediate
 xp: 280
-expected_time: 10m
+expected_time: 12m
 concepts:
-- '`git rerere`'
-- '`.git/rr-cache`'
-common_mistakes:
-- Running commands related to `git rerere`, `.git/rr-cache` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repository is already stopped in the middle of a merge conflict.
-objective: Enable `rerere`, resolve the conflict in `app.txt` by keeping both sides
-  as `value=main+feature`, and complete the merge.
+  - git rerere
+  - rerere.enabled
+  - .git/rr-cache
+description: |
+  The Cycle Club app team rebuilds its release branch several times a week: merge, test, find a problem, throw
+  the merge away, merge again. Each time `changelog.md` conflicts in exactly the same way (Zoe's distance-units
+  line on `main` versus Yann's elevation-profile line on `release-prep`), and each time someone resolves it by hand.
+  Git can remember a resolution and replay it ("reuse recorded resolution", `rerere`). You will enable it, resolve once,
+  then undo the merge and merge again to watch Git apply your earlier decision by itself.
+objective: |
+  1) Enable rerere for this repository (`rerere.enabled` = true). 2) Merge `release-prep` into `main`, resolve
+  `changelog.md` so that both new bullet points are kept, and commit. 3) Undo that merge commit (move `main` back to
+  its previous commit) and merge `release-prep` again; this time Git resolves the conflict from its memory and you only
+  need to stage and commit. In the end `main` is on a merge commit of `release-prep` with both bullets, the reflog
+  shows two merge commits and a reset, and Git's rerere cache holds the recorded resolution.
 hints:
-- Run `git status` to confirm the conflicted file.
-- Open `app.txt` and remove the conflict markers.
-- Stage the file and commit the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > app.txt <<'EOF'\nvalue=main+feature\n\
-  EOF\n   ```\n\n2.\n   ```bash\n   git add app.txt\n   ```\n\n3.\n   ```bash\n  \
-  \ git commit -m \"Resolve merge conflict\"\n   ```"
-debrief: '## What Just Happened
+  - "Set `git config rerere.enabled true` *before* the first merge, otherwise nothing is recorded."
+  - "After resolving and committing the first merge, `git reset --hard HEAD^` throws the merge away. Merge again and look for `Resolved '...' using previous resolution`."
+  - "After the second merge, check the file for markers, run `git add changelog.md` and `git commit`. `ls .git/rr-cache` shows the stored resolution."
+guide: |
+  ## 1. Turn it on
+  ```bash
+  git config rerere.enabled true
+  ```
 
+  ## 2. Resolve the first time
+  ```bash
+  git merge release-prep      # "Recorded preimage for 'changelog.md'"
+  ```
+  Edit `changelog.md` to keep both bullets, then:
+  ```bash
+  git add changelog.md
+  git commit -m "Merge release-prep (first attempt)"
+  ```
+  Git prints "Recorded resolution for 'changelog.md'".
 
-  **Remember Merge Resolution**
+  ## 3. Undo and redo
+  ```bash
+  git reset --hard HEAD^
+  git merge release-prep
+  ```
+  This time: "Resolved 'changelog.md' using previous resolution." The file already has no markers.
 
+  ## 4. Finish
+  ```bash
+  git diff           # sanity check
+  git add changelog.md
+  git commit -m "Merge release-prep (rebuilt)"
+  ls .git/rr-cache
+  ```
+debrief: |
+  ## What happened
+  With `rerere` enabled Git stores the conflicted text (preimage) and your final text (postimage), keyed by a
+  hash of the conflict. When the same conflict appears again, it applies the stored postimage to the working tree.
+  You still have to stage the result, unless `rerere.autoupdate` is on, so you keep the final say.
 
-  Conflict resolution is just editing the working tree to the final content you want,
-  then telling Git the file is resolved.
+  ## Why it matters
+  Long-running branches, repeated rebases and trial merges generate the same conflicts over and over.
+  `rerere` ("reuse recorded resolution") turns repeated manual work into one-time work.
 
-  '
+  ## Related
+  - `git rerere status`, `git rerere diff` and `git rerere forget <path>` inspect and undo recordings.
+  - `git config rerere.autoupdate true` also stages the auto-resolved files.
+  - Works with `rebase`, `cherry-pick` and `merge`.
+
+  ## Pitfalls
+  - A wrong resolution is replayed too; use `git rerere forget <path>` to fix it.
+  - The cache lives in `.git/rr-cache` and is local to your clone.
+common_mistakes:
+  - Enabling rerere after the first conflict was already resolved, so nothing was recorded.
+  - Using `git merge --abort` instead of resetting the committed merge, so the second attempt never replays the resolution.
+  - Not staging the file after the replay and wondering why the commit is refused.
 validators:
-- type: script_passes
-  description: rerere is enabled
-  script: test "$(git config rerere.enabled)" = "true"
-- type: file_content_equals
-  path: app.txt
-  text: value=main+feature
-  description: Conflict was resolved as expected
-- type: is_clean
-  description: Working tree is clean
+  - type: config_equals
+    key: rerere.enabled
+    value: "true"
+    description: rerere is enabled in this repository
+  - type: script_passes
+    script: test "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" = "3" && git merge-base --is-ancestor release-prep HEAD
+    description: HEAD is a merge of release-prep
+  - type: script_passes
+    script: grep -q 'Show ride distance in miles or kilometres' changelog.md && grep -q 'Add elevation profile to routes' changelog.md && test "$(grep -c '^- Fix crash' changelog.md)" = "1"
+    description: changelog.md keeps both new bullet points once
+  - type: script_passes
+    script: |
+      test "$(git reflog | grep -c 'commit (merge)')" -ge 2
+      git reflog | grep -q 'reset: moving to HEAD'
+    description: The reflog shows two merge commits with a reset in between
+  - type: script_passes
+    script: ls "$(git rev-parse --git-dir)"/rr-cache/*/postimage >/dev/null
+    description: rerere has recorded a resolution (postimage in .git/rr-cache)
+  - type: no_conflict_markers
+    description: No conflict markers remain
+  - type: is_clean
+    description: Working tree is clean

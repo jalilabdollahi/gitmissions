@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > merged.txt <<'EOF'
-feature/merged
-EOF
-git add merged.txt
-git commit -m "docs: record branches"
+git branch --merged main
+# everything merged into main, except main itself
+git branch --merged main | grep -v -e '^\*' -e ' main$' | xargs git branch -d
+git branch

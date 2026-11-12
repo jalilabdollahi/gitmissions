@@ -6,43 +6,73 @@ difficulty: beginner
 xp: 150
 expected_time: 6m
 concepts:
-- '`git merge --no-ff`'
-- merge commit
-common_mistakes:
-- Running commands related to `git merge --no-ff`, merge commit without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A feature branch is ready to be integrated into `main`.
-objective: Merge `feature/login` into `main` using `--no-ff`.
+  - git merge --no-ff
+  - merge commit
+  - first parent vs second parent
+description: |
+  Lena's personal portfolio site has a finished `photo-gallery` branch with two commits. `main` has not moved
+  since the branch was created, so Git could simply fast-forward. But the site owner wants the history to show
+  that "the gallery was added as one feature": a visible merge commit that groups the two gallery commits.
+objective: |
+  Merge `photo-gallery` into `main` with a real merge commit whose message is `Merge photo gallery`.
+  The first parent of the merge must be the previous tip of `main` (`Update contact page`) and the second
+  parent must be the tip of `photo-gallery`. Stay on `main`; keep the branch.
 hints:
-- Make sure you are on `main`.
-- Merge with `git merge --no-ff feature/login`.
-- Keep the working tree clean after the merge.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main\n   ```\n\n2.\n\
-  \   ```bash\n   git merge --no-ff feature/login\n   ```"
-debrief: '## What Just Happened
+  - "A plain `git merge photo-gallery` would only slide `main` forward. Look in `git merge --help` for the flag that always creates a commit."
+  - "`--no-ff` (no fast-forward) creates a merge commit even if a fast-forward is possible. Use `-m` for the message."
+  - "`git merge --no-ff photo-gallery -m \"Merge photo gallery\"`"
+guide: |
+  ## 1. Check that fast-forward would be possible
+  ```bash
+  git log --oneline --graph --all
+  ```
+  A straight line. A plain merge would just move the pointer.
 
+  ## 2. Force a merge commit
+  ```bash
+  git merge --no-ff photo-gallery -m "Merge photo gallery"
+  ```
 
-  **No-Fast-Forward Merge**
+  ## 3. Look at the shape
+  ```bash
+  git log --oneline --graph
+  git show --no-patch --format='%H%n%P' HEAD
+  ```
+  The new commit has two parents: first the old `main`, then the branch tip. The graph now shows a bubble.
+debrief: |
+  ## What happened
+  A merge commit is a commit with two parents. `--no-ff` creates it even when Git could have fast-forwarded,
+  so the feature's commits stay grouped behind one node that says "this is where the gallery landed".
 
+  ## Why it matters
+  Teams that review by feature often prefer merge commits: reverting the whole feature is a single
+  `git revert -m 1 <merge>`, and the graph documents what belonged together.
 
-  Fast-forward merges keep history linear; `--no-ff` preserves an explicit integration
-  point.
+  ## Related
+  - `git config merge.ff false` makes `--no-ff` the default.
+  - `git log --first-parent` shows only the merges onto main, hiding the branch commits.
+  - `git merge --ff-only` is the opposite policy.
 
-  '
+  ## Pitfalls
+  - Without `-m` Git opens an editor.
+  - Frequent no-ff merges create busier graphs; agree on one policy per project.
+common_mistakes:
+  - Running a plain `git merge`, which fast-forwards and creates no merge commit.
+  - Merging while on `photo-gallery` (the wrong direction).
+  - Typing a different merge message than the one requested.
 validators:
-- type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_contains
-  path: feature.txt
-  text: login ready
-  description: Feature change reached main
-- type: merge_commit_exists
-  branch: HEAD
-  description: History shape matches the mission
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: main
+    description: HEAD is on main
+  - type: merge_commit_exists
+    branch: main
+    description: main contains a merge commit
+  - type: commit_message_equals
+    text: Merge photo gallery
+    description: The merge commit message is "Merge photo gallery"
+  - type: script_passes
+    script: test "$(git log -1 --format=%s HEAD^1)" = "Update contact page" && test "$(git rev-parse HEAD^2)" = "$(git rev-parse photo-gallery)"
+    description: First parent is the old main, second parent is photo-gallery
+  - type: branch_exists
+    branch: photo-gallery
+    description: photo-gallery still exists

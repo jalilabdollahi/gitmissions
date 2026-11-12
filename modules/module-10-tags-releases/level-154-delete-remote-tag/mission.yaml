@@ -6,33 +6,84 @@ difficulty: intermediate
 xp: 230
 expected_time: 7m
 concepts:
-- '`git push origin --delete v0.9`'
-common_mistakes:
-- Running commands related to `git push origin --delete v0.9` without checking `git
-  status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices creating, inspecting, and publishing tags.
+  - git push --delete
+  - removing a published tag
 repo_path: local
-objective: Delete remote tag `v0.9` from `origin`.
+description: |
+  Somebody tagged an internal staging build of the edge-gateway firmware as `v0.9.9` and pushed all tags. The OTA
+  updater treats any tag matching `v*` as an officially released firmware, so devices in the field may try to
+  download an unsigned bootloader. The commit itself can stay in history, but the tag must disappear from
+  `origin` **and** from your own repository so that it can never be pushed again by accident. The genuine releases `v0.9.8` and `v1.0.0` must keep existing everywhere.
+objective: |
+  Delete the tag `v0.9.9` from the remote `origin` and from your local repository. `v0.9.8` and `v1.0.0` must remain on both.
 hints:
-- Start with the Git command related to ``git push origin --delete v0.9``.
-- Use `git status` often so you can see the state change.
-- Leave the repository in the exact end state described by the mission.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git push origin --delete v0.9\n\
-  \   ```"
-debrief: '## What Just Happened
+  - "Deleting a tag locally does not touch the server. Compare `git tag` with `git ls-remote --tags origin`."
+  - "Pushing a deletion to the remote is done with `git push` and a flag (or an empty source in a refspec, `:refs/tags/<name>`)."
+  - "`git push origin --delete v0.9.9`, then `git tag -d v0.9.9`."
+guide: |
+  ## Removing a tag on both sides
 
+  See the situation:
 
-  **Delete a Remote Tag**
+  ```bash
+  git tag
+  git ls-remote --tags origin
+  ```
 
+  Delete the tag from the remote first:
 
-  Tags mark important points in history, usually releases or audit checkpoints.
+  ```bash
+  git push origin --delete v0.9.9
+  ```
 
-  '
+  (The older equivalent is `git push origin :refs/tags/v0.9.9`.) If you only deleted it locally, the next
+  `git push --tags` would not bring it back, but others who fetched it still have it, and your server would still list it. Remove the local copy too:
+
+  ```bash
+  git tag -d v0.9.9
+  ```
+
+  Verify both sides:
+
+  ```bash
+  git tag
+  git ls-remote --tags origin
+  ```
+debrief: |
+  ## What you learned
+
+  A remote tag is a ref on the server, and deleting it requires a push whose "source" is empty:
+  `git push origin --delete <tag>`. Local and remote tags are independent copies, so a complete removal is two operations.
+
+  ## Real-world use
+
+  Withdrawing a wrongly published release. Note that teammates who already fetched the tag keep it locally; they must delete it
+  themselves (`git tag -d`) or fetch with `--prune-tags`. If an artifact was already built from the tag, the
+  artifact must be retracted separately.
+
+  ## Pitfalls
+
+  - Never reuse a published version name for a different commit; caches and package managers assume tags are immutable.
+  - If a branch with the same name exists, the push is ambiguous; spell the ref out as `refs/tags/v0.9.9`.
+  - Deleting the tag does not delete the commit; it stays reachable from `main`.
+common_mistakes:
+  - "Deleting only the local tag with `git tag -d`, which leaves the tag on `origin`."
+  - "Deleting only the remote tag and leaving the local one, which a later `git push --tags` would resurrect."
+  - "Using a `v0.9.*` pattern or force-pushing, which also removes `v0.9.8`."
 validators:
-- type: script_passes
-  description: Remote tag was deleted
-  script: '! git -C ../remote.git rev-parse --verify refs/tags/v0.9 >/dev/null 2>&1'
+  - type: script_passes
+    description: v0.9.9 is gone from origin
+    script: |
+      test -z "$(git ls-remote --tags origin 'refs/tags/v0.9.9*')"
+  - type: tag_not_exists
+    tag: v0.9.9
+    description: v0.9.9 is gone from the local repository
+  - type: script_passes
+    description: the real releases v0.9.8 and v1.0.0 remain on both sides
+    script: |
+      for t in v0.9.8 v1.0.0; do
+        test -n "$(git ls-remote --tags origin "refs/tags/$t")"
+        git rev-parse -q --verify "refs/tags/$t" >/dev/null
+      done
+      test "$(git rev-list --count main)" = 3
+

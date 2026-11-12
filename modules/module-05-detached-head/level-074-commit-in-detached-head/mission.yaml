@@ -4,39 +4,84 @@ level: level-074-commit-in-detached-head
 order: 74
 difficulty: intermediate
 xp: 250
-expected_time: 8m
+expected_time: 9m
 concepts:
-- "commits \"floating\" \u2014 not on any branch"
-common_mistakes:
-- "Running commands related to commits \"floating\" \u2014 not on any branch without\
-  \ checking `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: The repo is already detached, and you need to make a commit there.
-objective: While detached, add `experiment.txt` and commit it with `Detached experiment`.
+  - committing in detached HEAD
+  - hotfix from a tag
+  - new commits have no branch
+repo_path: signflow
+description: |
+  Signflow, a SaaS signup service, has release `v3.2.0` in production. Customers with plus-addresses
+  (like `ana+shop@example.com`) cannot sign up because the email regex rejects `+`. `main` already contains
+  unreleased work, so you may not build the hotfix on top of it. Production support has put you in a
+  detached HEAD at `v3.2.0`. Write the fix as a commit directly on that release commit.
+objective: |
+  While HEAD is detached at the `v3.2.0` commit:
+  - change `signup/validate.js` so the character class before the `@` allows `+` (it must contain `[a-z0-9._+-]+@`)
+  - commit it with the message `Hotfix: accept plus-addressing in signup emails`
+  - the new commit's parent must be the `v3.2.0` commit, and HEAD must still be detached (do not create a branch or move `main`)
 hints:
-- Stay detached.
-- Create the file, stage it, and commit normally.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf 'experiment\n' > experiment.txt\n\
-  \   ```\n\n2.\n   ```bash\n   git add experiment.txt\n   ```\n\n3.\n   ```bash\n\
-  \   git commit -m \"Detached experiment\"\n   ```"
-debrief: '## What Just Happened
+  - "`git status` confirms you are on the v3.2.0 commit with no branch. Edit the file as usual."
+  - "Committing works the same in detached HEAD; the commit just is not recorded on any branch."
+  - "`git commit -am \"Hotfix: accept plus-addressing in signup emails\"`"
+guide: |
+  ## 1. Check where you are
+  ```bash
+  git status
+  git log --oneline -3
+  cat signup/validate.js
+  ```
+  HEAD is detached at the tagged release, not on main.
 
+  ## 2. Fix the regex
+  Edit `signup/validate.js` so the class reads `[a-z0-9._+-]+`.
+  ```bash
+  git diff
+  ```
 
-  **Make a Commit in Detached HEAD**
+  ## 3. Commit
+  ```bash
+  git commit -am "Hotfix: accept plus-addressing in signup emails"
+  git log --oneline --graph --all -5
+  ```
+  The graph shows the hotfix hanging off `v3.2.0`, separate from `main`.
 
+  ## 4. Note the risk
+  Only HEAD points to this commit. If you switch away now, the commit is reachable just through the reflog.
+  Turning it into a branch (`git switch -c hotfix/3.2.1`) is the normal next step, and the next levels show it.
+debrief: |
+  ## What happened
+  A commit made in detached HEAD works normally, but HEAD is the only name that points at it. The
+  new commit's parent is the release commit, so it does not include any of the unreleased work on `main`.
 
-  Git allows commits in detached HEAD; they just are not referenced by a branch automatically.
+  ## Why build hotfixes this way
+  A hotfix should contain only the fix. Starting from the exact released commit guarantees that the
+  patch release differs from `v3.2.0` by one change.
 
-  '
+  ## Danger zone
+  Switching away leaves the commit unreferenced. Git keeps it for a while (reflog, default 90 days),
+  but `git gc` can delete it eventually. Always give it a branch or tag before you leave.
+
+  ## Related
+  - `git switch -c hotfix/3.2.1` names the work.
+  - `git tag v3.2.1` marks it for release.
+  - `git cherry-pick <hash>` carries the fix over to main afterwards.
+common_mistakes:
+  - "Switching to main first and applying the fix there, which ships unreleased work in the hotfix."
+  - "Creating a branch before committing, so HEAD is no longer detached as the objective requires."
+  - "Editing the wrong file; the validator checks `signup/validate.js`."
 validators:
-- type: is_detached
-  description: HEAD is still detached
-- type: file_exists
-  path: experiment.txt
-  description: experiment.txt exists
-- type: commit_message_contains
-  text: Detached experiment
-  description: Latest commit message is correct
+  - type: is_detached
+    description: HEAD is still detached
+  - type: script_passes
+    script: test "$(git rev-parse HEAD~1)" = "$(git rev-parse v3.2.0^{commit})"
+    description: The new commit sits directly on v3.2.0
+  - type: commit_message_equals
+    text: "Hotfix: accept plus-addressing in signup emails"
+    description: Commit message matches
+  - type: script_passes
+    script: grep -qF '[a-z0-9._+-]+@' signup/validate.js
+    description: The regex allows plus signs
+  - type: script_passes
+    script: test "$(git log -1 --format=%s main)" = "Add pricing banner experiment"
+    description: main has not moved

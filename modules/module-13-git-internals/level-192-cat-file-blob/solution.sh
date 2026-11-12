@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
-
-cat > internals.txt <<'EOF'
-object=known
-EOF
-git add internals.txt
-git commit -m "docs: add report"
+mkdir -p restored
+sha=$(sed -n 's/^blob: //p' TICKET.txt)
+git cat-file -p "$sha" > restored/haproxy.cfg
+git cat-file -s "$sha" > restored/size.txt

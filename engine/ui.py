@@ -35,11 +35,6 @@ _MENU_ITEMS = [
     ("8", "status"), ("9", "help"), ("g", "handbook"), ("q", "quit"),
 ]
 
-MESSAGE_REWRITES = {
-    "Working tree is clean": "No pending changes remain in the repository",
-}
-
-
 def _difficulty_badge(difficulty: str) -> Text:
     style = DIFFICULTY_STYLE.get(difficulty, "bold white")
     return Text(f"[{difficulty.upper()}]", style=style)
@@ -85,7 +80,7 @@ def show_progress_summary(progress: dict, levels_registry: list[dict], current_l
     line = Text()
     line.append(f"  {player}", style="bold cyan")
     line.append(f"  ✦ {xp} XP", style="bold green")
-    line.append(f"  Level {completed + 1}/{total} ({percent}%)  ", style="white")
+    line.append(f"  Completed {completed}/{total} ({percent}%)  ", style="white")
     line.append_text(_progress_bar(completed, total, width=20))
     if current_level_name:
         line.append(f"  {current_level_name}", style="dim white")
@@ -152,7 +147,7 @@ def show_hint(hint_text: str, hint_num: int, total_hints: int) -> None:
 
 
 def show_all_hints_used(total: int) -> None:
-    console.print(f"[yellow]All {total} hints revealed. Try 'guide' or 'solution'.[/yellow]")
+    console.print(f"[yellow]All {total} hints revealed. Try 'guide' (4) for a walkthrough or 'solution' (3).[/yellow]")
 
 
 def show_solution(solution_content: str) -> None:
@@ -218,8 +213,7 @@ def show_check_results(results: list[dict]) -> None:
     for result in results:
         icon = "[green]✓[/green]" if result["passed"] else "[red]✗[/red]"
         style = "white" if result["passed"] else "red"
-        message = MESSAGE_REWRITES.get(result["message"], result["message"])
-        table.add_row(icon, f"[{style}]{message}[/{style}]")
+        table.add_row(icon, Text(result["message"], style=style))
 
     if all_passed:
         title = "[bold green]PASS[/bold green]"
@@ -232,6 +226,7 @@ def show_check_results(results: list[dict]) -> None:
 
 def show_status(progress: dict, levels_registry: list[dict]) -> None:
     completed = set(progress.get("completed_levels", []))
+    skipped = set(progress.get("skipped_levels", [])) - completed
     modules: dict[str, list[dict]] = {}
     for entry in levels_registry:
         modules.setdefault(entry["module"], []).append(entry)
@@ -239,17 +234,20 @@ def show_status(progress: dict, levels_registry: list[dict]) -> None:
     table = Table(box=box.SIMPLE_HEAVY, expand=True, header_style="bold cyan", padding=(0, 1))
     table.add_column("Module")
     table.add_column("Done", justify="right")
+    table.add_column("Skipped", justify="right")
     table.add_column("XP", justify="right")
     table.add_column("Progress")
 
     for module_name, entries in sorted(modules.items()):
         done = sum(1 for item in entries if item["level"] in completed)
+        skip_count = sum(1 for item in entries if item["level"] in skipped)
         earned = sum(item["xp"] for item in entries if item["level"] in completed)
         total_xp = sum(item["xp"] for item in entries)
         bar = _progress_bar(done, len(entries), width=12)
         table.add_row(
             _short_module(module_name),
             f"{done}/{len(entries)}",
+            str(skip_count) if skip_count else "",
             f"{earned}/{total_xp}",
             bar,
         )
@@ -259,7 +257,7 @@ def show_status(progress: dict, levels_registry: list[dict]) -> None:
     console.print(Panel(table, title="[cyan]STATUS[/cyan]", border_style="cyan", box=box.ROUNDED))
     overall_bar = _progress_bar(overall_done, overall_total, width=24)
     line = Text()
-    line.append(f"  Total XP: {progress.get('total_xp', 0)}    Levels: {overall_done}/{overall_total}  ", style="bold")
+    line.append(f"  Total XP: {progress.get('total_xp', 0)}    Levels: {overall_done}/{overall_total}    Skipped: {len(skipped)}  ", style="bold")
     line.append_text(overall_bar)
     console.print(line)
     console.print()
@@ -272,18 +270,19 @@ def show_help() -> None:
     table.add_column("Description", style="white")
     rows = [
         ("1", "check",    "Validate your solution"),
-        ("w", "watch",    "Auto-validate every 3 seconds"),
+        ("w", "watch",    "Re-check every 3s until it passes (Ctrl+C stops)"),
         ("2", "hint",     "Reveal the next progressive hint"),
         ("3", "solution", "Show the reference solution"),
         ("4", "guide",    "Step-by-step walkthrough for this level"),
         ("5", "debrief",  "Post-mission learning notes"),
         ("6", "reset",    "Reset sandbox to broken state"),
-        ("7", "skip",     "Skip level without XP"),
+        ("7", "skip",     "Skip level without XP (it comes back later)"),
         ("8", "status",   "Show progress and XP"),
         ("9", "help",     "Show this help"),
         ("g", "handbook", "Open the full Git handbook"),
         ("q", "quit",     "Save and exit"),
         ("",  "<cmd>",    "Any shell command runs in the sandbox (ls, git, cat, …)"),
+        ("",  "cd <dir>", "Change directory; `cd ~` returns to the level's repo"),
     ]
     for row in rows:
         table.add_row(*row)
@@ -312,9 +311,8 @@ def show_info(message: str) -> None:
     console.print(f"[cyan]→ {message}[/cyan]")
 
 
-def show_watch_tick(passed: bool) -> None:
+def show_watch_tick(passed: bool, ok: int, total: int) -> None:
     stamp = datetime.now().strftime("%H:%M:%S")
-    if passed:
-        console.print(f"\r[green]● watch  ✓ PASS  {stamp}[/green]", end="")
-    else:
-        console.print(f"\r[red]● watch  ✗ FAIL  {stamp}[/red]", end="")
+    style = "green" if passed else "red"
+    label = "✓ PASS" if passed else "✗ FAIL"
+    console.print(f"\r[{style}]● watch  {label}  {ok}/{total} checks  {stamp}[/{style}]   ", end="")

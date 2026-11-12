@@ -6,48 +6,119 @@ difficulty: expert
 xp: 440
 expected_time: 14m
 concepts:
-- "`git add -p` \u2014 hunk-by-hunk staging"
-common_mistakes:
-- "Running commands related to `git add -p` \u2014 hunk-by-hunk staging without checking\
-  \ `git status` first, which hides the actual repository state."
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: "This repository contains a small history designed to practice ``git\
-  \ add -p` \u2014 hunk-by-hunk staging`."
-objective: 'Inspect the repository history and create `advanced-report.txt` containing
-  exactly:
+- git add -p
+- splitting hunks (s)
+- atomic commits
+repo_path: payroll
+description: |
+  You fixed a rounding bug in the payroll script, but while debugging you left a `print("DEBUG ...")` two lines from the fix, and on the way you also renamed a helper function (`fmt_row`). Everything is in the working tree as one big diff. Your team demands atomic commits: the bug fix alone, the rename alone, and no debug output in any commit. The debug line is still useful to you for another hour, so it must stay in the file, uncommitted.
+objective: |
+  Make exactly two new commits on `main` using partial staging.
 
-
-  `done=1`
-
-
-  Then commit the report with the message `docs: add report`.'
+  1. First commit, message containing `round`: only the rounding fix (`round(net)` becomes `round(net, 2)`).
+  2. Second commit, message containing `rename`: only the rename of `fmt_row` to `format_row` (definition and call).
+  3. The `print("DEBUG gross", gross)` line must not be in either commit, but must remain in the working tree as the only uncommitted change. Nothing may stay staged.
 hints:
-- "Start with the Git command related to ``git add -p` \u2014 hunk-by-hunk staging`."
-- Write the exact expected answer into `advanced-report.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > advanced-report.txt <<'EOF'\n\
-  done=1\nEOF\n   ```\n\n2.\n   ```bash\n   git add advanced-report.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+- '`git add -p` offers hunk by hunk. The fix and the debug line are in one hunk because they are only
+  one unchanged line apart.'
+- At the prompt, `s` splits a hunk into smaller ones when there are unchanged lines between the changes.
+  Then answer `y` or `n` for each piece.
+- 'After the first commit, run `git add -p` again: now answer `n` for the debug line and `y` for the rename
+  hunks. `git diff --cached` shows what will be committed.'
+guide: |
+  ## Look at the hunks
 
+  ```bash
+  git diff
+  ```
 
-  **Stage Partial Changes**
+  The first hunk mixes the debug print and the rounding fix.
 
+  ## Commit 1, the fix
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git add -p payroll.py
+  ```
 
-  '
+  For the first hunk answer `s` (split). Git shows the pieces one by one:
+
+  - the `DEBUG` insertion: `n`
+  - the `round(net, 2)` change: `y`
+  - the two rename hunks: `n`
+
+  Check and commit:
+
+  ```bash
+  git diff --cached
+  git commit -m "fix: round net pay to cents"
+  ```
+
+  ## Commit 2, the rename
+
+  ```bash
+  git add -p payroll.py      # n for DEBUG, y for def, y for the call
+  git commit -m "refactor: rename fmt_row to format_row"
+  git diff                   # only the DEBUG line remains
+  ```
+debrief: |
+  ## Why partial staging
+
+  A commit should be one logical change. With `git add -p` you decide that at the hunk (or even line) level, after the fact. It makes review easier and `git bisect`, `git revert` and `git cherry-pick` far more useful.
+
+  ## Hunk commands
+
+  `y` stage, `n` skip, `s` split into smaller hunks, `e` edit the hunk by hand (for changes that are on adjacent lines and cannot be split), `q` quit, `a`/`d` stage or skip this and all remaining hunks of the file.
+
+  ## Safety
+
+  Staging a piece does not remove it from the working tree. The unstaged remainder is still there for the next commit or to discard. Always read `git diff --cached` before committing: it is exactly what goes into history.
+
+  ## Related
+
+  - `git restore -p` and `git checkout -p` discard hunks interactively.
+  - `git stash -p` stashes selected hunks.
+  - `git commit -p` stages and commits in one go.
+common_mistakes:
+- Using `git add payroll.py`, which stages the debug print together with everything else.
+- Staging the debug line and then removing it in the next commit; the DEBUG line would still show up in
+  history.
+- Pressing `a` in the first prompt, staging every remaining hunk.
 validators:
-- type: file_content_equals
-  path: advanced-report.txt
-  text: done=1
-  description: advanced-report.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+- type: commit_count_eq
+  count: 5
+  branch: main
+  description: Exactly two new commits were added
+- type: script_passes
+  description: The first new commit is only the rounding fix
+  script: 'git log -1 --format=%s HEAD~1 | grep -qi round
+
+    git show HEAD~1:payroll.py | grep -q ''round(net, 2)''
+
+    git show HEAD~1:payroll.py | grep -q ''def fmt_row''
+
+    test "$(git show HEAD~1 --format= | grep -cE ''^[+-][^+-]'')" = 2
+
+    '
+- type: script_passes
+  description: The second new commit is only the rename
+  script: 'git log -1 --format=%s HEAD | grep -qi rename
+
+    git show HEAD:payroll.py | grep -q ''def format_row''
+
+    ! git show HEAD:payroll.py | grep -q ''fmt_row''
+
+    test "$(git show HEAD --format= | grep -cE ''^[+-][^+-]'')" = 4
+
+    '
+- type: script_passes
+  description: No commit contains the debug print, but the working tree still does
+  script: '! git log -p main | grep -q ''DEBUG gross''
+
+    grep -q ''print("DEBUG gross", gross)'' payroll.py
+
+    '
+- type: script_passes
+  description: Nothing is staged and the DEBUG line is the only unstaged change
+  script: 'git diff --cached --quiet
+
+    test "$(git diff | grep -cE ''^[+-][^+-]'')" = 1'

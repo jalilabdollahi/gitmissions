@@ -1,8 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-cat > hooks-report.txt <<'EOF'
-hook=understood
-EOF
-git add hooks-report.txt
-git commit -m "docs: add report"
+sed -i.bak 's#^  depsync requirements.lock#  "$(git rev-parse --show-toplevel)/tools/bin/depsync" requirements.lock#' .git/hooks/post-merge && rm .git/hooks/post-merge.bak

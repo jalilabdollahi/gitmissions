@@ -1,8 +1,3 @@
 #!/usr/bin/env bash
 set -e
-
-cat > no-merges.txt <<'EOF'
-non_merges=3
-EOF
-git add no-merges.txt
-git commit -m "docs: add report"
+git log --no-merges --format='- %s' v2.3.0..main > CHANGELOG-draft.md

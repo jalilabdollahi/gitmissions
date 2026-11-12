@@ -6,36 +6,99 @@ difficulty: advanced
 xp: 340
 expected_time: 12m
 concepts:
-- abort commit if linter fails
-common_mistakes:
-- Running commands related to abort commit if linter fails without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This module practices local and server-side Git hooks inside a sandbox.
-objective: Create an executable `pre-commit` hook that prints `hook ok`.
+  - pre-commit as a linter
+  - checking staged content with git show :path
+  - --diff-filter
+description: |
+  The nightly importer crashed because someone committed `feeds/rates.json` with a trailing comma. The data team asks for a
+  validator that runs on every commit and refuses broken JSON. Two details from last time matter: the person had
+  already fixed the file *on disk* after staging the broken version, and a developer had to delete an obsolete feed and
+  was blocked by a naive check that tried to read the deleted file. Your hook has to deal with both.
+objective: |
+  Write an executable `.git/hooks/pre-commit` that, for every staged `*.json` file that is added or modified, checks that
+  the **staged version** is valid JSON (`python3 -m json.tool` is available), prints which file is invalid and exits 1 if any is.
+  Staged deletions of JSON files must be allowed, and other file types must not be checked.
 hints:
-- Hooks live in `.git/hooks/`.
-- Remember to make the file executable.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   printf '#!/usr/bin/env bash\\\
-  necho hook ok\\n' > .git/hooks/pre-commit\n   ```\n\n2.\n   ```bash\n   chmod +x\
-  \ .git/hooks/pre-commit\n   ```"
-debrief: '## What Just Happened
+  - "What is committed is the content of the index, not of the working directory. `git show :<path>` prints the staged blob."
+  - "Restrict the loop to staged files that still exist with `--diff-filter=ACM`; pipe each staged blob into `python3 -m json.tool`."
+  - "Collect a failure flag over all files, print the filename to stderr and `exit 1` at the end. Do not forget `chmod +x`."
+guide: |
+  ## Lint the index, not the disk
 
+  A tempting version reads `feeds/rates.json` from the working tree. It fails the "staged broken, fixed on disk" case. Ask
+  git for the staged blob instead:
 
-  **Lint-Checking Hook**
+  ```bash
+  git show :feeds/rates.json | python3 -m json.tool
+  ```
 
+  Write the hook:
 
-  Hooks let you automate checks at key points in the Git workflow.
+  ```bash
+  cat > .git/hooks/pre-commit <<'HOOK'
+  #!/bin/sh
+  status=0
+  for f in $(git diff --cached --name-only --diff-filter=ACM | grep '\.json$' || true); do
+    if ! git show ":$f" | python3 -m json.tool >/dev/null 2>&1; then
+      echo "pre-commit: $f is not valid JSON" >&2
+      status=1
+    fi
+  done
+  exit $status
+  HOOK
+  chmod +x .git/hooks/pre-commit
+  ```
 
-  '
+  `--diff-filter=ACM` (added, copied, modified) skips deleted files, which have no staged content to parse. Try a trailing comma in a
+  feed, `git add` it and commit.
+debrief: |
+  ## What you learned
+
+  Hooks should validate exactly what will be committed. `git show :path` (a colon and a path) reads the index version of
+  a file. `--diff-filter` limits a diff listing to certain change types, which avoids errors on deletions and renames.
+  Accumulating failures in a variable reports *all* problems in one run instead of one at a time.
+
+  ## Real-world use
+
+  The same pattern runs `eslint`, `black --check`, `yamllint` or `terraform fmt` on staged files only, which keeps hooks fast on
+  big repositories. Frameworks such as `lint-staged` automate it.
+
+  ## Pitfalls
+
+  - File names with spaces break the simple `for f in $(...)` loop; use `git diff -z` and `xargs -0` for robust handling.
+  - Linting the working tree can pass while the index is broken (partial staging).
+  - A slow hook trains people to use `--no-verify`.
+common_mistakes:
+  - "Reading the file from disk (`python3 -m json.tool $f`), which accepts a staged broken version that was fixed afterwards."
+  - "Not filtering deletions, so deleting a feed makes the hook fail with 'file not found'."
+  - "Validating every staged file (including README.md) as JSON."
+  - "Printing the error but exiting with status 0."
 validators:
-- type: hook_exists
-  name: pre-commit
-  description: pre-commit hook exists and is executable
-- type: hook_output_contains
-  name: pre-commit
-  text: hook ok
-  description: pre-commit hook prints the expected output
+  - type: hook_exists
+    name: pre-commit
+    description: an executable pre-commit hook exists
+  - type: script_passes
+    description: staged invalid JSON is rejected, even if the working copy is fixed afterwards
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      must_fail() { if "$@" >/dev/null 2>&1; then echo "expected failure: $*" >&2; exit 1; fi; }
+      printf '{"base": "EUR", "rates": {"USD": 1.08,},}\n' > feeds/rates.json
+      git add feeds/rates.json
+      printf '{"base": "EUR", "rates": {"USD": 1.08}}\n' > feeds/rates.json
+      must_fail git commit -q -m "break rates"
+      out=$(git commit -q -m "break rates" 2>&1 || true)
+      printf '%s' "$out" | grep -q 'feeds/rates.json'
+  - type: script_passes
+    description: valid JSON, other file types and staged deletions are accepted
+    script: |
+      t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+      cp -R . "$t/r"; cd "$t/r"; git config core.hooksPath .git/hooks
+      printf '{"base": "EUR", "rates": {"USD": 1.09}}\n' > feeds/rates.json
+      printf 'this is {not json, but markdown\n' >> README.md
+      git add -A
+      git commit -q -m "Update USD rate"
+      git rm -q feeds/holidays.json
+      git commit -q -m "Drop obsolete holiday feed"
+      test ! -e feeds/holidays.json
+

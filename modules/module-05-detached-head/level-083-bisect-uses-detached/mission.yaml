@@ -4,33 +4,87 @@ level: level-083-bisect-uses-detached
 order: 83
 difficulty: intermediate
 xp: 270
-expected_time: 8m
+expected_time: 12m
 concepts:
-- '`git bisect` explanation (preview)'
-common_mistakes:
-- Running commands related to `git bisect` explanation (preview) without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: You are on `main`, and this mission asks you to move into a detached
-  HEAD state.
-objective: Check out `HEAD~1` so that HEAD becomes detached.
+  - git bisect
+  - bisect run
+  - bisect leaves HEAD detached
+repo_path: findly
+description: |
+  The Findly search engine uses `weights.conf` to rank results. The four weights must always add up to
+  100; `check.sh` verifies this. A few weeks ago it was fine, now `sh check.sh` fails on `main`, and 22 small
+  "tuning" commits happened in between. Nobody knows which one broke the sum. Instead of reading all
+  of them, let Git binary-search the history. Note that `git bisect` checks commits out in detached
+  HEAD, so you must also clean up after yourself.
+objective: |
+  - find the first commit where `sh check.sh` fails
+  - write its abbreviated hash into `culprit.txt`
+  - end the bisect session (`git bisect reset`) so HEAD is attached to `main` again and no bisect is in progress
 hints:
-- A detached HEAD happens when HEAD points directly to a commit or tag.
-- Use `git checkout HEAD~1`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git checkout HEAD~1\n   ```"
-debrief: '## What Just Happened
+  - "The first commit of the history is good, the tip of `main` is bad. `git bisect start`, then mark both."
+  - "`git bisect run sh check.sh` automates the test: exit code 0 means good, non-zero means bad. After it finishes, Git tells you the first bad commit."
+  - "`git bisect start && git bisect bad && git bisect good <first-commit> && git bisect run sh check.sh`, then `git bisect reset`."
+guide: |
+  ## 1. Confirm the failure
+  ```bash
+  sh check.sh; echo $?
+  git log --oneline | wc -l
+  ```
 
+  ## 2. Start bisecting
+  ```bash
+  git bisect start
+  git bisect bad                         # current commit
+  git bisect good $(git rev-list --max-parents=0 HEAD)   # the root commit
+  ```
+  Git checks out a commit halfway between them (detached HEAD).
 
-  **Bisect Leaves You Detached**
+  ## 3. Automate the answer
+  ```bash
+  git bisect run sh check.sh
+  ```
+  About 5 steps suffice for 22 commits (log2). The output ends with "<hash> is the first bad commit".
 
+  ## 4. Record and clean up
+  ```bash
+  git rev-parse --short refs/bisect/bad > culprit.txt
+  git bisect reset
+  ```
+  `reset` returns to the branch you started from.
+debrief: |
+  ## What happened
+  Bisect keeps a "good" and a "bad" boundary and tests the middle commit, halving the suspect range
+  every time. Each test moved HEAD to a detached commit, which is why the session ends with a reset.
 
-  Detached HEAD is safe for exploration as long as you branch before you want to keep
-  new commits.
+  ## Why automation helps
+  With `bisect run`, any script with a meaningful exit code decides good/bad: 0 is good, 1 to 127
+  (except 125) is bad, 125 means "cannot test this commit, skip it".
 
-  '
+  ## Danger in the middle
+  While bisecting, you are detached at an arbitrary commit. Do not commit there. `git bisect log`
+  shows what you did and `git bisect reset` always gets you out.
+
+  ## Related
+  - `git bisect skip` for commits that do not build.
+  - `git bisect start <bad> <good>` is the shorter form.
+  - `git bisect visualize` opens the remaining range.
+common_mistakes:
+  - "Forgetting `git bisect reset`, leaving HEAD detached in the middle of the history."
+  - "Marking the wrong end as good/bad, so Git reports a nonsense culprit."
+  - "Writing the hash of the commit before the first bad one."
 validators:
-- type: is_detached
-  description: HEAD is detached
+  - type: is_on_branch
+    branch: main
+    description: HEAD is attached to main
+  - type: script_passes
+    script: "! test -e .git/BISECT_START"
+    description: No bisect session is in progress
+  - type: script_passes
+    script: |
+      bad=""
+      for c in $(git rev-list --reverse main); do
+        if ! git show "$c:weights.conf" | awk -F= '{s+=$2} END{exit (s==100)?0:1}'; then bad=$c; break; fi
+      done
+      test -n "$bad"
+      test "$(git rev-parse "$(cat culprit.txt)^{commit}")" = "$bad"
+    description: culprit.txt names the first commit that breaks the weights

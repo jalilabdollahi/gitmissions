@@ -4,49 +4,78 @@ level: level-129-log-no-merges
 order: 129
 difficulty: advanced
 xp: 280
-expected_time: 10m
+expected_time: 8m
 concepts:
-- '`git log --no-merges`'
-common_mistakes:
-- Running commands related to `git log --no-merges` without checking `git status`
-  first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This repository contains a small history designed to practice ``git log
-  --no-merges``.
-objective: 'Inspect the repository history and create `no-merges.txt` containing exactly:
-
-
-  `non_merges=3`
-
-
-  Then commit the report with the message `docs: add report`.'
+  - git log --no-merges
+  - revision ranges (tag..branch)
+description: |
+  You are about to release version 2.4.0 of the payments SDK. Release notes are generated from commit subjects,
+  but only the real changes since the last release count. The merge commits ("Merge feature/refunds") are
+  noise in the changelog, and everything up to and including the release tag `v2.3.0` has already been published.
+objective: |
+  Create `CHANGELOG-draft.md` that lists the subject of every non-merge commit made **after** the tag
+  `v2.3.0` on `main`, newest first, each line formatted as `- <subject>` (a dash, a space, then the subject).
+  The file must contain nothing else. (You may leave it uncommitted.)
 hints:
-- Start with the Git command related to ``git log --no-merges``.
-- Write the exact expected answer into `no-merges.txt`.
-- Commit the report so the working tree ends clean.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   cat > no-merges.txt <<'EOF'\n\
-  non_merges=3\nEOF\n   ```\n\n2.\n   ```bash\n   git add no-merges.txt\n   ```\n\n\
-  3.\n   ```bash\n   git commit -m \"docs: add report\"\n   ```"
-debrief: '## What Just Happened
+  - "You need a revision range that starts at a tag, a filter for merges, and a custom format."
+  - "`git log <tag>..<branch>` is the range; `--no-merges` removes merge commits; `--format='- %s'` prints each subject with a dash."
+  - "`git log --no-merges --format='- %s' v2.3.0..main > CHANGELOG-draft.md`"
+guide: |
+  ## A changelog from history
 
+  List everything since the release first:
 
-  **Exclude Merge Commits**
+  ```bash
+  git log --oneline v2.3.0..main
+  ```
 
+  It includes two merge commits. Remove them:
 
-  Inspection commands become much easier to remember when you tie them to concrete
-  answers.
+  ```bash
+  git log --oneline --no-merges v2.3.0..main
+  ```
 
-  '
+  Notice that the commits made on the feature branches are still there: `--no-merges` only filters the merge
+  commits themselves. Now print exactly the format the release notes use and save it:
+
+  ```bash
+  git log --no-merges --format='- %s' v2.3.0..main > CHANGELOG-draft.md
+  cat CHANGELOG-draft.md
+  ```
+
+  The expected result has one bullet per real change (refund endpoint, idempotency, timeout, retry,
+  Python support, redaction).
+debrief: |
+  ## What you learned
+
+  `A..B` means "commits reachable from B but not from A". With a tag as A it is the natural definition of
+  "what is new since the release". `--no-merges` hides commits that merely join lines of history, so the
+  list is about *changes* rather than integration. `--format` (or `--pretty=format:`) gives full control of the
+  output, so the log can feed other tools.
+
+  ## Real-world use
+
+  Tools like release-drafter and `git-cliff` do the same under the hood. Projects that use conventional commit
+  messages group the lines by type (feat/fix) with `--grep`.
+
+  ## Pitfalls
+
+  - `v2.3.0...main` (three dots) means the symmetric difference, a different set.
+  - `--format='- %s'` has no trailing separator problem, whereas `--pretty=format:` omits the final newline in older versions.
+  - Squash-merged projects have no merge commits at all; the range alone is enough.
+common_mistakes:
+  - "Using `git log v2.3.0..main --oneline`, which writes hashes and keeps the merge commits."
+  - "Using `main..v2.3.0` (reversed), which is empty."
+  - "Including the release-preparation commit that the tag points to: a range starting at the tag excludes it."
 validators:
-- type: file_content_equals
-  path: no-merges.txt
-  text: non_merges=3
-  description: no-merges.txt contains the expected answer
-- type: commit_message_contains
-  text: 'docs: add report'
-  description: 'Latest commit message contains ''docs: add report'''
-- type: is_clean
-  description: Working tree is clean
+  - type: script_passes
+    description: CHANGELOG-draft.md has one '- subject' line per non-merge commit since v2.3.0
+    script: |
+      test -f CHANGELOG-draft.md
+      diff <(git log --no-merges --format='- %s' v2.3.0..$(cat .git/gm-tip)) <(sed 's/[[:space:]]*$//' CHANGELOG-draft.md | sed '/^$/d')
+  - type: script_passes
+    description: no merge commit subjects slipped in
+    script: |
+      ! grep -qi 'merge' CHANGELOG-draft.md
+      test "$(grep -c '^- ' CHANGELOG-draft.md)" = 6
+

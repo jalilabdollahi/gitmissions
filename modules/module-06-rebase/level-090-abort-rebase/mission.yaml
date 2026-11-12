@@ -4,35 +4,81 @@ level: level-090-abort-rebase
 order: 90
 difficulty: intermediate
 xp: 260
-expected_time: 12m
+expected_time: 9m
 concepts:
-- '`git rebase --abort`'
-common_mistakes:
-- Running commands related to `git rebase --abort` without checking `git status` first,
-  which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: A rebase is already in progress and paused on a conflict.
-objective: Abort the rebase and return to the original branch state.
+  - git rebase --abort
+  - backup branch
+  - undoing a half-done rebase
+repo_path: pollcraft
+description: |
+  You started `git rebase main` on `feature/export-csv` in the Pollcraft survey tool and it stopped with a conflict in
+  `results.py`. You are not sure what the right resolution is, and the colleague who changed that function is
+  on holiday. You decide not to guess. Put the branch back exactly as it was before you started and keep a named safety
+  copy of it, so you can retry the rebase after talking to your colleague.
+objective: |
+  - abort the rebase so no rebase is in progress and `feature/export-csv` is back at its original three commits
+    (it must not contain `main`'s newest commit)
+  - create a branch `backup/survey-export` pointing at the same commit as `feature/export-csv`
+  - the working tree must be clean and `feature/export-csv` checked out
 hints:
-- Git leaves state files during an in-progress rebase.
-- Use `git rebase --abort`.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git rebase --abort\n   ```"
-debrief: '## What Just Happened
+  - "`git status` says you are in the middle of a rebase. There are three ways out: continue, skip, abort. Only one of them restores the original state."
+  - "`git rebase --abort` restores the branch tip and the working tree. Afterwards create the safety copy with `git branch`."
+  - "`git rebase --abort && git branch backup/survey-export`"
+guide: |
+  ## 1. See where you are
+  ```bash
+  git status
+  git log --oneline --graph --all
+  ```
+  Git says "rebase in progress" and shows the conflicted file.
 
+  ## 2. Abort
+  ```bash
+  git rebase --abort
+  git status
+  git log --oneline main..feature/export-csv
+  ```
+  The branch is back at its three original commits, with their original hashes.
 
-  **Abort a Rebase**
+  ## 3. Keep a safety copy
+  ```bash
+  git branch backup/survey-export
+  ```
+  A branch is just a name for a commit, so this costs nothing. If a later attempt goes wrong, reset back to it.
+debrief: |
+  ## What happened
+  While a rebase is stopped, your branch pointer is parked and Git works in a temporary detached state. `--abort`
+  puts the original branch tip back and resets the working tree and index.
 
+  ## Abort vs skip vs continue
+  - `--continue`: you resolved the files and staged them.
+  - `--skip`: drop the commit being applied. Its work is lost on this branch.
+  - `--abort`: undo the entire rebase.
 
-  Aborting a rebase is the fastest way back when you decide not to continue rewriting
-  history.
+  ## Why a backup branch
+  Rewriting history is safe because of the reflog, but names are friendlier than `HEAD@{7}`. Experienced
+  developers create `backup/<name>` before risky rebases.
 
-  '
+  ## Related
+  - `git reflog` and `ORIG_HEAD` also point to the pre-rebase tip.
+  - `git rebase --quit` stops without restoring anything. Avoid unless you know why.
+common_mistakes:
+  - "Resolving the conflict blindly and continuing, which commits a guess."
+  - "Using `git rebase --skip`, which silently drops your commit."
+  - "Creating the backup branch while the rebase is still stopped, so it points at a half-rebased commit."
 validators:
-- type: is_on_branch
-  branch: feature/rebase
-  description: HEAD is back on feature/rebase
-- type: is_clean
-  description: Working tree is clean
+  - type: is_on_branch
+    branch: feature/export-csv
+    description: HEAD is on feature/export-csv
+  - type: script_passes
+    script: "! test -d .git/rebase-merge && ! test -d .git/rebase-apply"
+    description: No rebase is in progress
+  - type: script_passes
+    script: test "$(git rev-list --count main..feature/export-csv)" = 3 && ! git merge-base --is-ancestor main feature/export-csv
+    description: feature/export-csv still has its original three commits and is not rebased
+  - type: refs_equal
+    left: backup/survey-export
+    right: feature/export-csv
+    description: backup/survey-export points at the original tip
+  - type: is_clean
+    description: Working tree is clean

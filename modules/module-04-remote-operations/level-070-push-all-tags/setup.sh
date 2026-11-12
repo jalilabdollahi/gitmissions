@@ -1,29 +1,22 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 SANDBOX="$1"
 cd "$SANDBOX"
 
-
-git init --bare remote.git
-
-git clone remote.git local
-
-cd local
-
-git config user.email "player@gitmissions.local"
-
+git init -q --bare -b main origin.git
+git clone -q origin.git pointsmith 2>/dev/null
+cd pointsmith
 git config user.name "Player"
-
-cat > README.md <<'EOF'
-remote sandbox
-EOF
-
-git add README.md
-
-git commit -m "Initial scaffold"
-
-git branch -M main
-
-git push origin main
-
-git -C ../remote.git symbolic-ref HEAD refs/heads/main
+git config user.email "player@gitmissions.local"
+git config commit.gpgsign false
+printf 'def earn(spend):\n    return spend // 10\n' > points.py
+git add . && git commit -q -m "Earn points on spend"
+git tag v1.0.0
+printf 'def redeem(points):\n    return points * 0.01\n' >> points.py
+git add . && git commit -q -m "Redeem points for discounts"
+git tag v1.1.0
+git tag scratch-benchmark
+printf 'TIERS = ["silver", "gold"]\n' > tiers.py
+git add . && git commit -q -m "Add loyalty tiers"
+git tag -a v1.2.0 -m "Release 1.2.0: tiers"
+git push -q origin main

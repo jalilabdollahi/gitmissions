@@ -4,43 +4,148 @@ level: level-221-wargame-wrong-commit
 order: 221
 difficulty: expert
 xp: 700
-expected_time: 18m
+expected_time: 20m
 concepts:
-- cherry-picked 4 commits in wrong order
-common_mistakes:
-- Running commands related to cherry-picked 4 commits in wrong order without checking
-  `git status` first, which hides the actual repository state.
-- Stopping after changing files but forgetting the final Git step such as `git add`,
-  `git commit`, `git push`, or `git rebase --continue`.
-- Using a bigger hammer than needed, like resetting the whole repository when a single
-  file, branch, or ref was the real target.
-description: This mission combines multiple Git problems into one recovery scenario.
-objective: 'Get the repository back to a clean `main` branch, ensure `rescue.txt`
-  exists with `recovered`, and commit it as `fix: war game recovery`.'
+- git cherry-pick -x and ordering
+- resolving a backport conflict
+- tagging a hotfix release
+description: |
+  The ledger API has two supported release lines. `BACKPORT.md` (untracked, in the repo root) lists which `main` commits must be backported and in which order: four tickets to `release/2.0` and one to `release/1.9`. A colleague already tried for `release/2.0`, but picked the commits in the wrong order (233, 240, 225, 219) and resolved conflicts with `-X theirs`, so one function silently disappeared and the money parsing is half of a refactor that was never meant to be backported. Nothing is published. You will redo the backport properly and cut the hotfix tag.
+objective: |
+  1. Reset `release/2.0` to the tag `v2.0.0` and cherry-pick, with `-x`, exactly the four tickets named in `BACKPORT.md`, in the listed order. Resolve the one conflict (the money fix) for the old code: `parse` must end up with `return int(round(value * 100))` and the refactoring helper `_to_cents` must not appear.
+  2. Create the annotated tag `v2.0.1` on the tip of `release/2.0`.
+  3. On `release/1.9`, backport only LEDGER-225 (with `-x`) on top of `v1.9.0`.
+
+  None of the other `main` commits (LEDGER-210, 214, 231) may leak into either release branch. End with `release/2.0` checked out and a clean tree.
 hints:
-- Start with `git status` and `git log --graph --all`.
-- Resolve conflicts or detached state first, then create the recovery commit.
-guide: "## Step-by-step Guide\n\n1.\n   ```bash\n   git switch main || git switch\
-  \ -c main\n   ```\n\n2.\n   ```bash\n   printf 'recovered\n' > rescue.txt\n   ```\n\
-  \n3.\n   ```bash\n   git add rescue.txt\n   ```\n\n4.\n   ```bash\n   git commit\
-  \ -m \"fix: war game recovery\"\n   ```"
-debrief: '## What Just Happened
+- '`git log --oneline main` shows every ticket id in the subjects. The commits are not adjacent, and dependent
+  ones must be applied in order, or they collide.'
+- '`git cherry-pick -x <sha>` appends `(cherry picked from commit ...)` to the message. For the LEDGER-219
+  commit Git stops with a conflict: main''s version builds on a refactor that `release/2.0` does not have.
+  Write the release-side version of `money.py`, `git add` it and `git cherry-pick --continue`.'
+- Find the SHA of a ticket with `git log -1 --format=%H --grep='^LEDGER-225:' main`. Use `git switch release/1.9`
+  for the second branch.
+guide: |
+  ## Read the plan
 
+  ```bash
+  cat BACKPORT.md
+  git log --oneline main | head -12
+  ```
 
-  **Cherry-Pick Chain Gone Wrong**
+  ## Start from a clean release branch
 
+  ```bash
+  git switch release/2.0
+  git reset --hard v2.0.0
+  ```
 
-  War-game missions are about staying calm, inspecting state carefully, and recovering
-  in a controlled order.
+  ## Pick in order
 
-  '
+  ```bash
+  pick() { git cherry-pick -x "$(git log -1 --format=%H --grep="^$1:" main)"; }
+  pick LEDGER-219        # conflict in money.py
+  ```
+
+  On release, `parse` is not split into `_to_cents`; write the fix directly into it:
+
+  ```bash
+  printf 'def parse(text):\n    value = float(text)\n    return int(round(value * 100))\n' > money.py
+  git add money.py && GIT_EDITOR=true git cherry-pick --continue
+  pick LEDGER-225; pick LEDGER-233; pick LEDGER-240
+  git tag -a v2.0.1 -m "ledger-api 2.0.1"
+  ```
+
+  ## The older line
+
+  ```bash
+  git switch release/1.9
+  pick LEDGER-225
+  git switch release/2.0
+  ```
+debrief: |
+  ## What a backport is
+
+  A cherry-pick re-applies the *change* of a commit on another base. The new commit has a different SHA, and `-x` records where it came from, so tools and humans can trace a release commit back to `main` (`git log --grep 'cherry picked'`). That reference is what makes `git cherry -v` and release audits possible.
+
+  ## Order and dependencies
+
+  Two commits that append to the same place in a file collide in the reverse order, even though they are logically independent. Applying in the original order replays the same context the commits had on `main`. Dependent commits (a fix that builds on a refactor) may conflict even in the right order when you omit their dependency; the right answer is to resolve for the target branch, not to import the refactor.
+
+  ## `-X theirs` is not a resolution
+
+  It picks one side of *every* conflicting hunk without looking, which is how a function disappeared. Resolve conflicts consciously.
+
+  ## Related
+
+  - `git cherry-pick --abort/--skip/--continue`, `git cherry-pick A^..B` for ranges.
+  - `git cherry origin/main release/2.0` lists commits not yet upstream.
+  - `git revert -x` annotates reverts similarly.
+common_mistakes:
+- Cherry-picking in the order the commits happen to appear in `git log` (newest first) instead of the
+  planned order.
+- Accepting main's version of `money.py`, importing the refactor helper that the release must not contain.
+- Forgetting `-x`, so nothing links the release commits to their origin on `main`.
 validators:
+- type: script_passes
+  description: release/2.0 holds exactly the four backports on top of v2.0.0, in plan order
+  script: 'exp="LEDGER-219: fix rounding in money parsing
+
+    LEDGER-225: reject negative totals
+
+    LEDGER-233: guard against empty batch
+
+    LEDGER-240: fix currency lookup crash"
+
+    test "$(git log --reverse --format=%s v2.0.0..release/2.0)" = "$exp"
+
+    test "$(git merge-base release/2.0 v2.0.0)" = "$(git rev-parse v2.0.0)"
+
+    '
+- type: script_passes
+  description: Every backport records its origin on main with cherry-pick -x
+  script: "for c in $(git rev-list v2.0.0..release/2.0) $(git rev-list v1.9.0..release/1.9); do\n  ref=$(git\
+    \ log -1 --format=%B \"$c\" | sed -n 's/.*(cherry picked from commit \\([0-9a-f]*\\)).*/\\1/p')\n\
+    \  test -n \"$ref\"\n  test \"$(git log -1 --format=%s \"$ref\")\" = \"$(git log -1 --format=%s \"\
+    $c\")\"\n  git merge-base --is-ancestor \"$ref\" main\ndone\n"
+- type: script_passes
+  description: The release code is right - old-style rounding fix, both validators, no refactor and no
+    GBP table
+  script: 'git show release/2.0:money.py | grep -q ''int(round(value \* 100))''
+
+    ! git show release/2.0:money.py | grep -q ''_to_cents''
+
+    git show release/2.0:validate.py | grep -q ''def validate_total''
+
+    git show release/2.0:validate.py | grep -q ''def validate_batch''
+
+    git show release/2.0:lookup.py | grep -q ''CURRENCIES.get(code, 2)''
+
+    ! git show release/2.0:lookup.py | grep -q GBP
+
+    ! git show release/2.0 --stat >/dev/null 2>&1 || test -z "$(git ls-tree -r --name-only release/2.0
+    | grep dashboards)"
+
+    '
+- type: script_passes
+  description: v2.0.1 is an annotated tag on the tip of release/2.0
+  script: 'test "$(git cat-file -t v2.0.1)" = tag
+
+    test "$(git rev-parse ''v2.0.1^{commit}'')" = "$(git rev-parse release/2.0)"
+
+    '
+- type: script_passes
+  description: release/1.9 has only LEDGER-225 on top of v1.9.0
+  script: 'test "$(git log --format=%s v1.9.0..release/1.9)" = "LEDGER-225: reject negative totals"
+
+    git show release/1.9:validate.py | grep -q ''def validate_total''
+
+    ! git show release/1.9:validate.py | grep -q ''validate_batch''
+
+    '
 - type: is_on_branch
-  branch: main
-  description: HEAD is on main
-- type: file_content_equals
-  path: rescue.txt
-  text: recovered
-  description: rescue.txt contains the recovered content
+  branch: release/2.0
+  description: HEAD is on release/2.0
 - type: is_clean
+  ignore_untracked: true
   description: Working tree is clean
